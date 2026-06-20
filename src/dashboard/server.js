@@ -682,6 +682,7 @@ app.post('/api/trades/cut', (req, res) => {
       `PnL: <code>${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(2)}</code> (${trade.pnl >= 0 ? '+' : ''}Bs. ${(trade.pnl * 6.96).toFixed(2)})\n` +
       `Note: ${trade.note}`
     );
+    return;
   }
   res.status(404).json({ success: false, error: 'Active trade not found' });
 });
