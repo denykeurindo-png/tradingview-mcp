@@ -50,9 +50,13 @@ async function scrapeCoinGlass(path, forceRefresh = false) {
   let navigated = false;
 
   if (!tab) {
-    // Fallback: use TradingView chart tab, navigate temporarily
+    // Fallback 1: Try TradingView chart tab
     tab = tabs.find(t => t.type === 'page' && t.url?.includes('tradingview.com/chart'));
-    if (!tab) throw new Error('No suitable tab found. Is TradingView open with a chart?');
+    if (!tab) {
+      // Fallback 2: Try any active http/https tab
+      tab = tabs.find(t => t.type === 'page' && t.url?.startsWith('http') && !t.url?.includes('devtools'));
+    }
+    if (!tab) throw new Error('No suitable tab found. Please make sure a web page is open in TradingView or Chrome.');
     navigated = true;
   }
   const savedUrl = navigated ? tab.url : null;
@@ -286,14 +290,18 @@ async function scrapeHeatMap(forceRefresh = false) {
   let navigated = false;
 
   if (!tab) {
+    // Fallback 1: Try any coinglass tab
     tab = tabs.find(t => t.type === 'page' && t.url?.includes('coinglass.com'));
     if (!tab) {
+      // Fallback 2: Try TradingView chart tab
       tab = tabs.find(t => t.type === 'page' && t.url?.includes('tradingview.com/chart'));
-      if (!tab) throw new Error('No suitable tab found. Is TradingView open with a chart?');
-      navigated = true;
-    } else {
-      navigated = true;
     }
+    if (!tab) {
+      // Fallback 3: Try any active http/https tab
+      tab = tabs.find(t => t.type === 'page' && t.url?.startsWith('http') && !t.url?.includes('devtools'));
+    }
+    if (!tab) throw new Error('No suitable tab found. Please make sure a web page is open in TradingView or Chrome.');
+    navigated = true;
   }
   const savedUrl = navigated ? tab.url : null;
 
