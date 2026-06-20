@@ -1072,6 +1072,12 @@ function autoTradeStrategyBackend(heatmapData) {
   const currentPrice = parseFloat(lastCandle[1]);
   if (isNaN(currentPrice)) return;
 
+  const lastClose = currentPrice;
+  const lastLow = parseFloat(lastCandle[2]);
+  const lastHigh = parseFloat(lastCandle[3]);
+
+  if (isNaN(lastLow) || isNaN(lastHigh)) return;
+
   const trades = loadTrades();
   const activeTrades = trades.filter(t => t.status === 'ACTIVE');
   if (activeTrades.length >= settings.maxActive) return;
@@ -1090,6 +1096,9 @@ function autoTradeStrategyBackend(heatmapData) {
     }
   });
 
+  // Ambil candle histori (10 candle sebelum candle terakhir) untuk validasi sweep segar
+  const historicalCandles = cs.data.slice(Math.max(0, cs.data.length - 11), cs.data.length - 1);
+
   const candidates = [];
   yAxisData.forEach((priceStr, idx) => {
     const p = parseFloat(priceStr);
@@ -1098,42 +1107,94 @@ function autoTradeStrategyBackend(heatmapData) {
     const diffPercent = Math.abs(((p - currentPrice) / currentPrice) * 100);
     if (diffPercent < settings.minDist || diffPercent > settings.maxDist) return;
 
-    // Check if swept by recent visible wicks
-    let swept = false;
-    cs.data.forEach(c => {
-      const lo = parseFloat(c[2]), hi = parseFloat(c[3]);
-      if (p >= lo && p <= hi) swept = true;
-    });
-    if (swept) return;
-
-    // Check if matches any existing trade TP
-    const isTargeted = trades.some(t => Math.abs(t.tp - p) / p < 0.0025);
-    if (isTargeted) return;
-
     const volume = volumeByY[idx] || 0;
     if (volume <= 0) return;
 
-    const score = volume / diffPercent;
-    candidates.push({
-      price: p,
-      yIdx: idx,
-      distance: diffPercent,
-      leverage: volume,
-      score: score
-    });
+    // Cek apakah kolam likuidasi pernah tersapu di lilin histori
+    const historicallySwept = historicalCandles.some(c => p >= parseFloat(c[2]) && p <= parseFloat(c[3]));
+    if (historicallySwept) return;
+
+    // Deteksi sweep oleh lilin terbaru (sweep + bounce/reversal)
+    let isSweepCandidate = false;
+    let direction = '';
+
+    if (p < currentPrice) {
+      // Kolam di bawah: candle low menembus kolam, tetapi close bertahan di atas kolam (LONG Reversal)
+      if (lastLow <= p && lastClose > p) {
+        isSweepCandidate = true;
+        direction = 'LONG';
+      }
+    } else {
+      // Kolam di atas: candle high menembus kolam, tetapi close bertahan di bawah kolam (SHORT Reversal)
+      if (lastHigh >= p && lastClose < p) {
+        isSweepCandidate = true;
+        direction = 'SHORT';
+      }
+    }
+
+    if (isSweepCandidate) {
+      const score = volume / diffPercent;
+      candidates.push({
+        price: p,
+        yIdx: idx,
+        distance: diffPercent,
+        leverage: volume,
+        direction: direction,
+        score: score
+      });
+    }
   });
 
   if (candidates.length === 0) return;
   candidates.sort((a, b) => b.score - a.score);
-  const best = candidates[0];
+  const bestSweep = candidates[0];
 
-  const direction = best.price > currentPrice ? 'LONG' : 'SHORT';
+  const direction = bestSweep.direction;
   const entry = currentPrice;
-  const tp = best.price;
 
-  const tpDistance = best.distance;
-  const slDistance = tpDistance / settings.minRR;
-  const sl = direction === 'LONG' ? (entry * (1 - slDistance / 100)) : (entry * (1 + slDistance / 100));
+  // Tentukan Stop Loss (SL) di luar ekor lilin sweep dengan buffer 0.05%
+  const buffer = entry * 0.0005;
+  let sl = direction === 'LONG' ? (lastLow - buffer) : (lastHigh + buffer);
+
+  // Amankan SL agar tidak terlalu dekat untuk menghindari leverage ekstrim
+  let slDistance = Math.abs(((entry - sl) / entry) * 100);
+  if (slDistance < 0.2) {
+    slDistance = 0.2;
+    sl = direction === 'LONG' ? (entry * (1 - 0.002)) : (entry * (1 + 0.002));
+  }
+
+  // Tentukan Take Profit (TP) pada kolam likuidasi berlawanan terbesar yang belum tersapu
+  let tp = 0;
+  let maxOpposingVolume = 0;
+  let opposingPrice = 0;
+
+  yAxisData.forEach((priceStr, idx) => {
+    const p = parseFloat(priceStr);
+    if (isNaN(p)) return;
+
+    const isOpposing = direction === 'LONG' ? (p > currentPrice) : (p < currentPrice);
+    if (!isOpposing) return;
+
+    // Pastikan kolam lawan belum pernah tersapu
+    const swept = cs.data.some(c => p >= parseFloat(c[2]) && p <= parseFloat(c[3]));
+    if (swept) return;
+
+    const volume = volumeByY[idx] || 0;
+    if (volume > maxOpposingVolume) {
+      maxOpposingVolume = volume;
+      opposingPrice = p;
+    }
+  });
+
+  if (opposingPrice > 0) {
+    tp = opposingPrice;
+  } else {
+    // Fallback: 1.5x dari jarak SL
+    const fallbackDist = slDistance * 1.5;
+    tp = direction === 'LONG' ? (entry * (1 + fallbackDist / 100)) : (entry * (1 - fallbackDist / 100));
+  }
+
+  const tpDistance = Math.abs(((tp - entry) / entry) * 100);
 
   // Cooldown check (last 30 minutes in same direction with similar TP)
   const isCooldown = trades.some(t => {
@@ -1149,7 +1210,19 @@ function autoTradeStrategyBackend(heatmapData) {
   const positionSizeUsd = riskUsd / (slDistance / 100);
 
   let initialTpVolume = null;
-  if (volumeByY[best.yIdx] > 0) initialTpVolume = volumeByY[best.yIdx];
+  // Cari index yAxis untuk TP untuk melacak penyusutan kolam
+  let closestTpYIdx = -1, minTpDiff = Infinity;
+  yAxisData.forEach((priceStr, idx) => {
+    const p = parseFloat(priceStr);
+    const diff = Math.abs(p - tp);
+    if (diff < minTpDiff) {
+      minTpDiff = diff;
+      closestTpYIdx = idx;
+    }
+  });
+  if (closestTpYIdx !== -1) {
+    initialTpVolume = volumeByY[closestTpYIdx] || 0;
+  }
 
   const rr = (tpDistance / slDistance).toFixed(1);
   const newTrade = {
@@ -1168,16 +1241,16 @@ function autoTradeStrategyBackend(heatmapData) {
     status: 'ACTIVE',
     pnl: 0,
     initialTpVolume,
-    note: `Bot (Pool $${best.leverage.toFixed(0)})`
+    note: `Bot Sweep Reversal (Pool $${bestSweep.leverage.toFixed(0)})`
   };
 
   trades.push(newTrade);
   saveTrades(trades);
-  console.log(`[Backend Bot] Executed ${direction} Entry:${entry.toFixed(2)} TP:${tp.toFixed(2)} SL:${sl.toFixed(2)}`);
+  console.log(`[Backend Bot] Executed Sweep Reversal ${direction} Entry:${entry.toFixed(2)} TP:${tp.toFixed(2)} SL:${sl.toFixed(2)}`);
 
   // Send Telegram Alert for bot trade
   sendTelegramAlert(
-    `🔔 <b>New Trade Executed (Bot)</b>\n` +
+    `🔔 <b>New Trade Executed (Bot Sweep Reversal)</b>\n` +
     `Type: <b>${direction}</b>\n` +
     `Entry: <code>$${entry.toFixed(2)}</code>\n` +
     `TP: <code>$${tp.toFixed(2)}</code> (Risk R: 1:${rr})\n` +
