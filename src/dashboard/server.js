@@ -802,6 +802,109 @@ app.post('/api/telegram/test', async (req, res) => {
   }
 });
 
+// TradingView Webhook Endpoint
+app.post('/api/tradingview/webhook', (req, res) => {
+  const data = req.body;
+  console.log('[TradingView Webhook] Received payload:', JSON.stringify(data));
+
+  if (!data || !data.action) {
+    return res.status(400).json({ success: false, error: 'Missing action parameter' });
+  }
+
+  const trades = loadTrades();
+  const settings = loadSettings();
+
+  if (data.action === 'buy' || data.action === 'sell') {
+    const direction = data.direction || (data.action === 'buy' ? 'LONG' : 'SHORT');
+    const entry = parseFloat(data.entry || 0);
+    const tp = parseFloat(data.tp || 0);
+    const sl = parseFloat(data.sl || 0);
+
+    if (!entry || !tp || !sl) {
+      return res.status(400).json({ success: false, error: 'Missing entry, tp, or sl' });
+    }
+
+    const activeTrades = trades.filter(t => t.status === 'ACTIVE');
+    if (activeTrades.length >= settings.maxActive) {
+      console.log('[TradingView Webhook] Max active trades reached, skipping entry.');
+      return res.status(400).json({ success: false, error: 'Max active trades reached' });
+    }
+
+    const slDistance = Math.abs(((entry - sl) / entry) * 100);
+    const tpDistance = Math.abs(((tp - entry) / entry) * 100);
+    const rr = (tpDistance / slDistance).toFixed(1);
+
+    const riskUsd = settings.capital * (settings.riskPercent / 100);
+    const positionSizeUsd = riskUsd / (slDistance / 100);
+
+    const newTrade = {
+      id: 'T' + Date.now(),
+      time: new Date().toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+      direction,
+      entry,
+      tp,
+      sl,
+      capital: settings.capital,
+      riskPercent: settings.riskPercent,
+      riskUsd,
+      positionSizeUsd,
+      tpDistance,
+      slDistance,
+      status: 'ACTIVE',
+      pnl: 0,
+      note: data.note || 'TradingView Alert'
+    };
+
+    trades.push(newTrade);
+    saveTrades(trades);
+    res.json({ success: true, data: newTrade });
+
+    sendTelegramAlert(
+      `🔔 <b>New Trade Executed (TradingView Alert)</b>\n` +
+      `Type: <b>${direction}</b>\n` +
+      `Entry: <code>$${entry.toFixed(2)}</code>\n` +
+      `TP: <code>$${tp.toFixed(2)}</code> (Risk R: 1:${rr})\n` +
+      `SL: <code>$${sl.toFixed(2)}</code>\n` +
+      `Size: <code>$${positionSizeUsd.toFixed(0)}</code> (Risk: $${riskUsd.toFixed(2)})\n` +
+      `Note: ${newTrade.note}`
+    );
+
+  } else if (data.action === 'cut') {
+    const direction = data.direction;
+    const closePrice = parseFloat(data.close || 0);
+
+    const trade = direction 
+      ? trades.find(t => t.status === 'ACTIVE' && t.direction === direction)
+      : trades.find(t => t.status === 'ACTIVE');
+
+    if (trade) {
+      trade.status = 'CUT_LOSS';
+      const diff = trade.direction === 'LONG' ? (closePrice - trade.entry) : (trade.entry - closePrice);
+      trade.pnl = parseFloat((trade.positionSizeUsd * (diff / trade.entry)).toFixed(2));
+      trade.closePrice = closePrice || trade.entry;
+      trade.note = trade.note ? `${trade.note} (${data.note || 'TradingView Exit'})` : (data.note || 'TradingView Exit');
+      saveTrades(trades);
+      res.json({ success: true, data: trade });
+
+      sendTelegramAlert(
+        `⚠️ <b>Trade Closed (TradingView Exit)</b>\n` +
+        `Type: <b>${trade.direction}</b>\n` +
+        `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
+        `TP: <code>$${trade.tp.toFixed(2)}</code>\n` +
+        `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
+        `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
+        `Close: <code>$${trade.closePrice.toFixed(2)}</code>\n` +
+        `PnL: <code>${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(2)}</code> (${trade.pnl >= 0 ? '+' : ''}Bs. ${(trade.pnl * 6.96).toFixed(2)})\n` +
+        `Note: ${trade.note}`
+      );
+    } else {
+      res.status(404).json({ success: false, error: 'No active trade found to exit' });
+    }
+  } else {
+    res.status(400).json({ success: false, error: 'Unknown action' });
+  }
+});
+
 // ─── Server-Side Bot Logic ──────────────────────────────────
 function evaluateActiveTradesBackend(heatmapData) {
   const cs = heatmapData.series.find(s => s.type === 'candlestick');
