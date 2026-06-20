@@ -5,7 +5,7 @@ console.log('[VPS Check] Initiating SSH connection to VPS...');
 const conn = new Client();
 conn.on('ready', () => {
   console.log('[VPS Check] SSH connection ready!');
-  const cmd = 'pm2 status && echo "=== OUT LOGS ===" && tail -n 40 ~/.pm2/logs/trading-dashboard-out.log && echo "=== ERROR LOGS ===" && tail -n 40 ~/.pm2/logs/trading-dashboard-error.log';
+  const cmd = 'curl -s http://localhost:9222/json';
   console.log(`[VPS Check] Executing: ${cmd}\n`);
   
   conn.exec(cmd, (err, stream) => {

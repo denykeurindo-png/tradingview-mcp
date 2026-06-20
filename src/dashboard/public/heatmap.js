@@ -870,6 +870,22 @@ async function pollBotStatus() {
         }
       }
 
+      // Update Funding Rate
+      const fundingEl = document.getElementById('lsr-funding-rate-val');
+      if (fundingEl) {
+        const fundingVal = (data.metrics && data.metrics.fundingRate) ? (data.metrics.fundingRate * 100) : 0;
+        fundingEl.innerText = `${fundingVal.toFixed(4)}%`;
+        fundingEl.style.color = fundingVal >= 0 ? '#FFD60A' : '#32D74B';
+      }
+
+      // Update Long/Short Ratio
+      const lsRatioEl = document.getElementById('lsr-ls-ratio-val');
+      if (lsRatioEl) {
+        const lsRatioVal = (data.metrics && data.metrics.longShortRatio) ? data.metrics.longShortRatio : 1.0;
+        lsRatioEl.innerText = lsRatioVal.toFixed(2);
+        lsRatioEl.style.color = '#00E5FF';
+      }
+
       // Update message
       const msgEl = document.getElementById('lsr-message');
       if (msgEl) {

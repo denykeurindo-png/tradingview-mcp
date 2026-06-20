@@ -16,6 +16,12 @@ const footSpotCvdStatus = document.getElementById('foot-spot-cvd-status');
 const valHtfTrend = document.getElementById('val-htf-trend');
 const footHtfTrend = document.getElementById('foot-htf-trend');
 
+const valFundingRate = document.getElementById('val-funding-rate');
+const footFundingStatus = document.getElementById('foot-funding-status');
+
+const valLsRatio = document.getElementById('val-ls-ratio');
+const footLsPercentage = document.getElementById('foot-ls-percentage');
+
 const liqPoolsTbody = document.getElementById('liq-pools-tbody');
 const rawJsonBlock = document.getElementById('raw-json-block');
 const btnCopyJson = document.getElementById('btn-copy-json');
@@ -90,6 +96,21 @@ async function loadBotStatus() {
       if (trend1h === 'BULLISH' && trend4h === 'BULLISH') trendClass = 'text-positive';
       if (trend1h === 'BEARISH' && trend4h === 'BEARISH') trendClass = 'text-negative';
       valHtfTrend.className = `kpi-value select-mono ${trendClass}`;
+
+      // Update Funding Rate
+      const fundRate = m.fundingRate || 0;
+      valFundingRate.innerText = `${(fundRate * 100).toFixed(4)}%`;
+      const fundingPositive = fundRate >= 0;
+      valFundingRate.className = `kpi-value select-mono ${fundingPositive ? 'text-positive' : 'text-negative'}`;
+      footFundingStatus.innerText = fundingPositive ? 'Longs pay Shorts' : 'Shorts pay Longs';
+      footFundingStatus.className = `kpi-footer ${fundingPositive ? 'text-positive' : 'text-negative'}`;
+
+      // Update Long/Short Ratio
+      const lsRatio = m.longShortRatio || 1.0;
+      valLsRatio.innerText = lsRatio.toFixed(2);
+      const longPct = (m.longAccount || 0.5) * 100;
+      const shortPct = (m.shortAccount || 0.5) * 100;
+      footLsPercentage.innerText = `${longPct.toFixed(1)}% Long / ${shortPct.toFixed(1)}% Short`;
     }
     
     updateJsonView();

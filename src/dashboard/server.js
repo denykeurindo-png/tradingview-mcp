@@ -920,6 +920,10 @@ let botMetrics = {
   spotCvd1h: 0,
   trend1h: 'UNKNOWN',
   trend4h: 'UNKNOWN',
+  fundingRate: 0,
+  longShortRatio: 1.0,
+  longAccount: 0.5,
+  shortAccount: 0.5,
   reversalProbability: 0
 };
 
@@ -1012,8 +1016,40 @@ async function fetchBinanceHTFTrend() {
   return { trend1h: 'UNKNOWN', trend4h: 'UNKNOWN' };
 }
 
-function calculateReversalProbability(sweepDetail, oiChange, spotCVD, trend1h, trend4h) {
-  let score = 50; // Base probability start at 50%
+async function fetchBinanceFundingRate() {
+  try {
+    const res = await fetch('https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (data && data.lastFundingRate !== undefined) {
+      return parseFloat(data.lastFundingRate);
+    }
+  } catch (err) {
+    console.error('[Binance API] Error fetching Funding Rate:', err.message);
+  }
+  return 0;
+}
+
+async function fetchBinanceLongShortRatio() {
+  try {
+    const res = await fetch('https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=5m&limit=1');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (Array.isArray(data) && data.length > 0) {
+      return {
+        ratio: parseFloat(data[0].longShortRatio || 1.0),
+        long: parseFloat(data[0].longAccount || 0.5),
+        short: parseFloat(data[0].shortAccount || 0.5)
+      };
+    }
+  } catch (err) {
+    console.error('[Binance API] Error fetching L/S Ratio:', err.message);
+  }
+  return { ratio: 1.0, long: 0.5, short: 0.5 };
+}
+
+function calculateReversalProbability(sweepDetail, oiChange, spotCVD, trend1h, trend4h, fundingRate, longShortRatio) {
+  let score = 40; // Base probability start at 40%
 
   // 1. Liquidation Pool Volume (Up to 15 points)
   const volBillions = sweepDetail.volume / 1e9;
@@ -1047,6 +1083,38 @@ function calculateReversalProbability(sweepDetail, oiChange, spotCVD, trend1h, t
     if (trend1h === 'BEARISH') score += 5;
     if (trend4h === 'BEARISH') score += 5;
     if (trend1h === 'BULLISH') score -= 5;
+  }
+
+  // 6. Funding Rate (Up to 10 points)
+  const fundingNum = parseFloat(fundingRate) || 0;
+  if (sweepDetail.direction === 'LONG') {
+    if (fundingNum < 0) {
+      score += Math.min(10, Math.abs(fundingNum) * 20000);
+    } else if (fundingNum > 0.0005) {
+      score -= Math.min(10, (fundingNum - 0.0005) * 10000);
+    }
+  } else if (sweepDetail.direction === 'SHORT') {
+    if (fundingNum > 0) {
+      score += Math.min(10, fundingNum * 20000);
+    } else if (fundingNum < -0.0005) {
+      score -= Math.min(10, Math.abs(fundingNum + 0.0005) * 10000);
+    }
+  }
+
+  // 7. Long/Short Ratio (Up to 10 points)
+  const lsRatio = parseFloat(longShortRatio) || 1.0;
+  if (sweepDetail.direction === 'LONG') {
+    if (lsRatio < 1.3) {
+      score += Math.min(10, (1.3 - lsRatio) * 25);
+    } else if (lsRatio > 1.8) {
+      score -= Math.min(10, (lsRatio - 1.8) * 10);
+    }
+  } else if (sweepDetail.direction === 'SHORT') {
+    if (lsRatio > 1.6) {
+      score += Math.min(10, (lsRatio - 1.6) * 12.5);
+    } else if (lsRatio < 1.1) {
+      score -= Math.min(10, (1.1 - lsRatio) * 20);
+    }
   }
 
   // Bound the score between 10% and 99%
@@ -1534,7 +1602,7 @@ function autoTradeStrategyBackend(heatmapData) {
   }
 
   // ─── Step 10b: Reversal Probability Filter ────────────────
-  const prob = calculateReversalProbability(bestSweep, botMetrics.oiChange1h, botMetrics.spotCvd1h, botMetrics.trend1h, botMetrics.trend4h);
+  const prob = calculateReversalProbability(bestSweep, botMetrics.oiChange1h, botMetrics.spotCvd1h, botMetrics.trend1h, botMetrics.trend4h, botMetrics.fundingRate, botMetrics.longShortRatio);
   botMetrics.reversalProbability = prob; // cache the latest calculated probability for reporting
 
   const minProb = settings.minReversalProbability || 65;
@@ -1666,10 +1734,12 @@ async function runBotCycle() {
     console.log('[Background Bot] Running scheduled scraper and trade evaluation cycle...');
     
     // Fetch Binance Metrics in parallel to save time
-    const [oiData, cvdVal, trendData] = await Promise.all([
+    const [oiData, cvdVal, trendData, fundingRate, lsRatioData] = await Promise.all([
       fetchBinanceOI(),
       fetchBinanceSpotCVD(),
-      fetchBinanceHTFTrend()
+      fetchBinanceHTFTrend(),
+      fetchBinanceFundingRate(),
+      fetchBinanceLongShortRatio()
     ]);
     
     botMetrics = {
@@ -1678,7 +1748,11 @@ async function runBotCycle() {
       oiChange1h: oiData.oiChange1h,
       spotCvd1h: cvdVal,
       trend1h: trendData.trend1h,
-      trend4h: trendData.trend4h
+      trend4h: trendData.trend4h,
+      fundingRate: fundingRate,
+      longShortRatio: lsRatioData.ratio,
+      longAccount: lsRatioData.long,
+      shortAccount: lsRatioData.short
     };
 
     const result = await scrapeHeatMap(true); // force refresh to get latest data from CoinGlass!
