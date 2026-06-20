@@ -43,7 +43,7 @@ const parseV = v => {
 
 // CDP CoinGlass scraper
 async function scrapeCoinGlass(path, forceRefresh = false) {
-  // 1. Find the TradingView or CoinGlass tab
+  // 1. Find the CoinGlass tab
   const tabsResponse = await fetch('http://localhost:9222/json', { signal: AbortSignal.timeout(5000) });
   const tabs = await tabsResponse.json();
   let tab = tabs.find(t => t.type === 'page' && t.url?.includes('coinglass.com' + path));

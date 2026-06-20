@@ -145,7 +145,7 @@ async function loadData(forceRefresh = false) {
         </svg>
         <div class="alert-content">
           <div class="alert-title">CDP Connection Failure</div>
-          <div class="alert-desc">${error.message || 'Ensure TradingView is open with remote debugging enabled.'}</div>
+          <div class="alert-desc">${error.message || 'Ensure Chrome is open with remote debugging enabled.'}</div>
         </div>
       </div>
     `;
