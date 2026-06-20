@@ -22,7 +22,8 @@
     "test:all": "node --test tests/e2e.test.js tests/pine_analyze.test.js tests/cli.test.js",
     "test:verbose": "node --test --test-reporter=spec tests/e2e.test.js tests/pine_analyze.test.js",
     "test:count": "node --test --test-reporter=spec tests/e2e.test.js 2>&1 | tail -5",
-    "deploy": "ssh binance@103.55.37.239 \"git config --global --add safe.directory /home/binance/tradingview-mcp && cd tradingview-mcp && git pull origin main && pm2 restart trading-dashboard\""
+    "deploy": "ssh binance@103.55.37.239 \"git config --global --add safe.directory /home/binance/tradingview-mcp && cd tradingview-mcp && git pull origin main && pm2 restart trading-dashboard\"",
+    "bridge": "node scripts/tv_signal_bridge.js"
   },
   "dependencies": {
     "@modelcontextprotocol/sdk": "^1.12.1",
