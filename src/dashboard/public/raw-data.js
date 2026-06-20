@@ -22,14 +22,6 @@ const footFundingStatus = document.getElementById('foot-funding-status');
 const valLsRatio = document.getElementById('val-ls-ratio');
 const footLsPercentage = document.getElementById('foot-ls-percentage');
 
-const liqPoolsTbody = document.getElementById('liq-pools-tbody');
-const rawJsonBlock = document.getElementById('raw-json-block');
-const btnCopyJson = document.getElementById('btn-copy-json');
-
-const btnTabBot = document.getElementById('btn-tab-bot');
-const btnTabHeatmap = document.getElementById('btn-tab-heatmap');
-
-let currentActiveTab = 'bot'; // 'bot' or 'heatmap'
 let cachedBotStatus = null;
 let cachedHeatmapData = null;
 
@@ -112,8 +104,6 @@ async function loadBotStatus() {
       const shortPct = (m.shortAccount || 0.5) * 100;
       footLsPercentage.innerText = `${longPct.toFixed(1)}% Long / ${shortPct.toFixed(1)}% Short`;
     }
-    
-    updateJsonView();
   } catch (err) {
     console.error('Error fetching bot status:', err.message);
   }
@@ -139,13 +129,9 @@ async function loadHeatmapData(forceRefresh = false) {
       if (!isNaN(currentPrice)) {
         valBtcPrice.innerText = formatUSD(currentPrice);
         footBtcPrice.innerText = formatBs(currentPrice) + ' (Equiv.)';
-        
-        // Parse pools and build table
-        renderLiquidationTable(cachedHeatmapData.data, currentPrice);
       }
     }
     
-    updateJsonView();
     updateStatus('normal', 'Live');
   } catch (err) {
     updateStatus('error', err.message || 'Connection offline');
@@ -154,117 +140,7 @@ async function loadHeatmapData(forceRefresh = false) {
   }
 }
 
-// Render Liquidation Table
-function renderLiquidationTable(data, currentPrice) {
-  const heatmapSeries = data.series.find(s => s.type === 'heatmap');
-  const candlestickSeries = data.series.find(s => s.type === 'candlestick');
-  if (!heatmapSeries || !heatmapSeries.data || heatmapSeries.data.length === 0) return;
-  
-  let maxHigh = currentPrice;
-  let minLow = currentPrice;
-  if (candlestickSeries && candlestickSeries.data && candlestickSeries.data.length > 0) {
-    candlestickSeries.data.forEach(c => {
-      const low = parseFloat(c[2]);
-      const high = parseFloat(c[3]);
-      if (!isNaN(high) && high > maxHigh) maxHigh = high;
-      if (!isNaN(low) && low < minLow) minLow = low;
-    });
-  }
-  
-  const yAxisData = data.yAxis || [];
-  const leveragePerY = {};
-  heatmapSeries.data.forEach(item => {
-    const yIdx = item[1];
-    const val = parseFloat(item[2] || 0);
-    leveragePerY[yIdx] = (leveragePerY[yIdx] || 0) + val;
-  });
-  
-  const levels = [];
-  Object.keys(leveragePerY).forEach(yIdxStr => {
-    const yIdx = parseInt(yIdxStr, 10);
-    const priceStr = yAxisData[yIdx];
-    if (!priceStr) return;
-    const price = parseFloat(priceStr);
-    const leverage = leveragePerY[yIdx];
-    const distancePercent = ((price - currentPrice) / currentPrice) * 100;
-    
-    let isLiquidated = false;
-    const isAbove = price > currentPrice;
-    if (isAbove && price <= maxHigh) isLiquidated = true;
-    else if (!isAbove && price >= minLow) isLiquidated = true;
-    
-    levels.push({ price, leverage, distance: distancePercent, isAbove, isLiquidated });
-  });
-  
-  // Sort and pick top 10 pools (5 above, 5 below)
-  const aboveLevels = levels.filter(l => l.isAbove).sort((a, b) => b.leverage - a.leverage).slice(0, 5);
-  const belowLevels = levels.filter(l => !l.isAbove).sort((a, b) => b.leverage - a.leverage).slice(0, 5);
-  
-  const allPools = [...aboveLevels, ...belowLevels].sort((a, b) => b.leverage - a.leverage);
-  
-  if (allPools.length === 0) {
-    liqPoolsTbody.innerHTML = `<tr><td colspan="5" class="text-muted" style="text-align: center;">No active liquidation pools found.</td></tr>`;
-    return;
-  }
-  
-  let html = '';
-  allPools.forEach(pool => {
-    const rowStyle = pool.isLiquidated ? 'style="opacity: 0.45; text-decoration: line-through;"' : '';
-    const poolType = pool.isAbove 
-      ? '<span class="intensity-badge high" style="background:#bfdc21; color:#000; font-weight:600;">RESISTANCE</span>' 
-      : '<span class="intensity-badge medium" style="background:#3ab56e; color:#fff; font-weight:600;">SUPPORT</span>';
-    
-    const distanceSign = pool.distance > 0 ? '+' : '';
-    const distanceColor = pool.isLiquidated ? 'var(--text-muted)' : (pool.isAbove ? 'var(--accent-alert)' : 'var(--accent-success)');
-    const volumeColor = pool.isLiquidated ? 'var(--text-muted)' : (pool.isAbove ? '#bfdc21' : '#3ab56e');
-    
-    html += `<tr ${rowStyle}>`;
-    html += `<td>${poolType}</td>`;
-    html += `<td class="mono" style="font-weight: 600;">$${pool.price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
-    html += `<td class="mono" style="color: ${distanceColor}">${distanceSign}${pool.distance.toFixed(2)}%</td>`;
-    html += `<td class="mono" style="font-weight: 600; color: ${volumeColor}">$${formatUSD(pool.leverage)}</td>`;
-    html += `<td class="mono" style="color: var(--text-muted)">Bs. ${formatUSD(pool.leverage * EXCHANGE_RATE)}</td>`;
-    html += `</tr>`;
-  });
-  
-  liqPoolsTbody.innerHTML = html;
-}
 
-// Update JSON View Panel
-function updateJsonView() {
-  if (currentActiveTab === 'bot') {
-    rawJsonBlock.innerText = cachedBotStatus ? JSON.stringify(cachedBotStatus, null, 2) : 'Loading bot status JSON...';
-  } else {
-    rawJsonBlock.innerText = cachedHeatmapData ? JSON.stringify(cachedHeatmapData, null, 2) : 'Loading heatmap data JSON...';
-  }
-}
-
-// Event Listeners for tabs
-btnTabBot.addEventListener('click', () => {
-  currentActiveTab = 'bot';
-  btnTabBot.classList.add('active');
-  btnTabHeatmap.classList.remove('active');
-  updateJsonView();
-});
-
-btnTabHeatmap.addEventListener('click', () => {
-  currentActiveTab = 'heatmap';
-  btnTabHeatmap.classList.add('active');
-  btnTabBot.classList.remove('active');
-  updateJsonView();
-});
-
-// Copy JSON to Clipboard
-btnCopyJson.addEventListener('click', () => {
-  navigator.clipboard.writeText(rawJsonBlock.innerText)
-    .then(() => {
-      btnCopyJson.innerText = 'Copied!';
-      setTimeout(() => { btnCopyJson.innerText = 'Copy JSON'; }, 2000);
-    })
-    .catch(err => {
-      console.error('Failed to copy JSON:', err);
-    });
-});
 
 // Sync Now button
 btnRefresh.addEventListener('click', () => {

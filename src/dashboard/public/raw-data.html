@@ -231,48 +231,6 @@
       </div>
     </section>
 
-    <!-- Main Grid Layout -->
-    <div class="raw-grid">
-      <!-- Liquidation Pools Table Card -->
-      <div class="card panel-card">
-        <div class="panel-header">
-          <h2 class="panel-title">Active Liquidation Pools Feed</h2>
-        </div>
-        <div class="table-container" style="max-height: 480px; overflow-y: auto;">
-          <table class="table">
-            <thead>
-              <tr>
-                <th>Type</th>
-                <th>Price Level</th>
-                <th>Distance %</th>
-                <th>Est. Pool Volume (USD)</th>
-                <th>Est. Pool Volume (Bs.)</th>
-              </tr>
-            </thead>
-            <tbody id="liq-pools-tbody">
-              <tr>
-                <td colspan="5" class="text-muted" style="text-align: center;">Loading liquidation pools feed...</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      <!-- JSON Data Feed Card -->
-      <div class="card panel-card">
-        <div class="panel-header" style="justify-content: space-between; display: flex; align-items: center; margin-bottom: var(--spacing-sm);">
-          <h2 class="panel-title">Raw JSON Feeds</h2>
-          <div class="data-tabs">
-            <button class="data-tab-btn active" id="btn-tab-bot">Bot Status</button>
-            <button class="data-tab-btn" id="btn-tab-heatmap">Heatmap Data</button>
-          </div>
-        </div>
-        <div class="json-container">
-          <button class="copy-btn" id="btn-copy-json">Copy JSON</button>
-          <pre><code class="json-code" id="raw-json-block">Loading JSON feed...</code></pre>
-        </div>
-      </div>
-    </div>
   </div>
 
   <script src="raw-data.js"></script>
