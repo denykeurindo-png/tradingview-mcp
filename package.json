@@ -22,7 +22,7 @@
     "test:all": "node --test tests/e2e.test.js tests/pine_analyze.test.js tests/cli.test.js",
     "test:verbose": "node --test --test-reporter=spec tests/e2e.test.js tests/pine_analyze.test.js",
     "test:count": "node --test --test-reporter=spec tests/e2e.test.js 2>&1 | tail -5",
-    "deploy": "ssh binance@103.55.37.239 \"git config --global --add safe.directory /home/binance/tradingview-mcp && cd tradingview-mcp && git pull origin main && pm2 restart trading-dashboard\"",
+    "deploy": "node scripts/deploy_ssh.js",
     "bridge": "node scripts/tv_signal_bridge.js"
   },
   "dependencies": {
@@ -30,5 +30,8 @@
     "chrome-remote-interface": "^0.33.2",
     "express": "^5.2.1",
     "ws": "^8.21.0"
+  },
+  "devDependencies": {
+    "ssh2": "^1.17.0"
   }
 }
