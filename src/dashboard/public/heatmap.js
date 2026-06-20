@@ -266,6 +266,9 @@ function renderLiquidationTables(data) {
   const maxLeverage = Math.max(...levels.map(l => l.leverage), 1);
 
   const renderTableHtml = (pools, isAbove) => {
+    const totalActiveVolume = pools.reduce((sum, lvl) => sum + (lvl.isLiquidated ? 0 : lvl.leverage), 0);
+    const totalActiveVolumeBs = totalActiveVolume * EXCHANGE_RATE;
+
     if (pools.length === 0) {
       return `<div class="liq-table-container ${isAbove ? 'above' : 'below'}">
         <h4>${isAbove ? '▲ Resistance Liquidation Pools (Above Price)' : '▼ Support Liquidation Pools (Below Price)'}</h4>
@@ -276,8 +279,8 @@ function renderLiquidationTables(data) {
     let html = `<div class="liq-table-container ${isAbove ? 'above' : 'below'}">`;
     html += `<h4>`;
     html += isAbove
-      ? `▲ Top Resistance Liquidation Pools (Shorts Liquidation Risk Above Current Price: ${formatUSD(currentPrice)})`
-      : `▼ Top Support Liquidation Pools (Longs Liquidation Risk Below Current Price: ${formatUSD(currentPrice)})`;
+      ? `▲ Top Resistance Liquidation Pools (Shorts Liquidation Risk Above Current Price: ${formatUSD(currentPrice)} | Total Active: $${formatIntensity(totalActiveVolume)} / Bs. ${formatIntensity(totalActiveVolumeBs)})`
+      : `▼ Top Support Liquidation Pools (Longs Liquidation Risk Below Current Price: ${formatUSD(currentPrice)} | Total Active: $${formatIntensity(totalActiveVolume)} / Bs. ${formatIntensity(totalActiveVolumeBs)})`;
     html += `</h4>`;
 
     html += `<table class="liq-data-table">`;
