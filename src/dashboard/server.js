@@ -50,13 +50,9 @@ async function scrapeCoinGlass(path, forceRefresh = false) {
   let navigated = false;
 
   if (!tab) {
-    // Fallback 1: Try TradingView chart tab
-    tab = tabs.find(t => t.type === 'page' && t.url?.includes('tradingview.com/chart'));
-    if (!tab) {
-      // Fallback 2: Try any active http/https tab
-      tab = tabs.find(t => t.type === 'page' && t.url?.startsWith('http') && !t.url?.includes('devtools'));
-    }
-    if (!tab) throw new Error('No suitable tab found. Please make sure a web page is open in TradingView or Chrome.');
+    // Fallback: Try any active http/https tab
+    tab = tabs.find(t => t.type === 'page' && t.url?.startsWith('http') && !t.url?.includes('devtools'));
+    if (!tab) throw new Error('No suitable tab found. Please make sure a web page is open in Chrome.');
     navigated = true;
   }
   const savedUrl = navigated ? tab.url : null;
@@ -280,7 +276,7 @@ async function scrapeHeatMap(forceRefresh = false) {
       break;
     } catch (e) {
       retries--;
-      if (retries === 0) throw new Error('Failed to fetch TradingView/Chrome tab list from port 9222. Is the browser debug port responsive?');
+      if (retries === 0) throw new Error('Failed to fetch Chrome tab list from port 9222. Is the browser debug port responsive?');
       console.log(`[DevTools Retry] Port 9222 unresponsive. Retrying list fetch in 2s... (${retries} retries left)`);
       await new Promise(r => setTimeout(r, 2000));
     }
@@ -293,14 +289,10 @@ async function scrapeHeatMap(forceRefresh = false) {
     // Fallback 1: Try any coinglass tab
     tab = tabs.find(t => t.type === 'page' && t.url?.includes('coinglass.com'));
     if (!tab) {
-      // Fallback 2: Try TradingView chart tab
-      tab = tabs.find(t => t.type === 'page' && t.url?.includes('tradingview.com/chart'));
-    }
-    if (!tab) {
-      // Fallback 3: Try any active http/https tab
+      // Fallback 2: Try any active http/https tab
       tab = tabs.find(t => t.type === 'page' && t.url?.startsWith('http') && !t.url?.includes('devtools'));
     }
-    if (!tab) throw new Error('No suitable tab found. Please make sure a web page is open in TradingView or Chrome.');
+    if (!tab) throw new Error('No suitable tab found. Please make sure a web page is open in Chrome.');
     navigated = true;
   }
   const savedUrl = navigated ? tab.url : null;
@@ -1787,7 +1779,7 @@ async function startBackgroundBot() {
 app.listen(PORT, () => {
   console.log(`==================================================`);
   console.log(`JDA Trade Monitor Dashboard listening at http://localhost:${PORT}`);
-  console.log(`Make sure TradingView is running with remote debugging`);
+  console.log(`Make sure Chrome is running with remote debugging`);
   console.log(`on port 9222 before triggering a refresh.`);
   console.log(`==================================================`);
 
