@@ -574,11 +574,14 @@ function loadSettings() {
   const defaultSettings = {
     capital: 1000,
     riskPercent: 1.0,
-    minRR: 1.5,
+    minRR: 2.0,
     maxActive: 1,
     minDist: 0.3,
     maxDist: 8.0,
     autoTradeEnabled: true,
+    sweepConfirmCandles: 3,
+    minPoolVolumeRatio: 0.15,
+    cooldownMinutes: 60,
     telegramBotToken: '',
     telegramChatId: ''
   };
@@ -732,6 +735,9 @@ app.post('/api/settings', (req, res) => {
     minDist: parseNum(newSettings.minDist, current.minDist),
     maxDist: parseNum(newSettings.maxDist, current.maxDist),
     autoTradeEnabled: newSettings.autoTradeEnabled !== undefined ? !!newSettings.autoTradeEnabled : current.autoTradeEnabled,
+    sweepConfirmCandles: parseIntNum(newSettings.sweepConfirmCandles, current.sweepConfirmCandles),
+    minPoolVolumeRatio: parseNum(newSettings.minPoolVolumeRatio, current.minPoolVolumeRatio),
+    cooldownMinutes: parseIntNum(newSettings.cooldownMinutes, current.cooldownMinutes),
     telegramBotToken: newSettings.telegramBotToken !== undefined ? String(newSettings.telegramBotToken).trim() : current.telegramBotToken,
     telegramChatId: newSettings.telegramChatId !== undefined ? String(newSettings.telegramChatId).trim() : current.telegramChatId
   };
@@ -1062,12 +1068,52 @@ function evaluateActiveTradesBackend(heatmapData) {
   }
 }
 
+// ─── Global Bot Phase State (for API reporting) ─────────────
+let botPhaseState = {
+  phase: 'INITIALIZING',
+  nearestPool: null,
+  nearestPoolDistance: null,
+  nearestPoolVolume: null,
+  nearestPoolSide: null,
+  sweepCandidate: null,
+  lastUpdate: new Date().toISOString(),
+  message: 'Bot starting up...'
+};
+
+// API endpoint for bot phase status
+app.get('/api/bot-status', (req, res) => {
+  const settings = loadSettings();
+  res.json({
+    success: true,
+    data: {
+      ...botPhaseState,
+      autoTradeEnabled: settings.autoTradeEnabled,
+      strategy: 'Liquidity Sweep Reversal (LSR)',
+      settings: {
+        minRR: settings.minRR,
+        maxActive: settings.maxActive,
+        sweepConfirmCandles: settings.sweepConfirmCandles || 3,
+        cooldownMinutes: settings.cooldownMinutes || 60,
+        minPoolVolumeRatio: settings.minPoolVolumeRatio || 0.15
+      }
+    }
+  });
+});
+
 function autoTradeStrategyBackend(heatmapData) {
   const settings = loadSettings();
-  if (!settings.autoTradeEnabled) return;
+  
+  if (!settings.autoTradeEnabled) {
+    botPhaseState = { ...botPhaseState, phase: 'DISABLED', message: 'Auto-trade is disabled', lastUpdate: new Date().toISOString() };
+    return;
+  }
 
   const cs = heatmapData.series.find(s => s.type === 'candlestick');
-  if (!cs || !cs.data || cs.data.length === 0) return;
+  if (!cs || !cs.data || cs.data.length === 0) {
+    botPhaseState = { ...botPhaseState, phase: 'NO_DATA', message: 'No candlestick data available', lastUpdate: new Date().toISOString() };
+    return;
+  }
+
   const lastCandle = cs.data[cs.data.length - 1];
   const currentPrice = parseFloat(lastCandle[1]);
   if (isNaN(currentPrice)) return;
@@ -1075,17 +1121,26 @@ function autoTradeStrategyBackend(heatmapData) {
   const lastClose = currentPrice;
   const lastLow = parseFloat(lastCandle[2]);
   const lastHigh = parseFloat(lastCandle[3]);
-
   if (isNaN(lastLow) || isNaN(lastHigh)) return;
 
   const trades = loadTrades();
   const activeTrades = trades.filter(t => t.status === 'ACTIVE');
-  if (activeTrades.length >= settings.maxActive) return;
+  if (activeTrades.length >= settings.maxActive) {
+    botPhaseState = {
+      ...botPhaseState,
+      phase: 'MAX_ACTIVE',
+      message: `Max active trades reached (${activeTrades.length}/${settings.maxActive}). Monitoring only.`,
+      lastUpdate: new Date().toISOString()
+    };
+    return;
+  }
 
   const heatmapSeries = heatmapData.series.find(s => s.type === 'heatmap');
   if (!heatmapSeries || !heatmapSeries.data || heatmapSeries.data.length === 0) return;
 
   const yAxisData = heatmapData.yAxis || [];
+  
+  // ─── Step 1: Build volume map per price level ─────────────
   const volumeByY = {};
   heatmapSeries.data.forEach(item => {
     const v = Array.isArray(item) ? item : (item.value || []);
@@ -1096,77 +1151,199 @@ function autoTradeStrategyBackend(heatmapData) {
     }
   });
 
-  // Ambil candle histori (10 candle sebelum candle terakhir) untuk validasi sweep segar
-  const historicalCandles = cs.data.slice(Math.max(0, cs.data.length - 11), cs.data.length - 1);
+  // ─── Step 2: Determine volume threshold (top pools only) ──
+  const allVolumes = Object.values(volumeByY).filter(v => v > 0).sort((a, b) => b - a);
+  const volumeRatio = settings.minPoolVolumeRatio || 0.15;
+  const topCutoffIndex = Math.max(1, Math.floor(allVolumes.length * volumeRatio));
+  const minPoolVolume = allVolumes[topCutoffIndex - 1] || 0;
 
-  const candidates = [];
+  // ─── Step 3: Find nearest HIGH-volume pool on each side ───
+  let nearestAbove = null, nearestBelow = null;
+  
   yAxisData.forEach((priceStr, idx) => {
     const p = parseFloat(priceStr);
-    if (isNaN(p) || p === currentPrice) return;
-
-    const diffPercent = Math.abs(((p - currentPrice) / currentPrice) * 100);
-    if (diffPercent < settings.minDist || diffPercent > settings.maxDist) return;
-
+    if (isNaN(p)) return;
+    
     const volume = volumeByY[idx] || 0;
-    if (volume <= 0) return;
-
-    // Cek apakah kolam likuidasi pernah tersapu di lilin histori
-    const historicallySwept = historicalCandles.some(c => p >= parseFloat(c[2]) && p <= parseFloat(c[3]));
-    if (historicallySwept) return;
-
-    // Deteksi sweep oleh lilin terbaru (sweep + bounce/reversal)
-    let isSweepCandidate = false;
-    let direction = '';
-
-    if (p < currentPrice) {
-      // Kolam di bawah: candle low menembus kolam, tetapi close bertahan di atas kolam (LONG Reversal)
-      if (lastLow <= p && lastClose > p) {
-        isSweepCandidate = true;
-        direction = 'LONG';
+    if (volume < minPoolVolume) return; // Only consider top pools
+    
+    const distPercent = ((p - currentPrice) / currentPrice) * 100;
+    const absDist = Math.abs(distPercent);
+    
+    if (absDist < 0.1 || absDist > settings.maxDist) return; // Too close or too far
+    
+    if (p > currentPrice) {
+      if (!nearestAbove || absDist < Math.abs(nearestAbove.distance)) {
+        nearestAbove = { price: p, yIdx: idx, distance: distPercent, volume };
       }
     } else {
-      // Kolam di atas: candle high menembus kolam, tetapi close bertahan di bawah kolam (SHORT Reversal)
-      if (lastHigh >= p && lastClose < p) {
-        isSweepCandidate = true;
-        direction = 'SHORT';
+      if (!nearestBelow || absDist < Math.abs(nearestBelow.distance)) {
+        nearestBelow = { price: p, yIdx: idx, distance: distPercent, volume };
       }
-    }
-
-    if (isSweepCandidate) {
-      const score = volume / diffPercent;
-      candidates.push({
-        price: p,
-        yIdx: idx,
-        distance: diffPercent,
-        leverage: volume,
-        direction: direction,
-        score: score
-      });
     }
   });
 
-  if (candidates.length === 0) return;
-  candidates.sort((a, b) => b.score - a.score);
-  const bestSweep = candidates[0];
+  // ─── Step 4: Phase Detection ──────────────────────────────
+  const sweepConfirmCandles = settings.sweepConfirmCandles || 3;
+  const recentCandles = cs.data.slice(Math.max(0, cs.data.length - sweepConfirmCandles));
+  // Historical candles for "already swept" check (older candles, NOT the recent sweep window)
+  const olderCandles = cs.data.slice(Math.max(0, cs.data.length - 15), Math.max(0, cs.data.length - sweepConfirmCandles));
+  
+  // Determine closest pool overall
+  const closestPool = [nearestAbove, nearestBelow]
+    .filter(Boolean)
+    .sort((a, b) => Math.abs(a.distance) - Math.abs(b.distance))[0];
 
+  if (!closestPool) {
+    botPhaseState = {
+      phase: 'STANDBY',
+      nearestPool: null,
+      nearestPoolDistance: null,
+      nearestPoolVolume: null,
+      nearestPoolSide: null,
+      sweepCandidate: null,
+      message: `No qualifying HIGH pools found near $${currentPrice.toFixed(0)}. Waiting...`,
+      lastUpdate: new Date().toISOString()
+    };
+    console.log(`[LSR Bot] STANDBY — No qualifying pools near price $${currentPrice.toFixed(0)}`);
+    return;
+  }
+
+  const poolSide = closestPool.distance > 0 ? 'RESISTANCE' : 'SUPPORT';
+  
+  // ─── Step 5: Sweep Detection across recent candles ────────
+  const sweepCandidates = [];
+  
+  // Check ALL qualifying pools (not just nearest) for sweeps
+  yAxisData.forEach((priceStr, idx) => {
+    const p = parseFloat(priceStr);
+    if (isNaN(p)) return;
+    
+    const volume = volumeByY[idx] || 0;
+    if (volume < minPoolVolume) return; // Only top pools
+    
+    const distPercent = ((p - currentPrice) / currentPrice) * 100;
+    const absDist = Math.abs(distPercent);
+    if (absDist > settings.maxDist) return;
+    
+    // Check if this pool was already swept by OLDER candles (stale sweep = skip)
+    const alreadySweptOld = olderCandles.some(c => {
+      const cLow = parseFloat(c[2]);
+      const cHigh = parseFloat(c[3]);
+      return p >= cLow && p <= cHigh;
+    });
+    if (alreadySweptOld) return;
+    
+    // Check if any RECENT candle swept this pool with a rejection
+    for (const candle of recentCandles) {
+      const cClose = parseFloat(candle[1]);
+      const cLow = parseFloat(candle[2]);
+      const cHigh = parseFloat(candle[3]);
+      if (isNaN(cClose) || isNaN(cLow) || isNaN(cHigh)) continue;
+      
+      if (p < currentPrice) {
+        // Pool BELOW price: wick went down to sweep, but price closed ABOVE pool → LONG reversal
+        if (cLow <= p && cClose > p) {
+          const wickDepth = Math.abs(((cLow - p) / p) * 100);
+          const rejectionStrength = Math.abs(((cClose - cLow) / cLow) * 100);
+          sweepCandidates.push({
+            price: p,
+            yIdx: idx,
+            volume,
+            direction: 'LONG',
+            distFromPrice: absDist,
+            wickDepth,
+            rejectionStrength,
+            sweepLow: cLow,
+            sweepHigh: cHigh,
+            sweepClose: cClose,
+            // Score: higher volume + stronger rejection + deeper wick = better
+            score: volume * (1 + rejectionStrength) * (1 + wickDepth)
+          });
+          break; // One sweep per pool is enough
+        }
+      } else {
+        // Pool ABOVE price: wick went up to sweep, but price closed BELOW pool → SHORT reversal
+        if (cHigh >= p && cClose < p) {
+          const wickDepth = Math.abs(((cHigh - p) / p) * 100);
+          const rejectionStrength = Math.abs(((cHigh - cClose) / cHigh) * 100);
+          sweepCandidates.push({
+            price: p,
+            yIdx: idx,
+            volume,
+            direction: 'SHORT',
+            distFromPrice: absDist,
+            wickDepth,
+            rejectionStrength,
+            sweepLow: cLow,
+            sweepHigh: cHigh,
+            sweepClose: cClose,
+            score: volume * (1 + rejectionStrength) * (1 + wickDepth)
+          });
+          break;
+        }
+      }
+    }
+  });
+
+  // ─── Step 6: No sweep detected → Report phase ────────────
+  if (sweepCandidates.length === 0) {
+    const nearDist = Math.abs(closestPool.distance);
+    
+    if (nearDist <= 0.5) {
+      // ALERT phase: price is close to a major pool
+      botPhaseState = {
+        phase: 'ALERT',
+        nearestPool: closestPool.price,
+        nearestPoolDistance: closestPool.distance.toFixed(2) + '%',
+        nearestPoolVolume: closestPool.volume,
+        nearestPoolSide: poolSide,
+        sweepCandidate: null,
+        message: `⚠️ Price $${currentPrice.toFixed(0)} approaching ${poolSide} pool at $${closestPool.price.toFixed(0)} (${nearDist.toFixed(2)}% away). Watching for sweep...`,
+        lastUpdate: new Date().toISOString()
+      };
+      console.log(`[LSR Bot] ALERT — Price approaching ${poolSide} pool $${closestPool.price.toFixed(0)} (${nearDist.toFixed(2)}%)`);
+    } else {
+      // STANDBY phase: price in mid-range, no qualifying sweep
+      botPhaseState = {
+        phase: 'STANDBY',
+        nearestPool: closestPool.price,
+        nearestPoolDistance: closestPool.distance.toFixed(2) + '%',
+        nearestPoolVolume: closestPool.volume,
+        nearestPoolSide: poolSide,
+        sweepCandidate: null,
+        message: `Waiting in mid-range. Nearest ${poolSide} pool: $${closestPool.price.toFixed(0)} (${nearDist.toFixed(2)}%). No sweep yet.`,
+        lastUpdate: new Date().toISOString()
+      };
+      console.log(`[LSR Bot] STANDBY — Mid-range at $${currentPrice.toFixed(0)}, nearest pool $${closestPool.price.toFixed(0)} (${nearDist.toFixed(2)}%)`);
+    }
+    return;
+  }
+
+  // ─── Step 7: Sweep detected! Pick the best one ───────────
+  sweepCandidates.sort((a, b) => b.score - a.score);
+  const bestSweep = sweepCandidates[0];
+  
   const direction = bestSweep.direction;
   const entry = currentPrice;
 
-  // Tentukan Stop Loss (SL) di luar ekor lilin sweep dengan buffer 0.05%
-  const buffer = entry * 0.0005;
-  let sl = direction === 'LONG' ? (lastLow - buffer) : (lastHigh + buffer);
+  // ─── Step 8: Calculate SL (behind sweep wick + 0.1% buffer) ─
+  const slBuffer = entry * 0.001; // 0.1% buffer behind sweep wick
+  let sl = direction === 'LONG' 
+    ? (bestSweep.sweepLow - slBuffer) 
+    : (bestSweep.sweepHigh + slBuffer);
 
-  // Amankan SL agar tidak terlalu dekat untuk menghindari leverage ekstrim
   let slDistance = Math.abs(((entry - sl) / entry) * 100);
-  if (slDistance < 0.2) {
+  
+  // Safety: minimum SL distance to prevent extreme leverage
+  if (slDistance < 0.15) {
     slDistance = 0.2;
     sl = direction === 'LONG' ? (entry * (1 - 0.002)) : (entry * (1 + 0.002));
   }
 
-  // Tentukan Take Profit (TP) pada kolam likuidasi berlawanan terbesar yang belum tersapu
+  // ─── Step 9: Calculate TP (largest opposing unswept pool) ──
   let tp = 0;
   let maxOpposingVolume = 0;
-  let opposingPrice = 0;
 
   yAxisData.forEach((priceStr, idx) => {
     const p = parseFloat(priceStr);
@@ -1175,42 +1352,77 @@ function autoTradeStrategyBackend(heatmapData) {
     const isOpposing = direction === 'LONG' ? (p > currentPrice) : (p < currentPrice);
     if (!isOpposing) return;
 
-    // Pastikan kolam lawan belum pernah tersapu
+    // Pastikan pool target belum tersapu oleh semua candle
     const swept = cs.data.some(c => p >= parseFloat(c[2]) && p <= parseFloat(c[3]));
     if (swept) return;
 
     const volume = volumeByY[idx] || 0;
     if (volume > maxOpposingVolume) {
       maxOpposingVolume = volume;
-      opposingPrice = p;
+      tp = p;
     }
   });
 
-  if (opposingPrice > 0) {
-    tp = opposingPrice;
-  } else {
-    // Fallback: 1.5x dari jarak SL
-    const fallbackDist = slDistance * 1.5;
+  if (tp === 0) {
+    // Fallback: 2x SL distance
+    const fallbackDist = slDistance * 2;
     tp = direction === 'LONG' ? (entry * (1 + fallbackDist / 100)) : (entry * (1 - fallbackDist / 100));
   }
 
   const tpDistance = Math.abs(((tp - entry) / entry) * 100);
+  const rr = parseFloat((tpDistance / slDistance).toFixed(1));
 
-  // Cooldown check (last 30 minutes in same direction with similar TP)
+  // ─── Step 10: R:R Filter ──────────────────────────────────
+  const minRR = settings.minRR || 2.0;
+  if (rr < minRR) {
+    botPhaseState = {
+      phase: 'SWEEP_REJECTED',
+      nearestPool: bestSweep.price,
+      nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
+      nearestPoolVolume: bestSweep.volume,
+      nearestPoolSide: direction === 'LONG' ? 'SUPPORT' : 'RESISTANCE',
+      sweepCandidate: { direction, entry, tp, sl, rr },
+      message: `Sweep detected at $${bestSweep.price.toFixed(0)} but R:R ${rr} < min ${minRR}. Skipping.`,
+      lastUpdate: new Date().toISOString()
+    };
+    console.log(`[LSR Bot] SWEEP_REJECTED — R:R ${rr} < min ${minRR} for ${direction} at $${entry.toFixed(0)}`);
+    return;
+  }
+
+  // ─── Step 11: Cooldown Check ──────────────────────────────
+  const cooldownMs = (settings.cooldownMinutes || 60) * 60 * 1000;
   const isCooldown = trades.some(t => {
     if (t.direction !== direction) return false;
-    const timeDiffMs = Date.now() - new Date(t.time).getTime();
-    if (isNaN(timeDiffMs) || timeDiffMs > 1800000) return false;
+    // Parse the Indonesian locale date - use the trade ID timestamp as fallback
+    const tradeTime = t.id ? parseInt(t.id.substring(1), 10) : 0;
+    const timeDiffMs = Date.now() - tradeTime;
+    if (isNaN(timeDiffMs) || timeDiffMs > cooldownMs) return false;
+    // Similar TP target (within 0.5%)
     const tpDiff = Math.abs(t.tp - tp) / tp;
-    return tpDiff < 0.0025;
+    return tpDiff < 0.005;
   });
-  if (isCooldown) return;
 
+  if (isCooldown) {
+    botPhaseState = {
+      phase: 'COOLDOWN',
+      nearestPool: bestSweep.price,
+      nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
+      nearestPoolVolume: bestSweep.volume,
+      nearestPoolSide: direction === 'LONG' ? 'SUPPORT' : 'RESISTANCE',
+      sweepCandidate: { direction, entry, tp, sl, rr },
+      message: `Sweep ${direction} at $${bestSweep.price.toFixed(0)} detected but in cooldown. Waiting...`,
+      lastUpdate: new Date().toISOString()
+    };
+    console.log(`[LSR Bot] COOLDOWN — ${direction} trade recently executed near this TP zone`);
+    return;
+  }
+
+  // ─── Step 12: EXECUTE TRADE ───────────────────────────────
   const riskUsd = settings.capital * (settings.riskPercent / 100);
   const positionSizeUsd = riskUsd / (slDistance / 100);
 
+  // Track TP pool initial volume for shrinkage detection
   let initialTpVolume = null;
-  // Cari index yAxis untuk TP untuk melacak penyusutan kolam
   let closestTpYIdx = -1, minTpDiff = Infinity;
   yAxisData.forEach((priceStr, idx) => {
     const p = parseFloat(priceStr);
@@ -1224,7 +1436,6 @@ function autoTradeStrategyBackend(heatmapData) {
     initialTpVolume = volumeByY[closestTpYIdx] || 0;
   }
 
-  const rr = (tpDistance / slDistance).toFixed(1);
   const newTrade = {
     id: 'T' + Date.now(),
     time: new Date().toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
@@ -1241,21 +1452,40 @@ function autoTradeStrategyBackend(heatmapData) {
     status: 'ACTIVE',
     pnl: 0,
     initialTpVolume,
-    note: `Bot Sweep Reversal (Pool $${bestSweep.leverage.toFixed(0)})`
+    note: `LSR ${direction} (Swept $${bestSweep.price.toFixed(0)}, Rej: ${bestSweep.rejectionStrength.toFixed(2)}%, R:R 1:${rr})`
   };
 
   trades.push(newTrade);
   saveTrades(trades);
-  console.log(`[Backend Bot] Executed Sweep Reversal ${direction} Entry:${entry.toFixed(2)} TP:${tp.toFixed(2)} SL:${sl.toFixed(2)}`);
 
-  // Send Telegram Alert for bot trade
+  botPhaseState = {
+    phase: 'TRADE_EXECUTED',
+    nearestPool: bestSweep.price,
+    nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
+    nearestPoolVolume: bestSweep.volume,
+    nearestPoolSide: direction === 'LONG' ? 'SUPPORT' : 'RESISTANCE',
+    sweepCandidate: { direction, entry: newTrade.entry, tp: newTrade.tp, sl: newTrade.sl, rr },
+    message: `🎯 ${direction} entry at $${entry.toFixed(0)} after sweep of $${bestSweep.price.toFixed(0)} pool. R:R 1:${rr}`,
+    lastUpdate: new Date().toISOString()
+  };
+
+  console.log(`[LSR Bot] 🎯 TRADE EXECUTED — ${direction} Entry:$${entry.toFixed(2)} TP:$${tp.toFixed(2)} SL:$${sl.toFixed(2)} R:R 1:${rr}`);
+  console.log(`[LSR Bot]    Sweep pool: $${bestSweep.price.toFixed(2)}, Wick depth: ${bestSweep.wickDepth.toFixed(3)}%, Rejection: ${bestSweep.rejectionStrength.toFixed(3)}%`);
+
+  // Send Telegram Alert
   sendTelegramAlert(
-    `🔔 <b>New Trade Executed (Bot Sweep Reversal)</b>\n` +
+    `🎯 <b>LSR Trade Executed</b>\n` +
+    `Strategy: <b>Liquidity Sweep Reversal</b>\n` +
     `Type: <b>${direction}</b>\n` +
     `Entry: <code>$${entry.toFixed(2)}</code>\n` +
-    `TP: <code>$${tp.toFixed(2)}</code> (Risk R: 1:${rr})\n` +
+    `TP: <code>$${tp.toFixed(2)}</code> (R:R 1:${rr})\n` +
     `SL: <code>$${sl.toFixed(2)}</code>\n` +
     `Size: <code>$${positionSizeUsd.toFixed(0)}</code> (Risk: $${riskUsd.toFixed(2)})\n` +
+    `\n🔍 <b>Sweep Details:</b>\n` +
+    `Pool swept: <code>$${bestSweep.price.toFixed(2)}</code>\n` +
+    `Wick depth: <code>${bestSweep.wickDepth.toFixed(3)}%</code>\n` +
+    `Rejection: <code>${bestSweep.rejectionStrength.toFixed(3)}%</code>\n` +
+    `Pool volume: <code>${(bestSweep.volume / 1e6).toFixed(1)}M</code>\n` +
     `Note: ${newTrade.note}`
   );
 }

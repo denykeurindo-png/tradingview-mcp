@@ -155,34 +155,54 @@
             <button id="btn-clear-backtest-log" class="btn-action-sm danger">Clear All</button>
           </div>
 
-          <!-- Auto-Trade Bot Panel -->
+          <!-- Auto-Trade Bot Panel (LSR Strategy) -->
           <div class="auto-trade-panel">
             <div class="auto-trade-row">
               <div class="auto-trade-toggle">
-                <span class="bot-label">🤖 Auto-Trade Bot</span>
+                <span class="bot-label">🎯 LSR Bot</span>
                 <button type="button" id="btn-auto-trade-toggle" class="auto-toggle-btn on">ON</button>
               </div>
               <div class="auto-trade-settings">
                 <div class="auto-setting">
                   <label>Min R:R</label>
-                  <input type="number" id="auto-min-rr" value="1.5" min="1" max="10" step="0.1">
+                  <input type="number" id="auto-min-rr" value="2.0" min="1" max="10" step="0.1">
                 </div>
                 <div class="auto-setting">
                   <label>Max Active</label>
                   <input type="number" id="auto-max-active" value="1" min="1" max="5" step="1">
                 </div>
                 <div class="auto-setting">
-                  <label>Min Pool Dist. %</label>
-                  <input type="number" id="auto-min-dist" value="0.3" min="0.1" max="5" step="0.1">
+                  <label>Sweep Candles</label>
+                  <input type="number" id="auto-sweep-candles" value="3" min="1" max="10" step="1">
                 </div>
                 <div class="auto-setting">
-                  <label>Max Pool Dist. %</label>
-                  <input type="number" id="auto-max-dist" value="8" min="1" max="20" step="1">
+                  <label>Cooldown (min)</label>
+                  <input type="number" id="auto-cooldown" value="60" min="5" max="360" step="5">
                 </div>
               </div>
               <div class="auto-trade-status" id="auto-trade-status">
                 <span class="auto-status-dot scanning"></span>
-                <span class="auto-status-text">Bot activated! Scanning...</span>
+                <span class="auto-status-text">Initializing LSR...</span>
+              </div>
+            </div>
+            <!-- LSR Phase Display -->
+            <div class="auto-trade-row" style="margin-top: 8px; border-top: 1px dashed var(--border-color); padding-top: 10px;">
+              <div id="lsr-phase-display" style="display: flex; align-items: center; gap: 12px; flex-wrap: wrap; width: 100%;">
+                <div style="display: flex; align-items: center; gap: 6px; min-width: 180px;">
+                  <span style="font-size: 11px; font-weight: 600; color: #98989D;">Strategy:</span>
+                  <span style="font-size: 11px; font-weight: 700; color: #00E5FF; letter-spacing: 0.5px;">Liquidity Sweep Reversal</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px; min-width: 120px;">
+                  <span style="font-size: 11px; font-weight: 600; color: #98989D;">Phase:</span>
+                  <span id="lsr-phase-badge" style="font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: rgba(152, 152, 157, 0.2); color: #98989D; letter-spacing: 0.5px;">INIT</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 200px;">
+                  <span style="font-size: 11px; font-weight: 600; color: #98989D;">Nearest Pool:</span>
+                  <span id="lsr-nearest-pool" style="font-size: 11px; font-family: 'JetBrains Mono', monospace; color: #ccc;">—</span>
+                </div>
+                <div style="flex: 2; min-width: 250px;">
+                  <span id="lsr-message" style="font-size: 11px; color: #98989D; font-style: italic;">Waiting for data...</span>
+                </div>
               </div>
             </div>
             <!-- Telegram Alert Settings Row -->

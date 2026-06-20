@@ -739,8 +739,10 @@ async function loadSettingsFromServer() {
     document.getElementById('input-risk').value = settings.riskPercent;
     document.getElementById('auto-min-rr').value = settings.minRR;
     document.getElementById('auto-max-active').value = settings.maxActive;
-    document.getElementById('auto-min-dist').value = settings.minDist;
-    document.getElementById('auto-max-dist').value = settings.maxDist;
+    const sweepCandlesEl = document.getElementById('auto-sweep-candles');
+    if (sweepCandlesEl) sweepCandlesEl.value = settings.sweepConfirmCandles || 3;
+    const cooldownEl = document.getElementById('auto-cooldown');
+    if (cooldownEl) cooldownEl.value = settings.cooldownMinutes || 60;
     document.getElementById('tele-bot-token').value = settings.telegramBotToken || '';
     document.getElementById('tele-chat-id').value = settings.telegramChatId || '';
 
@@ -750,7 +752,10 @@ async function loadSettingsFromServer() {
       btnAutoToggle.className = `auto-toggle-btn ${autoTradeEnabled ? 'on' : 'off'}`;
       btnAutoToggle.innerText = autoTradeEnabled ? 'ON' : 'OFF';
     }
-    updateAutoStatus(autoTradeEnabled ? 'active' : '', autoTradeEnabled ? 'Bot active (Running on server)' : 'Bot inactive');
+    updateAutoStatus(autoTradeEnabled ? 'active' : '', autoTradeEnabled ? 'LSR Bot active (Server)' : 'LSR Bot inactive');
+
+    // Start bot status polling
+    pollBotStatus();
   } catch (error) {
     console.error('Error loading settings:', error);
   }
@@ -759,10 +764,10 @@ async function loadSettingsFromServer() {
 async function saveSettingsToServer() {
   const capital = parseFloat(document.getElementById('input-capital').value) || 1000;
   const riskPercent = parseFloat(document.getElementById('input-risk').value) || 1.0;
-  const minRR = parseFloat(document.getElementById('auto-min-rr').value) || 1.5;
+  const minRR = parseFloat(document.getElementById('auto-min-rr').value) || 2.0;
   const maxActive = parseInt(document.getElementById('auto-max-active').value, 10) || 1;
-  const minDist = parseFloat(document.getElementById('auto-min-dist').value) || 0.3;
-  const maxDist = parseFloat(document.getElementById('auto-max-dist').value) || 8.0;
+  const sweepConfirmCandles = parseInt((document.getElementById('auto-sweep-candles') || {}).value, 10) || 3;
+  const cooldownMinutes = parseInt((document.getElementById('auto-cooldown') || {}).value, 10) || 60;
   const telegramBotToken = document.getElementById('tele-bot-token').value || '';
   const telegramChatId = document.getElementById('tele-chat-id').value || '';
 
@@ -775,8 +780,8 @@ async function saveSettingsToServer() {
         riskPercent,
         minRR,
         maxActive,
-        minDist,
-        maxDist,
+        sweepConfirmCandles,
+        cooldownMinutes,
         autoTradeEnabled,
         telegramBotToken,
         telegramChatId
@@ -788,6 +793,82 @@ async function saveSettingsToServer() {
   } catch (error) {
     console.error('Error saving settings:', error);
   }
+}
+
+// ─── LSR Bot Phase Status Polling ───────────────────────────
+let botStatusIntervalId = null;
+
+async function pollBotStatus() {
+  // Clear previous interval
+  if (botStatusIntervalId) clearInterval(botStatusIntervalId);
+
+  async function fetchBotStatus() {
+    try {
+      const response = await fetch('/api/bot-status');
+      if (!response.ok) return;
+      const resObj = await response.json();
+      const data = resObj.data;
+
+      // Update phase badge
+      const phaseBadge = document.getElementById('lsr-phase-badge');
+      if (phaseBadge) {
+        phaseBadge.innerText = data.phase;
+        // Color coding per phase
+        const phaseColors = {
+          'STANDBY': { bg: 'rgba(152, 152, 157, 0.2)', color: '#98989D' },
+          'ALERT': { bg: 'rgba(255, 159, 10, 0.25)', color: '#FF9F0A' },
+          'SWEEP_DETECTED': { bg: 'rgba(50, 215, 75, 0.25)', color: '#32D74B' },
+          'TRADE_EXECUTED': { bg: 'rgba(0, 229, 255, 0.25)', color: '#00E5FF' },
+          'SWEEP_REJECTED': { bg: 'rgba(255, 69, 58, 0.2)', color: '#FF453A' },
+          'COOLDOWN': { bg: 'rgba(191, 90, 242, 0.2)', color: '#BF5AF2' },
+          'MAX_ACTIVE': { bg: 'rgba(255, 214, 10, 0.2)', color: '#FFD60A' },
+          'DISABLED': { bg: 'rgba(255, 69, 58, 0.15)', color: '#FF453A' },
+          'NO_DATA': { bg: 'rgba(152, 152, 157, 0.15)', color: '#636366' },
+          'INITIALIZING': { bg: 'rgba(152, 152, 157, 0.15)', color: '#636366' }
+        };
+        const colors = phaseColors[data.phase] || phaseColors['STANDBY'];
+        phaseBadge.style.background = colors.bg;
+        phaseBadge.style.color = colors.color;
+      }
+
+      // Update nearest pool
+      const poolEl = document.getElementById('lsr-nearest-pool');
+      if (poolEl) {
+        if (data.nearestPool) {
+          const poolColor = data.nearestPoolSide === 'RESISTANCE' ? '#FF453A' : '#32D74B';
+          poolEl.innerHTML = `<span style="color:${poolColor};font-weight:600;">$${parseFloat(data.nearestPool).toLocaleString()}</span> <span style="color:#636366;">(${data.nearestPoolSide} ${data.nearestPoolDistance})</span>`;
+        } else {
+          poolEl.innerText = '—';
+        }
+      }
+
+      // Update message
+      const msgEl = document.getElementById('lsr-message');
+      if (msgEl) {
+        msgEl.innerText = data.message || 'Waiting for data...';
+      }
+
+      // Update status dot based on phase
+      const dotStates = {
+        'STANDBY': 'scanning',
+        'ALERT': 'active',
+        'TRADE_EXECUTED': 'active',
+        'DISABLED': '',
+        'COOLDOWN': 'scanning',
+        'SWEEP_REJECTED': 'scanning'
+      };
+      updateAutoStatus(dotStates[data.phase] || 'scanning', data.autoTradeEnabled ? `LSR ${data.phase}` : 'LSR Bot inactive');
+
+    } catch (error) {
+      console.error('Error fetching bot status:', error);
+    }
+  }
+
+  // Initial fetch
+  await fetchBotStatus();
+
+  // Poll every 30 seconds
+  botStatusIntervalId = setInterval(fetchBotStatus, 30000);
 }
 
 function updateAutoStatus(state, text) {
@@ -881,7 +962,7 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   // Listen for setting inputs change to save them to the server
-  ['input-capital', 'input-risk', 'auto-min-rr', 'auto-max-active', 'auto-min-dist', 'auto-max-dist', 'tele-bot-token', 'tele-chat-id'].forEach(id => {
+  ['input-capital', 'input-risk', 'auto-min-rr', 'auto-max-active', 'auto-sweep-candles', 'auto-cooldown', 'tele-bot-token', 'tele-chat-id'].forEach(id => {
     const el = document.getElementById(id);
     if (el) {
       el.addEventListener('change', saveSettingsToServer);
