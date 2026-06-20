@@ -1,0 +1,169 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>CoinGlass ETF Monitor</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link
+    href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@700&display=swap"
+    rel="stylesheet">
+  <!-- Chart.js -->
+  <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <!-- Style -->
+  <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-logo">
+        <svg class="icon icon-bolt" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M13 10V3L4 14H11V21L20 10H13Z" stroke="#00E5FF" stroke-width="2" stroke-linecap="round"
+            stroke-linejoin="round" />
+        </svg>
+        <h1>WattVision <span class="logo-subtitle">ETF Monitor</span></h1>
+      </div>
+      <nav class="header-nav">
+        <a href="index.html" class="nav-item active">ETF Monitor</a>
+        <a href="heatmap.html" class="nav-item">Liquidation Heatmap</a>
+      </nav>
+      <div class="header-controls">
+        <div id="connection-status" class="status-indicator normal">
+          <span class="status-dot"></span>
+          <span class="status-text">Loading...</span>
+        </div>
+        <button id="btn-refresh" class="btn btn-primary">
+          <svg class="icon icon-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67" />
+          </svg>
+          Sync Now
+        </button>
+      </div>
+    </header>
+
+    <!-- Top KPI Row -->
+    <section class="kpi-row">
+      <!-- Total Net Inflow Card -->
+      <div class="card kpi-card" id="kpi-total-inflow">
+        <div class="kpi-icon-wrapper cyan">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22V2M17 7l-5-5-5 5" />
+          </svg>
+        </div>
+        <div class="kpi-info">
+          <span class="kpi-label">Total Net Inflow</span>
+          <div class="kpi-value-container">
+            <h2 class="kpi-value select-mono text-positive" id="val-total-inflow">+$0.00B</h2>
+            <span class="kpi-sub-value select-mono text-positive" id="sub-total-inflow">+0.00 BTC</span>
+          </div>
+          <span class="kpi-footer" id="foot-total-inflow">Bs. 0.00B (Equiv.)</span>
+          <span class="kpi-time" id="time-total-inflow">Last update: --</span>
+        </div>
+      </div>
+
+      <!-- Daily Total Net Inflow Card -->
+      <div class="card kpi-card" id="kpi-daily-inflow">
+        <div class="kpi-icon-wrapper red">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 2v20M17 17l-5 5-5-5" />
+          </svg>
+        </div>
+        <div class="kpi-info">
+          <span class="kpi-label">Daily Total Net Inflow</span>
+          <div class="kpi-value-container">
+            <h2 class="kpi-value select-mono" id="val-daily-inflow">$0.00</h2>
+            <span class="kpi-sub-value select-mono" id="sub-daily-inflow">0.00 BTC</span>
+          </div>
+          <span class="kpi-footer" id="foot-daily-inflow">Bs. 0.00 (Equiv.)</span>
+          <span class="kpi-time" id="time-daily-inflow">Last update: --</span>
+        </div>
+      </div>
+
+      <!-- Daily Trading Volume Card -->
+      <div class="card kpi-card" id="kpi-trading-volume">
+        <div class="kpi-icon-wrapper green">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <line x1="18" y1="20" x2="18" y2="10"></line>
+            <line x1="12" y1="20" x2="12" y2="4"></line>
+            <line x1="6" y1="20" x2="6" y2="14"></line>
+          </svg>
+        </div>
+        <div class="kpi-info">
+          <span class="kpi-label">Daily Trading Volume</span>
+          <div class="kpi-value-container">
+            <h2 class="kpi-value select-mono" id="val-trading-volume">$0.00B</h2>
+          </div>
+          <span class="kpi-footer" id="foot-trading-volume">Bs. 0.00B (Equiv.)</span>
+          <span class="kpi-time" id="time-trading-volume">Last update: --</span>
+        </div>
+      </div>
+
+      <!-- Total Net Assets Card -->
+      <div class="card kpi-card" id="kpi-net-assets">
+        <div class="kpi-icon-wrapper yellow">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"
+            stroke-linecap="round" stroke-linejoin="round">
+            <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z" />
+          </svg>
+        </div>
+        <div class="kpi-info">
+          <span class="kpi-label">Total Net Assets</span>
+          <div class="kpi-value-container">
+            <h2 class="kpi-value select-mono" id="val-net-assets">$0.00B</h2>
+          </div>
+          <span class="kpi-footer" id="foot-net-assets">Bs. 0.00B (Equiv.)</span>
+          <span class="kpi-time" id="time-net-assets">Last update: --</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Grid -->
+    <main class="dashboard-grid">
+      <section class="grid-col-12">
+        <!-- Vampiro/Outflow Alert Container -->
+        <div class="alerts-section" id="alerts-container">
+          <!-- Alert cards will be dynamically injected here -->
+        </div>
+
+        <div class="card table-card">
+          <div class="card-header">
+            <h3>Total Bitcoin Spot ETF Net Inflow (BTC)</h3>
+            <span class="card-subtitle" id="table-update-time">Update Time: --</span>
+          </div>
+          <div class="table-container">
+            <table id="etf-table">
+              <thead>
+                <!-- Populated dynamically -->
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="text-center">Loading table data...</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <p>Data scraped via local CDP from CoinGlass.</p>
+      <p id="cache-indicator">Last updated: --</p>
+    </footer>
+  </div>
+
+  <!-- App logic -->
+  <script src="app.js"></script>
+</body>
+
+</html>

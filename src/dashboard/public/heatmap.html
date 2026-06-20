@@ -1,0 +1,322 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WattVision — CoinGlass Liquidation HeatMap</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+  <!-- Apache ECharts -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
+  <!-- Style -->
+  <link rel="stylesheet" href="style.css">
+  <style>
+    :root {
+      --bg-primary: #060112;
+      --bg-surface: #0d0221;
+      --bg-card-hover: #160834;
+      --border-color: #211448;
+    }
+  </style>
+</head>
+<body>
+  <div class="app-container">
+    <!-- Header -->
+    <header class="app-header">
+      <div class="header-logo">
+        <svg class="icon icon-bolt" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <path d="M13 10V3L4 14H11V21L20 10H13Z" stroke="#00E5FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+        </svg>
+        <h1>WattVision <span class="logo-subtitle">ETF Monitor</span></h1>
+      </div>
+      <nav class="header-nav">
+        <a href="index.html" class="nav-item">ETF Monitor</a>
+        <a href="heatmap.html" class="nav-item active">Liquidation Heatmap</a>
+      </nav>
+      <div class="header-controls">
+        <div id="connection-status" class="status-indicator normal">
+          <span class="status-dot"></span>
+          <span class="status-text">Loading...</span>
+        </div>
+        <button id="btn-refresh" class="btn btn-primary">
+          <svg class="icon icon-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+          </svg>
+          Sync Now
+        </button>
+      </div>
+    </header>
+
+    <!-- Top KPI Row -->
+    <section class="kpi-row">
+      <!-- BTC Price Card -->
+      <div class="card kpi-card" id="kpi-btc-price">
+        <div class="kpi-icon-wrapper cyan">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="10"></circle>
+            <path d="M12 8v8M9 12h6"/>
+          </svg>
+        </div>
+        <div class="kpi-info">
+          <span class="kpi-label">BTC Price (Binance)</span>
+          <div class="kpi-value-container">
+            <h2 class="kpi-value select-mono text-positive" id="val-btc-price">$0.00</h2>
+          </div>
+          <span class="kpi-footer" id="foot-btc-price">Bs. 0.00 (Equiv.)</span>
+          <span class="kpi-time" id="time-btc-price">Last update: --</span>
+        </div>
+      </div>
+
+      <!-- Total Liquidation Volume Card -->
+      <div class="card kpi-card" id="kpi-liq-vol">
+        <div class="kpi-icon-wrapper red">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <polygon points="12 2 2 22 22 22"></polygon>
+            <line x1="12" y1="9" x2="12" y2="13"></line>
+            <line x1="12" y1="17" x2="12.01" y2="17"></line>
+          </svg>
+        </div>
+        <div class="kpi-info">
+          <span class="kpi-label">Total Liquidations (24h)</span>
+          <div class="kpi-value-container">
+            <h2 class="kpi-value select-mono text-negative" id="val-liq-vol">$0.00M</h2>
+          </div>
+          <span class="kpi-footer" id="foot-liq-vol">Bs. 0.00M (Equiv.)</span>
+          <span class="kpi-time" id="time-liq-vol">Last update: --</span>
+        </div>
+      </div>
+
+      <!-- 24h High Card -->
+      <div class="card kpi-card" id="kpi-24h-high">
+        <div class="kpi-icon-wrapper green">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M17 11l-5-5-5 5M12 18V6"/>
+          </svg>
+        </div>
+        <div class="kpi-info">
+          <span class="kpi-label">24h High Price</span>
+          <div class="kpi-value-container">
+            <h2 class="kpi-value select-mono" id="val-24h-high">$0.00</h2>
+          </div>
+          <span class="kpi-footer" id="foot-24h-high">Bs. 0.00 (Equiv.)</span>
+          <span class="kpi-time" id="time-24h-high">Last update: --</span>
+        </div>
+      </div>
+
+      <!-- 24h Low Card -->
+      <div class="card kpi-card" id="kpi-24h-low">
+        <div class="kpi-icon-wrapper yellow">
+          <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="M7 13l5 5 5-5M12 6v12"/>
+          </svg>
+        </div>
+        <div class="kpi-info">
+          <span class="kpi-label">24h Low Price</span>
+          <div class="kpi-value-container">
+            <h2 class="kpi-value select-mono" id="val-24h-low">$0.00</h2>
+          </div>
+          <span class="kpi-footer" id="foot-24h-low">Bs. 0.00 (Equiv.)</span>
+          <span class="kpi-time" id="time-24h-low">Last update: --</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- Main Grid -->
+    <main class="dashboard-grid">
+      <!-- HeatMap Container -->
+      <section class="grid-col-12">
+        <div class="card table-card" style="padding: var(--spacing-sm);">
+          <div class="card-header" style="flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-sm);">
+            <div>
+              <h3>Binance BTC/USDT Liquidation HeatMap</h3>
+              <span class="card-subtitle" id="heatmap-update-time">Update Time: --</span>
+            </div>
+          </div>
+
+          <!-- Liquidation Tables (Full-Width Stacked) -->
+          <div style="display: flex; flex-direction: column; gap: var(--spacing-sm); margin-bottom: var(--spacing-sm);">
+            <div id="above-chart-container"></div>
+            <div id="below-chart-container"></div>
+          </div>
+
+          <div class="chart-container" id="liq-heatmap-chart" style="height: 600px;">
+            <!-- ECharts will render here -->
+          </div>
+        </div>
+      </section>
+
+      <!-- Backtesting Log Section -->
+      <section class="grid-col-12" id="backtest-section-card">
+        <div class="card">
+          <div class="backtest-header">
+            <h3>Strategy Backtest Log</h3>
+            <button id="btn-clear-backtest-log" class="btn-action-sm danger">Clear All</button>
+          </div>
+
+          <!-- Auto-Trade Bot Panel -->
+          <div class="auto-trade-panel">
+            <div class="auto-trade-row">
+              <div class="auto-trade-toggle">
+                <span class="bot-label">🤖 Auto-Trade Bot</span>
+                <button type="button" id="btn-auto-trade-toggle" class="auto-toggle-btn on">ON</button>
+              </div>
+              <div class="auto-trade-settings">
+                <div class="auto-setting">
+                  <label>Min R:R</label>
+                  <input type="number" id="auto-min-rr" value="1.5" min="1" max="10" step="0.1">
+                </div>
+                <div class="auto-setting">
+                  <label>Max Active</label>
+                  <input type="number" id="auto-max-active" value="1" min="1" max="5" step="1">
+                </div>
+                <div class="auto-setting">
+                  <label>Min Pool Dist. %</label>
+                  <input type="number" id="auto-min-dist" value="0.3" min="0.1" max="5" step="0.1">
+                </div>
+                <div class="auto-setting">
+                  <label>Max Pool Dist. %</label>
+                  <input type="number" id="auto-max-dist" value="8" min="1" max="20" step="1">
+                </div>
+              </div>
+              <div class="auto-trade-status" id="auto-trade-status">
+                <span class="auto-status-dot scanning"></span>
+                <span class="auto-status-text">Bot activated! Scanning...</span>
+              </div>
+            </div>
+          </div>
+
+          <!-- Manual Add Trade Form -->
+          <div class="trade-add-form">
+            <div class="trade-add-row">
+              <div class="form-group-inline">
+                <label>Direction</label>
+                <div class="direction-toggle-sm">
+                  <button type="button" id="btn-toggle-long" class="toggle-btn-sm long active">LONG</button>
+                  <button type="button" id="btn-toggle-short" class="toggle-btn-sm short">SHORT</button>
+                </div>
+              </div>
+              <div class="form-group-inline">
+                <label>Entry ($)</label>
+                <input type="number" id="input-entry" placeholder="Entry..." step="0.01">
+              </div>
+              <div class="form-group-inline">
+                <label>TP ($)</label>
+                <input type="number" id="input-tp" placeholder="Take Profit..." step="0.01">
+              </div>
+              <div class="form-group-inline">
+                <label>SL ($)</label>
+                <input type="number" id="input-sl" placeholder="Stop Loss..." step="0.01">
+              </div>
+              <div class="form-group-inline">
+                <label>Capital ($)</label>
+                <input type="number" id="input-capital" value="1000" min="1" step="100">
+              </div>
+              <div class="form-group-inline">
+                <label>Risk %</label>
+                <input type="number" id="input-risk" value="1.0" min="0.1" max="100" step="0.1">
+              </div>
+              <button type="button" id="btn-add-trade" class="btn btn-add-trade">+ Add Trade</button>
+            </div>
+          </div>
+
+          <!-- Stats Summary Row -->
+          <div class="backtest-summary">
+            <div class="backtest-stat-card">
+              <span class="backtest-stat-label">Total Trades</span>
+              <span class="backtest-stat-value" id="stat-total-trades">0</span>
+            </div>
+            <div class="backtest-stat-card">
+              <span class="backtest-stat-label">Win Rate</span>
+              <span class="backtest-stat-value winrate" id="stat-winrate">0.0%</span>
+            </div>
+            <div class="backtest-stat-card">
+              <span class="backtest-stat-label">Hit TP</span>
+              <span class="backtest-stat-value" id="stat-hit-tp" style="color:#32D74B;">0</span>
+            </div>
+            <div class="backtest-stat-card">
+              <span class="backtest-stat-label">Hit SL</span>
+              <span class="backtest-stat-value" id="stat-hit-sl" style="color:#FF453A;">0</span>
+            </div>
+            <div class="backtest-stat-card">
+              <span class="backtest-stat-label">Cut Loss</span>
+              <span class="backtest-stat-value" id="stat-cut-loss" style="color:#FF9F0A;">0</span>
+            </div>
+            <div class="backtest-stat-card">
+              <span class="backtest-stat-label">Net PnL (USD)</span>
+              <span class="backtest-stat-value" id="stat-net-profit-usd">$0.00</span>
+            </div>
+            <div class="backtest-stat-card">
+              <span class="backtest-stat-label">Net PnL (Bs.)</span>
+              <span class="backtest-stat-value" id="stat-net-profit-bs">Bs. 0.00</span>
+            </div>
+          </div>
+
+          <!-- Backtest Table Log -->
+          <div class="backtest-table-container">
+            <table class="backtest-table" id="backtest-log-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Type</th>
+                  <th>Entry</th>
+                  <th>TP</th>
+                  <th>SL</th>
+                  <th>Size (USD)</th>
+                  <th>R:R</th>
+                  <th>Status</th>
+                  <th>Mark Price</th>
+                  <th>PnL (USD)</th>
+                  <th>PnL (Bs.)</th>
+                  <th>Actions</th>
+                </tr>
+              </thead>
+              <tbody id="backtest-log-tbody">
+                <tr>
+                  <td colspan="12" style="text-align: center; color: var(--text-muted); padding: 20px;">No trades logged. Use the form above or click E / TP in liquidation tables.</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+
+      <!-- Description / Explanation Section -->
+      <section class="grid-col-12">
+        <div class="card">
+          <h3 style="margin-bottom: var(--spacing-xs); color: var(--accent-primary);">Understanding Liquidation HeatMaps</h3>
+          <p style="color: var(--text-muted); font-size: 13px; line-height: 1.6; margin-bottom: var(--spacing-sm);">
+            The Liquidation HeatMap displays potential liquidation levels based on order book depth, leverage parameters, and current funding rates. 
+            Bright colors (yellow/red) represent large clusters of leverage orders (potential liquidation pools) that act as magnets for price action. 
+            Market makers and large institutional players often drive the price toward these areas to trigger cascade liquidations and capture liquidity.
+          </p>
+          <div style="display: flex; gap: var(--spacing-sm); flex-wrap: wrap;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="display: inline-block; width: 12px; height: 12px; border-radius: 3px; background-color: #bfdc21;"></span>
+              <span style="font-size: 12px; font-weight: 500;">High Intensity (Massive Liquidation Risk)</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="display: inline-block; width: 12px; height: 12px; border-radius: 3px; background-color: #3ab56e;"></span>
+              <span style="font-size: 12px; font-weight: 500;">Medium Intensity</span>
+            </div>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="display: inline-block; width: 12px; height: 12px; border-radius: 3px; background-color: #28738f;"></span>
+              <span style="font-size: 12px; font-weight: 500;">Low Intensity</span>
+            </div>
+          </div>
+        </div>
+      </section>
+    </main>
+
+    <!-- Footer -->
+    <footer class="app-footer">
+      <p>WattVision v1.0.0 — Data scraped via local CDP from CoinGlass.</p>
+      <p id="cache-indicator">Last updated: --</p>
+    </footer>
+  </div>
+
+  <!-- HeatMap logic -->
+  <script src="heatmap.js"></script>
+</body>
+</html>
