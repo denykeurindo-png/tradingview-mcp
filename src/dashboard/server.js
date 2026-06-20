@@ -10,7 +10,44 @@ const __dirname = path.dirname(__filename);
 const app = express();
 const PORT = process.env.PORT || 4000;
 
+const SETTINGS_FILE = path.join(__dirname, 'settings.json');
+
 app.use(express.json());
+
+// Basic Authentication Middleware
+const basicAuth = (req, res, next) => {
+  // Exclude TradingView Webhook from authentication
+  if (req.path === '/api/tradingview/webhook') {
+    return next();
+  }
+
+  const authHeader = req.headers.authorization;
+  if (!authHeader) {
+    res.setHeader('WWW-Authenticate', 'Basic realm="Secure Dashboard"');
+    return res.status(401).send('Authentication required.');
+  }
+
+  try {
+    const auth = Buffer.from(authHeader.split(' ')[1], 'base64').toString().split(':');
+    const user = auth[0];
+    const pass = auth[1];
+
+    const settings = loadSettings();
+    const allowedUser = settings.authUsername || 'admin';
+    const allowedPass = settings.authPassword || 'admin123';
+
+    if (user === allowedUser && pass === allowedPass) {
+      return next();
+    }
+  } catch (e) {
+    console.error('[Auth Error] Failed to parse basic auth:', e.message);
+  }
+
+  res.setHeader('WWW-Authenticate', 'Basic realm="Secure Dashboard"');
+  return res.status(401).send('Invalid credentials.');
+};
+
+app.use(basicAuth);
 
 // Serve static frontend files with cache-control headers to prevent caching issues
 app.use((req, res, next) => {
@@ -538,7 +575,6 @@ app.get('/api/etf-data', async (req, res) => {
 
 // ─── JSON Database Persistence ──────────────────────────────
 const TRADES_FILE = path.join(__dirname, 'trades.json');
-const SETTINGS_FILE = path.join(__dirname, 'settings.json');
 
 function loadTrades() {
   if (!fs.existsSync(TRADES_FILE)) {
@@ -575,7 +611,9 @@ function loadSettings() {
     minPoolVolumeRatio: 0.15,
     cooldownMinutes: 60,
     telegramBotToken: '',
-    telegramChatId: ''
+    telegramChatId: '',
+    authUsername: 'admin',
+    authPassword: 'admin123'
   };
   if (!fs.existsSync(SETTINGS_FILE)) {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(defaultSettings, null, 2));
