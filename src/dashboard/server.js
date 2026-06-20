@@ -672,8 +672,11 @@ app.post('/api/trades/cut', (req, res) => {
       `⚠️ <b>Trade Closed (Manual Cut)</b>\n` +
       `Type: <b>${trade.direction}</b>\n` +
       `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
+      `TP: <code>$${trade.tp.toFixed(2)}</code>\n` +
+      `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
+      `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
       `Close: <code>$${parseFloat(closePrice).toFixed(2)}</code>\n` +
-      `PnL: <code>$${trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)}</code> (+Bs. ${(trade.pnl * 6.96).toFixed(2)})\n` +
+      `PnL: <code>${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(2)}</code> (${trade.pnl >= 0 ? '+' : ''}Bs. ${(trade.pnl * 6.96).toFixed(2)})\n` +
       `Note: ${trade.note}`
     );
   }
@@ -829,6 +832,9 @@ function evaluateActiveTradesBackend(heatmapData) {
           `🚨 <b>Trade Closed (Hit SL)</b>\n` +
           `Type: <b>LONG</b>\n` +
           `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
+          `TP: <code>$${trade.tp.toFixed(2)}</code>\n` +
+          `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
+          `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
           `SL Hit: <code>$${trade.sl.toFixed(2)}</code>\n` +
           `PnL: <code>-$${trade.riskUsd.toFixed(2)}</code> (-Bs. ${(trade.riskUsd * 6.96).toFixed(2)})\n` +
           `Note: ${trade.note}`
@@ -847,6 +853,9 @@ function evaluateActiveTradesBackend(heatmapData) {
           `🎉 <b>Trade Closed (Hit TP)</b>\n` +
           `Type: <b>LONG</b>\n` +
           `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
+          `TP: <code>$${trade.tp.toFixed(2)}</code>\n` +
+          `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
+          `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
           `TP Hit: <code>$${trade.tp.toFixed(2)}</code>\n` +
           `PnL: <code>+$${profit.toFixed(2)}</code> (+Bs. ${(profit * 6.96).toFixed(2)})\n` +
           `Note: ${trade.note}`
@@ -865,6 +874,9 @@ function evaluateActiveTradesBackend(heatmapData) {
           `🚨 <b>Trade Closed (Hit SL)</b>\n` +
           `Type: <b>SHORT</b>\n` +
           `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
+          `TP: <code>$${trade.tp.toFixed(2)}</code>\n` +
+          `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
+          `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
           `SL Hit: <code>$${trade.sl.toFixed(2)}</code>\n` +
           `PnL: <code>-$${trade.riskUsd.toFixed(2)}</code> (-Bs. ${(trade.riskUsd * 6.96).toFixed(2)})\n` +
           `Note: ${trade.note}`
@@ -883,6 +895,9 @@ function evaluateActiveTradesBackend(heatmapData) {
           `🎉 <b>Trade Closed (Hit TP)</b>\n` +
           `Type: <b>SHORT</b>\n` +
           `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
+          `TP: <code>$${trade.tp.toFixed(2)}</code>\n` +
+          `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
+          `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
           `TP Hit: <code>$${trade.tp.toFixed(2)}</code>\n` +
           `PnL: <code>+$${profit.toFixed(2)}</code> (+Bs. ${(profit * 6.96).toFixed(2)})\n` +
           `Note: ${trade.note}`
@@ -920,6 +935,9 @@ function evaluateActiveTradesBackend(heatmapData) {
         `⚠️ <b>Trade Closed (Auto-Cut: Pool -50%)</b>\n` +
         `Type: <b>${trade.direction}</b>\n` +
         `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
+        `TP: <code>$${trade.tp.toFixed(2)}</code>\n` +
+        `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
+        `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
         `Close: <code>$${lastClose.toFixed(2)}</code>\n` +
         `PnL: <code>${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}</code> (${profit >= 0 ? '+' : ''}Bs. ${(profit * 6.96).toFixed(2)})\n` +
         `Note: ${trade.note}`
