@@ -1,6 +1,67 @@
+# CLAUDE.md
+
+This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
+
 # TradingView MCP — Claude Instructions
 
-68 tools for reading and controlling a live TradingView Desktop chart via CDP (port 9222).
+MCP server + CLI bridge between Claude Code and TradingView Desktop via Chrome DevTools Protocol (CDP on port 9222).
+
+## Commands
+
+```bash
+# Run the MCP server (stdio transport — invoked by Claude Code, not manually)
+node src/server.js
+
+# CLI — every MCP tool is also a `tv` command
+npm link          # install `tv` globally (one-time)
+tv status         # verify CDP connection
+tv quote          # current price
+tv symbol AAPL    # change symbol
+
+# Tests
+npm test                    # e2e + pine_analyze (e2e requires TradingView running)
+npm run test:unit           # offline tests only (no TradingView needed — 29 tests)
+npm run test:e2e            # full e2e suite (TradingView must be running)
+node --test tests/cli.test.js  # single file
+
+# Pine Script file-based workflow
+node scripts/pine_pull.js   # pull current TV script → scripts/current.pine
+node scripts/pine_push.js   # push scripts/current.pine → TV editor + compile
+```
+
+## Code Architecture
+
+Three-layer stack:
+
+```
+MCP Client / CLI
+      ↓
+src/tools/*.js          ← MCP tool registration (thin wrappers)
+src/cli/commands/*.js   ← CLI command handlers
+      ↓
+src/core/*.js           ← Business logic (CDP JS string injection)
+      ↓
+src/connection.js       ← CDP singleton: evaluate(), evaluateAsync(), safeString()
+      ↓
+CDP localhost:9222       ← TradingView Desktop (Electron)
+```
+
+**`src/connection.js`** — shared CDP connection singleton. Key exports:
+- `evaluate(expr)` / `evaluateAsync(expr)` — run JS in TradingView's renderer
+- `safeString(str)` — JSON.stringify-based escaping; always use for user-supplied strings in CDP expressions to prevent injection
+- `requireFinite(value, name)` — validates numeric inputs before they reach TV APIs
+- `KNOWN_PATHS` — hardcoded JS paths to internal TradingView API objects
+
+**`src/tools/_format.js`** — `jsonResult(obj, isError)` — all tool files use this to build MCP responses.
+
+**`src/wait.js`** — `waitForChartReady()` — polls DOM for loading spinner + bar count stability after chart changes.
+
+### Adding a New Tool
+
+1. Add business logic to `src/core/<module>.js`
+2. Register the MCP tool in `src/tools/<module>.js` using `server.tool(name, desc, schema, handler)` — wrap in try/catch returning `jsonResult(..., true)` on error
+3. Add a CLI command in `src/cli/commands/<module>.js`
+4. Register the CLI command import in `src/cli/index.js`
 
 ## Decision Tree — Which Tool When
 
@@ -42,14 +103,18 @@ Use `study_filter` parameter to target a specific indicator by name substring (e
 - `chart_set_visible_range` → zoom to exact date range (unix timestamps)
 
 ### "Work on Pine Script"
+
+**Via MCP tools (in-session):**
 1. `pine_set_source` → inject code into editor
 2. `pine_smart_compile` → compile with auto-detection + error check
 3. `pine_get_errors` → read compilation errors
 4. `pine_get_console` → read log.info() output
-5. `pine_get_source` → read current code back (WARNING: can be very large for complex scripts)
-6. `pine_save` → save to TradingView cloud
-7. `pine_new` → create blank indicator/strategy/library
-8. `pine_open` → load a saved script by name
+5. `pine_save` → save to TradingView cloud
+
+**Via file-based workflow (for longer scripts):**
+1. `node scripts/pine_pull.js` → pull current script to `scripts/current.pine`
+2. Edit `scripts/current.pine` locally
+3. `node scripts/pine_push.js` → inject + compile
 
 ### "Practice trading with replay"
 1. `replay_start` with `date: "2025-03-01"` → enter replay mode
@@ -119,11 +184,13 @@ These tools can return large payloads. Follow these rules to avoid context bloat
 - Screenshots save to `screenshots/` directory with timestamps
 - OHLCV capped at 500 bars, trades at 20 per request
 - Pine labels capped at 50 per study by default (pass `max_labels` to override)
+- CDP JS expressions: always wrap user-supplied strings with `safeString()` from `connection.js`; validate numeric inputs with `requireFinite()`
 
-## Architecture
+## Skills (invoke with `/skill-name`)
 
-```
-Claude Code ←→ MCP Server (stdio) ←→ CDP (localhost:9222) ←→ TradingView Desktop (Electron)
-```
-
-Pine graphics path: `study._graphics._primitivesCollection.dwglines.get('lines').get(false)._primitivesDataById`
+Reusable workflows in `skills/`:
+- `chart-analysis` — full chart read and report
+- `pine-develop` — write → push → compile → fix loop
+- `replay-practice` — step-through historical bar practice
+- `strategy-report` — strategy tester results summary
+- `multi-symbol-scan` — batch screenshot/data across symbols
