@@ -34,6 +34,19 @@ async function getTradingViewTab() {
 }
 
 async function runBridge() {
+  // Sinkronisasi status aktif trade dari VPS
+  try {
+    const res = await fetch(`${VPS_URL}/api/trades`);
+    if (res.ok) {
+      const rawData = await res.json();
+      const trades = Array.isArray(rawData) ? rawData : (rawData.data || []);
+      isTradeActive = trades.some(t => t.status === 'ACTIVE');
+      console.log(`[Bridge] Sinkronisasi VPS: Status trade aktif = ${isTradeActive}`);
+    }
+  } catch (e) {
+    console.warn('[Bridge] Gagal sinkronisasi status aktif dari VPS, menggunakan default false:', e.message);
+  }
+
   const tab = await getTradingViewTab();
   if (!tab) {
     setTimeout(runBridge, 10000);
@@ -83,50 +96,47 @@ function startMonitoring(ws) {
     }
 
     try {
-      // Mengekstrak teks legenda indikator dari layar chart
+      // Mengekstrak data legenda indikator secara robust menggunakan properti data-test-id-value-title dan title
       const evalExpr = `
         (() => {
-          const legendItems = Array.from(document.querySelectorAll('[class*="legend-item-"], .pane-legend-item'));
-          for (const item of legendItems) {
-            const text = item.innerText || '';
-            if (text.includes('JDAv85') && text.includes('_sig_dir')) {
-              return text;
-            }
-          }
-          const statusLines = Array.from(document.querySelectorAll('.pane-legend-line, [class*="legend-line-"]'));
-          for (const line of statusLines) {
-            const text = line.innerText || '';
-            if (text.includes('JDAv85') && text.includes('_sig_dir')) {
-              return text;
-            }
-          }
-          return null;
+          const studyItems = Array.from(document.querySelectorAll('[class*="study-"], .pane-legend-item'));
+          const studyEl = studyItems.find(el => el.innerText && el.innerText.includes('JDAv85'));
+          if (!studyEl) return null;
+
+          const getValueByTitle = (substring) => {
+            const el = studyEl.querySelector(\`[data-test-id-value-title*="\${substring}"], [title*="\${substring}"]\`);
+            if (!el) return null;
+            const valEl = el.querySelector('[class*="valueValue-"]') || el;
+            return valEl.innerText || '';
+          };
+
+          return {
+            dir: getValueByTitle('dir'),
+            entry: getValueByTitle('entry'),
+            tp: getValueByTitle('tp2') || getValueByTitle('tp1') || getValueByTitle('tp'),
+            sl: getValueByTitle('sl')
+          };
         })()
       `;
 
       const evalRes = await cdp('Runtime.evaluate', { expression: evalExpr, returnByValue: true });
-      const rawText = evalRes?.result?.value;
+      const signalData = evalRes?.result?.value;
 
-      if (!rawText) {
+      if (!signalData) {
         console.log('[Bridge] Menunggu indikator JDAv85 ditambahkan ke chart...');
         return;
       }
 
-      // Parsing data sinyal menggunakan regex
-      const dirMatch   = rawText.match(/_sig_dir:?\s*([-.\d]+)/);
-      const entryMatch = rawText.match(/_sig_entry:?\s*([-.\d]+)/);
-      const tpMatch    = rawText.match(/_sig_tp2:?\s*([-.\d]+)/);
-      const slMatch    = rawText.match(/_sig_sl:?\s*([-.\d]+)/);
+      const parseVal = (v) => {
+        if (!v || v === '∅') return 0;
+        const num = parseFloat(v);
+        return isNaN(num) ? 0 : num;
+      };
 
-      if (!dirMatch || !entryMatch) {
-        console.log('[Bridge] Indikator ditemukan, tetapi data sinyal belum ter-plot.');
-        return;
-      }
-
-      const dir = parseInt(dirMatch[1], 10);
-      const entry = parseFloat(entryMatch[1]);
-      const tp = tpMatch ? parseFloat(tpMatch[1]) : 0;
-      const sl = slMatch ? parseFloat(slMatch[1]) : 0;
+      const dir = Math.round(parseVal(signalData.dir));
+      const entry = parseVal(signalData.entry);
+      const tp = parseVal(signalData.tp);
+      const sl = parseVal(signalData.sl);
 
       // Status log berkala
       process.stdout.write(`\r[Bridge Monitoring] Dir: ${dir} | Entry: $${entry} | TP: $${tp} | SL: $${sl}`);
@@ -139,16 +149,15 @@ function startMonitoring(ws) {
           const direction = dir === 1 ? 'LONG' : 'SHORT';
           console.log(`[Bridge] Mengirim trade ${direction} ke VPS...`);
 
-          const response = await fetch(`${VPS_URL}/api/trades/add`, {
+          const response = await fetch(`${VPS_URL}/api/tradingview/webhook`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
+              action: dir === 1 ? 'buy' : 'sell',
               direction,
               entry,
               tp,
               sl,
-              capital: 1000,
-              riskPercent: 1.0,
               note: 'Auto-Trade (TV Legend Scraper - FREE Version)'
             })
           });
@@ -162,11 +171,13 @@ function startMonitoring(ws) {
           }
         } else if (dir === 0 && isTradeActive) {
           console.log('[Bridge] Sinyal kembali ke FLAT. Mengirim instruksi Cut/Close ke VPS...');
-          const response = await fetch(`${VPS_URL}/api/trades/cut`, {
+          const response = await fetch(`${VPS_URL}/api/tradingview/webhook`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
-              closePrice: entry
+              action: 'cut',
+              close: entry,
+              note: 'Auto-Trade Exit (TV Legend Scraper - FREE Version)'
             })
           });
 
