@@ -727,6 +727,8 @@ async function loadSettingsFromServer() {
     document.getElementById('auto-max-active').value = settings.maxActive;
     document.getElementById('auto-min-dist').value = settings.minDist;
     document.getElementById('auto-max-dist').value = settings.maxDist;
+    document.getElementById('tele-bot-token').value = settings.telegramBotToken || '';
+    document.getElementById('tele-chat-id').value = settings.telegramChatId || '';
 
     autoTradeEnabled = settings.autoTradeEnabled;
     const btnAutoToggle = document.getElementById('btn-auto-trade-toggle');
@@ -747,6 +749,8 @@ async function saveSettingsToServer() {
   const maxActive = parseInt(document.getElementById('auto-max-active').value, 10) || 1;
   const minDist = parseFloat(document.getElementById('auto-min-dist').value) || 0.3;
   const maxDist = parseFloat(document.getElementById('auto-max-dist').value) || 8.0;
+  const telegramBotToken = document.getElementById('tele-bot-token').value || '';
+  const telegramChatId = document.getElementById('tele-chat-id').value || '';
 
   try {
     const response = await fetch('/api/settings', {
@@ -759,7 +763,9 @@ async function saveSettingsToServer() {
         maxActive,
         minDist,
         maxDist,
-        autoTradeEnabled
+        autoTradeEnabled,
+        telegramBotToken,
+        telegramChatId
       })
     });
     if (!response.ok) throw new Error(`HTTP error ${response.status}`);
@@ -861,12 +867,49 @@ window.addEventListener('DOMContentLoaded', () => {
   });
 
   // Listen for setting inputs change to save them to the server
-  ['input-capital', 'input-risk', 'auto-min-rr', 'auto-max-active', 'auto-min-dist', 'auto-max-dist'].forEach(id => {
+  ['input-capital', 'input-risk', 'auto-min-rr', 'auto-max-active', 'auto-min-dist', 'auto-max-dist', 'tele-bot-token', 'tele-chat-id'].forEach(id => {
     const el = document.getElementById(id);
     if (el) {
       el.addEventListener('change', saveSettingsToServer);
     }
   });
+
+  // Telegram test button
+  const btnTestTelegram = document.getElementById('btn-test-telegram');
+  if (btnTestTelegram) {
+    btnTestTelegram.addEventListener('click', async () => {
+      const token = document.getElementById('tele-bot-token').value || '';
+      const chatId = document.getElementById('tele-chat-id').value || '';
+
+      if (!token || !chatId) {
+        alert('Lengkapi Bot Token dan Chat ID sebelum melakukan tes.');
+        return;
+      }
+
+      btnTestTelegram.disabled = true;
+      btnTestTelegram.innerText = '⏳ Sending...';
+
+      try {
+        const response = await fetch('/api/telegram/test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ token, chatId })
+        });
+        const resObj = await response.json();
+        if (resObj.success) {
+          alert('Berhasil! Pesan tes telah dikirim ke Telegram.');
+        } else {
+          alert(`Gagal mengirim tes: ${resObj.error}`);
+        }
+      } catch (error) {
+        console.error('Telegram test error:', error);
+        alert('Gagal mengirim pesan tes (koneksi bermasalah).');
+      } finally {
+        btnTestTelegram.disabled = false;
+        btnTestTelegram.innerText = '⚡ Test Send';
+      }
+    });
+  }
 
   // Direction toggle buttons
   const btnLong = document.getElementById('btn-toggle-long');

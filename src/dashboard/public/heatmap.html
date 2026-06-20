@@ -185,6 +185,21 @@
                 <span class="auto-status-text">Bot activated! Scanning...</span>
               </div>
             </div>
+            <!-- Telegram Alert Settings Row -->
+            <div class="auto-trade-row" style="margin-top: 10px; border-top: 1px dashed var(--border-color); padding-top: 10px;">
+              <div style="display: flex; align-items: center; gap: var(--spacing-xs); flex-wrap: wrap; width: 100%;">
+                <span style="font-size: 12px; font-weight: 600; color: #00E5FF; min-width: 140px;">📢 Telegram Alerts:</span>
+                <div class="auto-setting" style="flex: 1; min-width: 250px;">
+                  <label>Bot Token</label>
+                  <input type="password" id="tele-bot-token" placeholder="123456:ABC-DEF..." style="width: 100%; font-size: 11px;">
+                </div>
+                <div class="auto-setting" style="min-width: 150px;">
+                  <label>Chat ID</label>
+                  <input type="text" id="tele-chat-id" placeholder="-1001234567..." style="width: 100%; font-size: 11px;">
+                </div>
+                <button type="button" id="btn-test-telegram" class="btn-action-sm success" style="height: 30px; margin-top: 16px; font-size: 11px; white-space: nowrap;">⚡ Test Send</button>
+              </div>
+            </div>
           </div>
 
           <!-- Manual Add Trade Form -->

@@ -578,7 +578,9 @@ function loadSettings() {
     maxActive: 1,
     minDist: 0.3,
     maxDist: 8.0,
-    autoTradeEnabled: true
+    autoTradeEnabled: true,
+    telegramBotToken: '',
+    telegramChatId: ''
   };
   if (!fs.existsSync(SETTINGS_FILE)) {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(defaultSettings, null, 2));
@@ -635,6 +637,17 @@ app.post('/api/trades/add', (req, res) => {
 
   saveTrades(trades);
   res.json({ success: true });
+
+  // Send Telegram Alert for new manual trade
+  sendTelegramAlert(
+    `🔔 <b>New Trade Logged (Manual)</b>\n` +
+    `Type: <b>${trade.direction}</b>\n` +
+    `Entry: <code>$${parseFloat(trade.entry).toFixed(2)}</code>\n` +
+    `TP: <code>$${parseFloat(trade.tp).toFixed(2)}</code>\n` +
+    `SL: <code>$${parseFloat(trade.sl).toFixed(2)}</code>\n` +
+    `Size: <code>$${parseFloat(trade.positionSizeUsd).toFixed(0)}</code>\n` +
+    `Note: ${trade.note || 'Manual Entry'}`
+  );
 });
 
 app.post('/api/trades/cut', (req, res) => {
@@ -652,7 +665,17 @@ app.post('/api/trades/cut', (req, res) => {
     trade.closePrice = parseFloat(closePrice);
     trade.note = trade.note ? `${trade.note} (Manual Cut)` : 'Manual Cut';
     saveTrades(trades);
-    return res.json({ success: true });
+    res.json({ success: true });
+
+    // Send Telegram Alert for manual cut
+    sendTelegramAlert(
+      `⚠️ <b>Trade Closed (Manual Cut)</b>\n` +
+      `Type: <b>${trade.direction}</b>\n` +
+      `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
+      `Close: <code>$${parseFloat(closePrice).toFixed(2)}</code>\n` +
+      `PnL: <code>$${trade.pnl >= 0 ? '+' : ''}${trade.pnl.toFixed(2)}</code> (+Bs. ${(trade.pnl * 6.96).toFixed(2)})\n` +
+      `Note: ${trade.note}`
+    );
   }
   res.status(404).json({ success: false, error: 'Active trade not found' });
 });
@@ -705,11 +728,75 @@ app.post('/api/settings', (req, res) => {
     maxActive: parseIntNum(newSettings.maxActive, current.maxActive),
     minDist: parseNum(newSettings.minDist, current.minDist),
     maxDist: parseNum(newSettings.maxDist, current.maxDist),
-    autoTradeEnabled: newSettings.autoTradeEnabled !== undefined ? !!newSettings.autoTradeEnabled : current.autoTradeEnabled
+    autoTradeEnabled: newSettings.autoTradeEnabled !== undefined ? !!newSettings.autoTradeEnabled : current.autoTradeEnabled,
+    telegramBotToken: newSettings.telegramBotToken !== undefined ? String(newSettings.telegramBotToken).trim() : current.telegramBotToken,
+    telegramChatId: newSettings.telegramChatId !== undefined ? String(newSettings.telegramChatId).trim() : current.telegramChatId
   };
 
   saveSettings(updated);
   res.json({ success: true, data: updated });
+});
+
+// Telegram Notification Helper
+async function sendTelegramAlert(message) {
+  const settings = loadSettings();
+  const token = settings.telegramBotToken;
+  const chatId = settings.telegramChatId;
+
+  if (!token || !chatId) {
+    console.log('[Telegram Alert] Token or Chat ID not configured, skipping alert.');
+    return;
+  }
+
+  try {
+    const url = `https://api.telegram.org/bot${token}/sendMessage`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: message,
+        parse_mode: 'HTML'
+      })
+    });
+    const resObj = await response.json();
+    if (!resObj.ok) {
+      console.error('[Telegram Alert] Error sending alert:', resObj.description);
+    } else {
+      console.log('[Telegram Alert] Alert sent successfully.');
+    }
+  } catch (error) {
+    console.error('[Telegram Alert] Failed to send telegram notification:', error.message);
+  }
+}
+
+// Telegram Test Send Endpoint
+app.post('/api/telegram/test', async (req, res) => {
+  const { token, chatId } = req.body;
+  if (!token || !chatId) {
+    return res.status(400).json({ success: false, error: 'Missing token or chat ID' });
+  }
+
+  try {
+    const url = `https://api.telegram.org/bot${token}/sendMessage`;
+    const response = await fetch(url, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        chat_id: chatId,
+        text: '🔔 <b>JDA Trade Monitor</b>\nTelegram Notification Test: Successful! Connections verified.',
+        parse_mode: 'HTML'
+      })
+    });
+    const resObj = await response.json();
+    if (resObj.ok) {
+      res.json({ success: true });
+    } else {
+      res.status(400).json({ success: false, error: resObj.description });
+    }
+  } catch (error) {
+    res.status(500).json({ success: false, error: error.message });
+  }
 });
 
 // ─── Server-Side Bot Logic ──────────────────────────────────
@@ -738,15 +825,32 @@ function evaluateActiveTradesBackend(heatmapData) {
         trade.closePrice = trade.sl;
         trade.note = `Wick Hit SL ($${lastLow.toFixed(2)})`;
         updated = true;
+        sendTelegramAlert(
+          `🚨 <b>Trade Closed (Hit SL)</b>\n` +
+          `Type: <b>LONG</b>\n` +
+          `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
+          `SL Hit: <code>$${trade.sl.toFixed(2)}</code>\n` +
+          `PnL: <code>-$${trade.riskUsd.toFixed(2)}</code> (-Bs. ${(trade.riskUsd * 6.96).toFixed(2)})\n` +
+          `Note: ${trade.note}`
+        );
         return;
       }
       // 2. Check Take Profit Hit
       if (lastHigh >= trade.tp) {
         trade.status = 'HIT_TP';
-        trade.pnl = trade.positionSizeUsd * (trade.tpDistance / 100);
+        const profit = trade.positionSizeUsd * (trade.tpDistance / 100);
+        trade.pnl = profit;
         trade.closePrice = trade.tp;
         trade.note = `Wick Hit TP ($${lastHigh.toFixed(2)})`;
         updated = true;
+        sendTelegramAlert(
+          `🎉 <b>Trade Closed (Hit TP)</b>\n` +
+          `Type: <b>LONG</b>\n` +
+          `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
+          `TP Hit: <code>$${trade.tp.toFixed(2)}</code>\n` +
+          `PnL: <code>+$${profit.toFixed(2)}</code> (+Bs. ${(profit * 6.96).toFixed(2)})\n` +
+          `Note: ${trade.note}`
+        );
         return;
       }
     } else { // SHORT
@@ -757,15 +861,32 @@ function evaluateActiveTradesBackend(heatmapData) {
         trade.closePrice = trade.sl;
         trade.note = `Wick Hit SL ($${lastHigh.toFixed(2)})`;
         updated = true;
+        sendTelegramAlert(
+          `🚨 <b>Trade Closed (Hit SL)</b>\n` +
+          `Type: <b>SHORT</b>\n` +
+          `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
+          `SL Hit: <code>$${trade.sl.toFixed(2)}</code>\n` +
+          `PnL: <code>-$${trade.riskUsd.toFixed(2)}</code> (-Bs. ${(trade.riskUsd * 6.96).toFixed(2)})\n` +
+          `Note: ${trade.note}`
+        );
         return;
       }
       // 2. Check Take Profit Hit
       if (lastLow <= trade.tp) {
         trade.status = 'HIT_TP';
-        trade.pnl = trade.positionSizeUsd * (trade.tpDistance / 100);
+        const profit = trade.positionSizeUsd * (trade.tpDistance / 100);
+        trade.pnl = profit;
         trade.closePrice = trade.tp;
         trade.note = `Wick Hit TP ($${lastLow.toFixed(2)})`;
         updated = true;
+        sendTelegramAlert(
+          `🎉 <b>Trade Closed (Hit TP)</b>\n` +
+          `Type: <b>SHORT</b>\n` +
+          `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
+          `TP Hit: <code>$${trade.tp.toFixed(2)}</code>\n` +
+          `PnL: <code>+$${profit.toFixed(2)}</code> (+Bs. ${(profit * 6.96).toFixed(2)})\n` +
+          `Note: ${trade.note}`
+        );
         return;
       }
     }
@@ -790,10 +911,19 @@ function evaluateActiveTradesBackend(heatmapData) {
     if (trade.initialTpVolume && currentTpVolume < trade.initialTpVolume * 0.5) {
       trade.status = 'CUT_LOSS';
       const diff = trade.direction === 'LONG' ? (lastClose - trade.entry) : (trade.entry - lastClose);
-      trade.pnl = trade.positionSizeUsd * (diff / trade.entry);
+      const profit = trade.positionSizeUsd * (diff / trade.entry);
+      trade.pnl = profit;
       trade.closePrice = lastClose;
       trade.note = 'Auto (Pool -50%)';
       updated = true;
+      sendTelegramAlert(
+        `⚠️ <b>Trade Closed (Auto-Cut: Pool -50%)</b>\n` +
+        `Type: <b>${trade.direction}</b>\n` +
+        `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
+        `Close: <code>$${lastClose.toFixed(2)}</code>\n` +
+        `PnL: <code>${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}</code> (${profit >= 0 ? '+' : ''}Bs. ${(profit * 6.96).toFixed(2)})\n` +
+        `Note: ${trade.note}`
+      );
       return;
     }
 
@@ -923,6 +1053,17 @@ function autoTradeStrategyBackend(heatmapData) {
   trades.push(newTrade);
   saveTrades(trades);
   console.log(`[Backend Bot] Executed ${direction} Entry:${entry.toFixed(2)} TP:${tp.toFixed(2)} SL:${sl.toFixed(2)}`);
+
+  // Send Telegram Alert for bot trade
+  sendTelegramAlert(
+    `🔔 <b>New Trade Executed (Bot)</b>\n` +
+    `Type: <b>${direction}</b>\n` +
+    `Entry: <code>$${entry.toFixed(2)}</code>\n` +
+    `TP: <code>$${tp.toFixed(2)}</code> (Risk R: 1:${rr})\n` +
+    `SL: <code>$${sl.toFixed(2)}</code>\n` +
+    `Size: <code>$${positionSizeUsd.toFixed(0)}</code> (Risk: $${riskUsd.toFixed(2)})\n` +
+    `Note: ${newTrade.note}`
+  );
 }
 
 // ─── Background 24/7 Bot Loop Worker ────────────────────────
