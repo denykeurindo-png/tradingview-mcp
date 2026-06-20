@@ -808,10 +808,37 @@ function setupAutoRefresh() {
   }, intervalMs);
 }
 
+async function migrateLocalTrades() {
+  const stored = localStorage.getItem('wattvision_tradelog');
+  if (stored) {
+    try {
+      const localTrades = JSON.parse(stored);
+      if (localTrades && localTrades.length > 0) {
+        console.log(`[Migration] Found ${localTrades.length} local trades. Uploading to server...`);
+        for (const trade of localTrades) {
+          await fetch('/api/trades/add', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(trade)
+          });
+        }
+        console.log('[Migration] Migration complete. Clearing localStorage.');
+      }
+    } catch (e) {
+      console.error('[Migration] Failed to migrate local trades:', e);
+    }
+    localStorage.removeItem('wattvision_tradelog');
+    await loadTradeLog();
+  }
+}
+
 // ─── Initialization ─────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
   // Load settings from server first, which will also set autoTradeEnabled and update the bot toggle button
   loadSettingsFromServer();
+
+  // One-time automatic migration of old browser trade logs to server
+  migrateLocalTrades();
 
   loadHeatmapData(false);
 
