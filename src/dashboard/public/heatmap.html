@@ -34,6 +34,7 @@
       <nav class="header-nav">
         <a href="index.html" class="nav-item">ETF Monitor</a>
         <a href="heatmap.html" class="nav-item active">Liquidation Heatmap</a>
+        <a href="raw-data.html" class="nav-item">Raw Data</a>
       </nav>
       <div class="header-controls">
         <div id="connection-status" class="status-indicator normal">
@@ -168,6 +169,10 @@
                   <input type="number" id="auto-min-rr" value="2.0" min="1" max="10" step="0.1">
                 </div>
                 <div class="auto-setting">
+                  <label>Min Prob (%)</label>
+                  <input type="number" id="auto-min-prob" value="65" min="10" max="95" step="5">
+                </div>
+                <div class="auto-setting">
                   <label>Max Active</label>
                   <input type="number" id="auto-max-active" value="1" min="1" max="5" step="1">
                 </div>
@@ -192,11 +197,15 @@
                   <span style="font-size: 11px; font-weight: 600; color: #98989D;">Strategy:</span>
                   <span style="font-size: 11px; font-weight: 700; color: #00E5FF; letter-spacing: 0.5px;">Liquidity Sweep Reversal</span>
                 </div>
-                <div style="display: flex; align-items: center; gap: 6px; min-width: 120px;">
+                <div style="display: flex; align-items: center; gap: 6px; min-width: 100px;">
                   <span style="font-size: 11px; font-weight: 600; color: #98989D;">Phase:</span>
                   <span id="lsr-phase-badge" style="font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; background: rgba(152, 152, 157, 0.2); color: #98989D; letter-spacing: 0.5px;">INIT</span>
                 </div>
-                <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 200px;">
+                <div style="display: flex; align-items: center; gap: 6px; min-width: 120px;">
+                  <span style="font-size: 11px; font-weight: 600; color: #98989D;">Reversal Prob:</span>
+                  <span id="lsr-prob-val" style="font-size: 11px; font-weight: 700; color: #32D74B;">—</span>
+                </div>
+                <div style="display: flex; align-items: center; gap: 6px; flex: 1; min-width: 180px;">
                   <span style="font-size: 11px; font-weight: 600; color: #98989D;">Nearest Pool:</span>
                   <span id="lsr-nearest-pool" style="font-size: 11px; font-family: 'JetBrains Mono', monospace; color: #ccc;">—</span>
                 </div>

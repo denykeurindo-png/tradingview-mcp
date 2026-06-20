@@ -738,6 +738,10 @@ async function loadSettingsFromServer() {
     document.getElementById('input-capital').value = settings.capital;
     document.getElementById('input-risk').value = settings.riskPercent;
     document.getElementById('auto-min-rr').value = settings.minRR;
+    
+    const minProbEl = document.getElementById('auto-min-prob');
+    if (minProbEl) minProbEl.value = settings.minReversalProbability || 65;
+
     document.getElementById('auto-max-active').value = settings.maxActive;
     const sweepCandlesEl = document.getElementById('auto-sweep-candles');
     if (sweepCandlesEl) sweepCandlesEl.value = settings.sweepConfirmCandles || 3;
@@ -765,6 +769,10 @@ async function saveSettingsToServer() {
   const capital = parseFloat(document.getElementById('input-capital').value) || 1000;
   const riskPercent = parseFloat(document.getElementById('input-risk').value) || 1.0;
   const minRR = parseFloat(document.getElementById('auto-min-rr').value) || 2.0;
+  
+  const minProbEl = document.getElementById('auto-min-prob');
+  const minReversalProbability = minProbEl ? (parseInt(minProbEl.value, 10) || 65) : 65;
+
   const maxActive = parseInt(document.getElementById('auto-max-active').value, 10) || 1;
   const sweepConfirmCandles = parseInt((document.getElementById('auto-sweep-candles') || {}).value, 10) || 3;
   const cooldownMinutes = parseInt((document.getElementById('auto-cooldown') || {}).value, 10) || 60;
@@ -779,6 +787,7 @@ async function saveSettingsToServer() {
         capital,
         riskPercent,
         minRR,
+        minReversalProbability,
         maxActive,
         sweepConfirmCandles,
         cooldownMinutes,
@@ -829,6 +838,25 @@ async function pollBotStatus() {
         const colors = phaseColors[data.phase] || phaseColors['STANDBY'];
         phaseBadge.style.background = colors.bg;
         phaseBadge.style.color = colors.color;
+      }
+
+      // Update reversal probability text display
+      const probValEl = document.getElementById('lsr-prob-val');
+      if (probValEl) {
+        const prob = (data.metrics && data.metrics.reversalProbability) ? data.metrics.reversalProbability : null;
+        if (prob !== null) {
+          probValEl.innerText = `${prob}%`;
+          if (prob >= 75) {
+            probValEl.style.color = '#32D74B'; // Strong Green
+          } else if (prob >= 65) {
+            probValEl.style.color = '#FFD60A'; // Yellow
+          } else {
+            probValEl.style.color = '#FF453A'; // Red
+          }
+        } else {
+          probValEl.innerText = '—';
+          probValEl.style.color = 'var(--text-muted)';
+        }
       }
 
       // Update nearest pool

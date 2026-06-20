@@ -731,6 +731,7 @@ app.post('/api/settings', (req, res) => {
     capital: parseNum(newSettings.capital, current.capital),
     riskPercent: parseNum(newSettings.riskPercent, current.riskPercent),
     minRR: parseNum(newSettings.minRR, current.minRR),
+    minReversalProbability: parseIntNum(newSettings.minReversalProbability, current.minReversalProbability || 65),
     maxActive: parseIntNum(newSettings.maxActive, current.maxActive),
     minDist: parseNum(newSettings.minDist, current.minDist),
     maxDist: parseNum(newSettings.maxDist, current.maxDist),
@@ -911,6 +912,146 @@ app.post('/api/tradingview/webhook', (req, res) => {
   }
 });
 
+// ─── Binance Metric State & Fetchers ──────────────────────────
+let botMetrics = {
+  openInterest: 0,
+  oiChange1h: 0,
+  spotCvd1h: 0,
+  trend1h: 'UNKNOWN',
+  trend4h: 'UNKNOWN',
+  reversalProbability: 0
+};
+
+function calculateEMA(prices, period) {
+  const k = 2 / (period + 1);
+  let ema = prices[0];
+  for (let i = 1; i < prices.length; i++) {
+    ema = prices[i] * k + ema * (1 - k);
+  }
+  return ema;
+}
+
+async function fetchBinanceOI() {
+  try {
+    const res = await fetch('https://fapi.binance.com/futures/data/openInterestHist?symbol=BTCUSDT&period=5m&limit=13');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (Array.isArray(data) && data.length > 0) {
+      const currentOIVal = parseFloat(data[data.length - 1].sumOpenInterestValue);
+      const startOIVal = parseFloat(data[0].sumOpenInterestValue);
+      const currentOI = parseFloat(data[data.length - 1].sumOpenInterest);
+      const diffPercent = ((currentOIVal - startOIVal) / startOIVal) * 100;
+      return {
+        currentOI,
+        currentOIVal,
+        oiChange1h: isNaN(diffPercent) ? 0 : diffPercent
+      };
+    }
+  } catch (err) {
+    console.error('[Binance API] Error fetching OI:', err.message);
+  }
+  return { currentOI: 0, currentOIVal: 0, oiChange1h: 0 };
+}
+
+async function fetchBinanceSpotCVD() {
+  try {
+    const res = await fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=5m&limit=12');
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    const data = await res.json();
+    if (Array.isArray(data)) {
+      let cumulativeDelta = 0;
+      data.forEach(k => {
+        const totalVal = parseFloat(k[7]);
+        const takerBuyVal = parseFloat(k[10]);
+        if (!isNaN(totalVal) && !isNaN(takerBuyVal)) {
+          const delta = 2 * takerBuyVal - totalVal;
+          cumulativeDelta += delta;
+        }
+      });
+      return cumulativeDelta;
+    }
+  } catch (err) {
+    console.error('[Binance API] Error fetching Spot CVD:', err.message);
+  }
+  return 0;
+}
+
+async function fetchBinanceHTFTrend() {
+  try {
+    // 1h Klines
+    const res1h = await fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=210');
+    let trend1h = 'UNKNOWN';
+    let currentPrice = 0;
+    if (res1h.ok) {
+      const data1h = await res1h.json();
+      if (Array.isArray(data1h) && data1h.length >= 200) {
+        const prices = data1h.map(k => parseFloat(k[4]));
+        currentPrice = prices[prices.length - 1];
+        const ema50 = calculateEMA(prices, 50);
+        trend1h = currentPrice > ema50 ? 'BULLISH' : 'BEARISH';
+      }
+    }
+
+    // 4h Klines
+    const res4h = await fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=4h&limit=210');
+    let trend4h = 'UNKNOWN';
+    if (res4h.ok) {
+      const data4h = await res4h.json();
+      if (Array.isArray(data4h) && data4h.length >= 200) {
+        const prices = data4h.map(k => parseFloat(k[4]));
+        const ema50 = calculateEMA(prices, 50);
+        trend4h = prices[prices.length - 1] > ema50 ? 'BULLISH' : 'BEARISH';
+      }
+    }
+
+    return { trend1h, trend4h };
+  } catch (err) {
+    console.error('[Binance API] Error fetching HTF Trend:', err.message);
+  }
+  return { trend1h: 'UNKNOWN', trend4h: 'UNKNOWN' };
+}
+
+function calculateReversalProbability(sweepDetail, oiChange, spotCVD, trend1h, trend4h) {
+  let score = 50; // Base probability start at 50%
+
+  // 1. Liquidation Pool Volume (Up to 15 points)
+  const volBillions = sweepDetail.volume / 1e9;
+  score += Math.min(15, volBillions * 3);
+
+  // 2. Rejection Strength / Wick Depth (Up to 15 points)
+  score += Math.min(15, sweepDetail.rejectionStrength * 15);
+
+  // 3. Open Interest change (Up to 10 points)
+  if (oiChange < 0) {
+    score += Math.min(10, Math.abs(oiChange) * 3);
+  } else {
+    score -= Math.min(10, oiChange * 2);
+  }
+
+  // 4. Spot CVD Divergence (Up to 10 points)
+  if (sweepDetail.direction === 'LONG' && spotCVD > 0) {
+    score += 10;
+  } else if (sweepDetail.direction === 'SHORT' && spotCVD < 0) {
+    score += 10;
+  } else {
+    score -= 5;
+  }
+
+  // 5. HTF Trend Alignment (Up to 10 points)
+  if (sweepDetail.direction === 'LONG') {
+    if (trend1h === 'BULLISH') score += 5;
+    if (trend4h === 'BULLISH') score += 5;
+    if (trend1h === 'BEARISH') score -= 5;
+  } else if (sweepDetail.direction === 'SHORT') {
+    if (trend1h === 'BEARISH') score += 5;
+    if (trend4h === 'BEARISH') score += 5;
+    if (trend1h === 'BULLISH') score -= 5;
+  }
+
+  // Bound the score between 10% and 99%
+  return Math.max(10, Math.min(99, Math.round(score)));
+}
+
 // ─── Server-Side Bot Logic ──────────────────────────────────
 function evaluateActiveTradesBackend(heatmapData) {
   const cs = heatmapData.series.find(s => s.type === 'candlestick');
@@ -1087,6 +1228,7 @@ app.get('/api/bot-status', (req, res) => {
     success: true,
     data: {
       ...botPhaseState,
+      metrics: botMetrics,
       autoTradeEnabled: settings.autoTradeEnabled,
       strategy: 'Liquidity Sweep Reversal (LSR)',
       settings: {
@@ -1094,7 +1236,8 @@ app.get('/api/bot-status', (req, res) => {
         maxActive: settings.maxActive,
         sweepConfirmCandles: settings.sweepConfirmCandles || 3,
         cooldownMinutes: settings.cooldownMinutes || 60,
-        minPoolVolumeRatio: settings.minPoolVolumeRatio || 0.15
+        minPoolVolumeRatio: settings.minPoolVolumeRatio || 0.15,
+        minReversalProbability: settings.minReversalProbability || 65
       }
     }
   });
@@ -1389,6 +1532,26 @@ function autoTradeStrategyBackend(heatmapData) {
     return;
   }
 
+  // ─── Step 10b: Reversal Probability Filter ────────────────
+  const prob = calculateReversalProbability(bestSweep, botMetrics.oiChange1h, botMetrics.spotCvd1h, botMetrics.trend1h, botMetrics.trend4h);
+  botMetrics.reversalProbability = prob; // cache the latest calculated probability for reporting
+
+  const minProb = settings.minReversalProbability || 65;
+  if (prob < minProb) {
+    botPhaseState = {
+      phase: 'SWEEP_REJECTED',
+      nearestPool: bestSweep.price,
+      nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
+      nearestPoolVolume: bestSweep.volume,
+      nearestPoolSide: direction === 'LONG' ? 'SUPPORT' : 'RESISTANCE',
+      sweepCandidate: { direction, entry, tp, sl, rr, prob },
+      message: `Sweep detected at $${bestSweep.price.toFixed(0)} but Reversal Prob ${prob}% < min ${minProb}%. Skipping.`,
+      lastUpdate: new Date().toISOString()
+    };
+    console.log(`[LSR Bot] SWEEP_REJECTED — Reversal Prob ${prob}% < min ${minProb}% for ${direction} at $${entry.toFixed(0)}`);
+    return;
+  }
+
   // ─── Step 11: Cooldown Check ──────────────────────────────
   const cooldownMs = (settings.cooldownMinutes || 60) * 60 * 1000;
   const isCooldown = trades.some(t => {
@@ -1409,7 +1572,7 @@ function autoTradeStrategyBackend(heatmapData) {
       nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
       nearestPoolVolume: bestSweep.volume,
       nearestPoolSide: direction === 'LONG' ? 'SUPPORT' : 'RESISTANCE',
-      sweepCandidate: { direction, entry, tp, sl, rr },
+      sweepCandidate: { direction, entry, tp, sl, rr, prob },
       message: `Sweep ${direction} at $${bestSweep.price.toFixed(0)} detected but in cooldown. Waiting...`,
       lastUpdate: new Date().toISOString()
     };
@@ -1452,7 +1615,7 @@ function autoTradeStrategyBackend(heatmapData) {
     status: 'ACTIVE',
     pnl: 0,
     initialTpVolume,
-    note: `LSR ${direction} (Swept $${bestSweep.price.toFixed(0)}, Rej: ${bestSweep.rejectionStrength.toFixed(2)}%, R:R 1:${rr})`
+    note: `LSR ${direction} (Swept $${bestSweep.price.toFixed(0)}, Rej: ${bestSweep.rejectionStrength.toFixed(2)}%, R:R 1:${rr}, Prob: ${prob}%)`
   };
 
   trades.push(newTrade);
@@ -1464,8 +1627,8 @@ function autoTradeStrategyBackend(heatmapData) {
     nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
     nearestPoolVolume: bestSweep.volume,
     nearestPoolSide: direction === 'LONG' ? 'SUPPORT' : 'RESISTANCE',
-    sweepCandidate: { direction, entry: newTrade.entry, tp: newTrade.tp, sl: newTrade.sl, rr },
-    message: `🎯 ${direction} entry at $${entry.toFixed(0)} after sweep of $${bestSweep.price.toFixed(0)} pool. R:R 1:${rr}`,
+    sweepCandidate: { direction, entry: newTrade.entry, tp: newTrade.tp, sl: newTrade.sl, rr, prob },
+    message: `🎯 ${direction} entry at $${entry.toFixed(0)} after sweep of $${bestSweep.price.toFixed(0)} pool. R:R 1:${rr} (Prob: ${prob}%)`,
     lastUpdate: new Date().toISOString()
   };
 
@@ -1500,6 +1663,23 @@ async function runBotCycle() {
   isFetchingHeatmap = true;
   try {
     console.log('[Background Bot] Running scheduled scraper and trade evaluation cycle...');
+    
+    // Fetch Binance Metrics in parallel to save time
+    const [oiData, cvdVal, trendData] = await Promise.all([
+      fetchBinanceOI(),
+      fetchBinanceSpotCVD(),
+      fetchBinanceHTFTrend()
+    ]);
+    
+    botMetrics = {
+      ...botMetrics,
+      openInterest: oiData.currentOI,
+      oiChange1h: oiData.oiChange1h,
+      spotCvd1h: cvdVal,
+      trend1h: trendData.trend1h,
+      trend4h: trendData.trend4h
+    };
+
     const result = await scrapeHeatMap(true); // force refresh to get latest data from CoinGlass!
     heatmapDataCache = result;
     lastHeatmapFetchTime = Date.now();
@@ -1508,7 +1688,7 @@ async function runBotCycle() {
     evaluateActiveTradesBackend(result.data);
     autoTradeStrategyBackend(result.data);
 
-    console.log('[Background Bot] Cycle completed successfully.');
+    console.log('[Background Bot] Cycle completed successfully. Metrics:', JSON.stringify(botMetrics));
   } catch (error) {
     console.error('[Background Bot] Cycle error:', error.message);
   } finally {
