@@ -4,3 +4,5 @@ scripts/current.pine
 temp_*
 *.log
 discovery-log.json
+src/dashboard/settings.json
+src/dashboard/trades.json

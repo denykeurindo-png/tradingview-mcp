@@ -118,11 +118,8 @@ async function loadHeatmapData(forceRefresh = false) {
       console.log('[Heatmap] Data identical (cache unchanged). Bypassing charts/tables rendering for power efficiency.');
     }
 
-    // Auto-evaluate all active trades on each data fetch
-    evaluateActiveTrades();
-
-    // Auto-trade bot: scan for new setups
-    autoTradeStrategy();
+    // Fetch latest trade logs from server to show updated statuses (TP/SL/Cut loss/floating PnL)
+    await loadTradeLog();
 
     updateStatus('normal', 'Live');
   } catch (error) {
@@ -497,7 +494,7 @@ window.setPlannerPrice = (type, price) => {
 };
 
 // ─── Add Trade Directly from Inline Form ────────────────────
-function addTradeFromForm() {
+async function addTradeFromForm() {
   const btnLong = document.getElementById('btn-toggle-long');
   const direction = btnLong && btnLong.classList.contains('active') ? 'LONG' : 'SHORT';
   const capital = parseFloat(document.getElementById('input-capital').value) || 0;
@@ -547,170 +544,98 @@ function addTradeFromForm() {
     }
   }
 
-  // Create trade object and add to log
-  tradeLog.push({
+  // Create trade object
+  const newTrade = {
     id: 'T' + Date.now(),
     time: new Date().toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
     direction, entry, tp, sl, capital, riskPercent, riskUsd,
     positionSizeUsd, tpDistance, slDistance,
     status: 'ACTIVE', pnl: 0, initialTpVolume
-  });
+  };
 
-  saveTradeLog();
-  renderBacktestTable();
-
-  // Clear entry/tp/sl inputs for next trade
-  document.getElementById('input-entry').value = '';
-  document.getElementById('input-tp').value = '';
-  document.getElementById('input-sl').value = '';
-}
-
-// ─── Auto-Evaluate All Active Trades ────────────────────────
-function evaluateActiveTrades() {
-  if (!tradeLog.length || !currentBtcPriceGlobal || !lastHeatmapDataGlobal) return;
-
-  let updated = false;
-
-  // Get the latest candle from series to evaluate high/low wicks
-  const cs = lastHeatmapDataGlobal.series.find(s => s.type === 'candlestick');
-  if (!cs || !cs.data || cs.data.length === 0) return;
-
-  const lastCandle = cs.data[cs.data.length - 1];
-  const lastClose = parseFloat(lastCandle[1]);
-  const lastLow = parseFloat(lastCandle[2]);
-  const lastHigh = parseFloat(lastCandle[3]);
-
-  if (isNaN(lastClose) || isNaN(lastLow) || isNaN(lastHigh)) return;
-
-  tradeLog.forEach(trade => {
-    if (trade.status !== 'ACTIVE') return;
-
-    if (trade.direction === 'LONG') {
-      // 1. Check Stop Loss Hit (wick touched or crossed SL)
-      if (lastLow <= trade.sl) {
-        trade.status = 'HIT_SL';
-        trade.pnl = -trade.riskUsd;
-        trade.closePrice = trade.sl;
-        trade.note = `Wick Hit SL ($${formatIntensity(lastLow)})`;
-        updated = true;
-        return;
-      }
-
-      // 2. Check Take Profit Hit (wick touched or crossed TP)
-      if (lastHigh >= trade.tp) {
-        trade.status = 'HIT_TP';
-        trade.pnl = trade.positionSizeUsd * (trade.tpDistance / 100);
-        trade.closePrice = trade.tp;
-        trade.note = `Wick Hit TP ($${formatIntensity(lastHigh)})`;
-        updated = true;
-        return;
-      }
-    } else { // SHORT
-      // 1. Check Stop Loss Hit (wick touched or crossed SL)
-      if (lastHigh >= trade.sl) {
-        trade.status = 'HIT_SL';
-        trade.pnl = -trade.riskUsd;
-        trade.closePrice = trade.sl;
-        trade.note = `Wick Hit SL ($${formatIntensity(lastHigh)})`;
-        updated = true;
-        return;
-      }
-
-      // 2. Check Take Profit Hit (wick touched or crossed TP)
-      if (lastLow <= trade.tp) {
-        trade.status = 'HIT_TP';
-        trade.pnl = trade.positionSizeUsd * (trade.tpDistance / 100);
-        trade.closePrice = trade.tp;
-        trade.note = `Wick Hit TP ($${formatIntensity(lastLow)})`;
-        updated = true;
-        return;
-      }
-    }
-
-    // 3. Check if target pool volume shrunk significantly (>50% drop since entry)
-    const yAxisData = lastHeatmapDataGlobal.yAxis || [];
-    let closestYIdx = -1, minDiff = Infinity;
-    yAxisData.forEach((priceStr, idx) => {
-      const diff = Math.abs(parseFloat(priceStr) - trade.tp);
-      if (diff < minDiff) { minDiff = diff; closestYIdx = idx; }
+  try {
+    const response = await fetch('/api/trades/add', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(newTrade)
     });
-
-    let currentTpVolume = 0;
-    const hs = lastHeatmapDataGlobal.series.find(s => s.type === 'heatmap');
-    if (hs && hs.data && closestYIdx !== -1) {
-      hs.data.forEach(item => {
-        const v = Array.isArray(item) ? item : (item.value || []);
-        if (parseInt(v[1], 10) === closestYIdx) currentTpVolume += parseFloat(v[2] || 0);
-      });
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || `HTTP error ${response.status}`);
     }
+    await loadTradeLog();
 
-    if (trade.initialTpVolume && currentTpVolume < trade.initialTpVolume * 0.5) {
-      trade.status = 'CUT_LOSS';
-      const diff = trade.direction === 'LONG' ? (lastClose - trade.entry) : (trade.entry - lastClose);
-      trade.pnl = trade.positionSizeUsd * (diff / trade.entry);
-      trade.closePrice = lastClose;
-      trade.note = 'Auto (Pool -50%)';
-      updated = true;
-      return;
-    }
+    // Clear entry/tp/sl inputs for next trade
+    document.getElementById('input-entry').value = '';
+    document.getElementById('input-tp').value = '';
+    document.getElementById('input-sl').value = '';
+  } catch (error) {
+    console.error('Error adding trade:', error);
+    alert('Failed to add trade: ' + error.message);
+  }
+}
 
-    // A4. If trade remains ACTIVE, update its current floating PnL
-    const diff = trade.direction === 'LONG' ? (lastClose - trade.entry) : (trade.entry - lastClose);
-    const floatingPnl = parseFloat((trade.positionSizeUsd * (diff / trade.entry)).toFixed(2));
-    if (trade.pnl !== floatingPnl) {
-      trade.pnl = floatingPnl;
-      updated = true;
-    }
-  });
-
-  if (updated) {
-    saveTradeLog();
+// ─── Trade Log REST API Database Sync ───────────────────────
+async function loadTradeLog() {
+  try {
+    const response = await fetch('/api/trades');
+    if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+    const resObj = await response.json();
+    tradeLog = resObj.data || [];
     renderBacktestTable();
+  } catch (error) {
+    console.error('Error loading trades from server:', error);
   }
-}
-
-// ─── LocalStorage Persistence ───────────────────────────────
-function loadTradeLog() {
-  const stored = localStorage.getItem('wattvision_tradelog');
-  if (stored) {
-    try { tradeLog = JSON.parse(stored); } catch (e) { tradeLog = []; }
-  } else {
-    tradeLog = [];
-  }
-  renderBacktestTable();
-}
-
-function saveTradeLog() {
-  localStorage.setItem('wattvision_tradelog', JSON.stringify(tradeLog));
 }
 
 // ─── Manual Trade Actions ───────────────────────────────────
-window.manualCutLoss = (tradeId) => {
-  const trade = tradeLog.find(t => t.id === tradeId);
-  if (trade && trade.status === 'ACTIVE' && currentBtcPriceGlobal) {
-    trade.status = 'CUT_LOSS';
-    const diff = trade.direction === 'LONG'
-      ? (currentBtcPriceGlobal - trade.entry)
-      : (trade.entry - currentBtcPriceGlobal);
-    trade.pnl = trade.positionSizeUsd * (diff / trade.entry);
-    trade.closePrice = currentBtcPriceGlobal;
-    trade.note = 'Manual';
-    saveTradeLog();
-    renderBacktestTable();
+window.manualCutLoss = async (tradeId) => {
+  if (!currentBtcPriceGlobal) {
+    alert('Harga BTC belum sinkron. Tunggu update data.');
+    return;
+  }
+  try {
+    const response = await fetch('/api/trades/cut', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: tradeId, closePrice: currentBtcPriceGlobal })
+    });
+    if (!response.ok) {
+      const err = await response.json();
+      throw new Error(err.error || `HTTP error ${response.status}`);
+    }
+    await loadTradeLog();
+  } catch (error) {
+    console.error('Error cutting trade:', error);
+    alert('Failed to cut trade: ' + error.message);
   }
 };
 
-window.deleteTrade = (tradeId) => {
-  tradeLog = tradeLog.filter(t => t.id !== tradeId);
-  saveTradeLog();
-  renderBacktestTable();
+window.deleteTrade = async (tradeId) => {
+  try {
+    const response = await fetch('/api/trades/delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ id: tradeId })
+    });
+    if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+    await loadTradeLog();
+  } catch (error) {
+    console.error('Error deleting trade:', error);
+    alert('Failed to delete trade.');
+  }
 };
 
-window.clearTradeLog = () => {
+window.clearTradeLog = async () => {
   if (confirm('Hapus semua data backtest?')) {
-    tradeLog = [];
-    saveTradeLog();
-    renderBacktestTable();
+    try {
+      const response = await fetch('/api/trades/clear', { method: 'POST' });
+      if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+      await loadTradeLog();
+    } catch (error) {
+      console.error('Error clearing trades:', error);
+      alert('Failed to clear trade log.');
+    }
   }
 };
 
@@ -787,157 +712,62 @@ function renderBacktestTable() {
   tbody.innerHTML = html;
 }
 
-// ─── Auto-Trade Bot: "Pool Hunter" Strategy ─────────────────
-function autoTradeStrategy() {
-  const statusEl = document.getElementById('auto-trade-status');
+// ─── Auto-Trade Bot: Settings Sync ──────────────────────────
+async function loadSettingsFromServer() {
+  try {
+    const response = await fetch('/api/settings');
+    if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+    const resObj = await response.json();
+    const settings = resObj.data;
 
-  if (!autoTradeEnabled) {
-    updateAutoStatus('', 'Bot inactive');
-    return;
+    // Update inputs
+    document.getElementById('input-capital').value = settings.capital;
+    document.getElementById('input-risk').value = settings.riskPercent;
+    document.getElementById('auto-min-rr').value = settings.minRR;
+    document.getElementById('auto-max-active').value = settings.maxActive;
+    document.getElementById('auto-min-dist').value = settings.minDist;
+    document.getElementById('auto-max-dist').value = settings.maxDist;
+
+    autoTradeEnabled = settings.autoTradeEnabled;
+    const btnAutoToggle = document.getElementById('btn-auto-trade-toggle');
+    if (btnAutoToggle) {
+      btnAutoToggle.className = `auto-toggle-btn ${autoTradeEnabled ? 'on' : 'off'}`;
+      btnAutoToggle.innerText = autoTradeEnabled ? 'ON' : 'OFF';
+    }
+    updateAutoStatus(autoTradeEnabled ? 'active' : '', autoTradeEnabled ? 'Bot active (Running on server)' : 'Bot inactive');
+  } catch (error) {
+    console.error('Error loading settings:', error);
   }
+}
 
-  if (!currentBtcPriceGlobal || !lastHeatmapDataGlobal) {
-    updateAutoStatus('waiting', 'Waiting for data...');
-    return;
-  }
-
-  const maxActive = parseInt(document.getElementById('auto-max-active').value) || 1;
-  const minRR = parseFloat(document.getElementById('auto-min-rr').value) || 1.5;
-  const minDist = parseFloat(document.getElementById('auto-min-dist').value) || 0.3;
-  const maxDist = parseFloat(document.getElementById('auto-max-dist').value) || 8;
+async function saveSettingsToServer() {
   const capital = parseFloat(document.getElementById('input-capital').value) || 1000;
   const riskPercent = parseFloat(document.getElementById('input-risk').value) || 1.0;
+  const minRR = parseFloat(document.getElementById('auto-min-rr').value) || 1.5;
+  const maxActive = parseInt(document.getElementById('auto-max-active').value, 10) || 1;
+  const minDist = parseFloat(document.getElementById('auto-min-dist').value) || 0.3;
+  const maxDist = parseFloat(document.getElementById('auto-max-dist').value) || 8.0;
 
-  // Check max active trades
-  const activeTrades = tradeLog.filter(t => t.status === 'ACTIVE');
-  if (activeTrades.length >= maxActive) {
-    updateAutoStatus('active', `Monitoring ${activeTrades.length} active trade(s)...`);
-    return;
-  }
-
-  const currentPrice = currentBtcPriceGlobal;
-  const data = lastHeatmapDataGlobal;
-
-  const heatmapSeries = data.series.find(s => s.type === 'heatmap');
-  const candlestickSeries = data.series.find(s => s.type === 'candlestick');
-  if (!heatmapSeries || !heatmapSeries.data || heatmapSeries.data.length === 0) {
-    updateAutoStatus('waiting', 'No heatmap data');
-    return;
-  }
-
-  // Historical min/max for liquidation detection
-  let maxHigh = currentPrice, minLow = currentPrice;
-  if (candlestickSeries && candlestickSeries.data && candlestickSeries.data.length > 0) {
-    candlestickSeries.data.forEach(c => {
-      const lo = parseFloat(c[2]), hi = parseFloat(c[3]);
-      if (!isNaN(hi) && hi > maxHigh) maxHigh = hi;
-      if (!isNaN(lo) && lo < minLow) minLow = lo;
+  try {
+    const response = await fetch('/api/settings', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        capital,
+        riskPercent,
+        minRR,
+        maxActive,
+        minDist,
+        maxDist,
+        autoTradeEnabled
+      })
     });
+    if (!response.ok) throw new Error(`HTTP error ${response.status}`);
+    const resObj = await response.json();
+    console.log('Settings saved to server:', resObj.data);
+  } catch (error) {
+    console.error('Error saving settings:', error);
   }
-
-  const yAxisData = data.yAxis || [];
-
-  // Aggregate intensity per price level
-  const leveragePerY = {};
-  heatmapSeries.data.forEach(item => {
-    const yIdx = item[1];
-    const val = parseFloat(item[2] || 0);
-    leveragePerY[yIdx] = (leveragePerY[yIdx] || 0) + val;
-  });
-
-  // Build candidate pool list (non-liquidated, within distance range)
-  const pools = [];
-  Object.keys(leveragePerY).forEach(yIdxStr => {
-    const yIdx = parseInt(yIdxStr, 10);
-    const priceStr = yAxisData[yIdx];
-    if (!priceStr) return;
-    const price = parseFloat(priceStr);
-    const leverage = leveragePerY[yIdx];
-    const distPct = Math.abs(((price - currentPrice) / currentPrice) * 100);
-    const isAbove = price > currentPrice;
-
-    // Check if already liquidated
-    let isLiquidated = false;
-    if (isAbove && price <= maxHigh) isLiquidated = true;
-    else if (!isAbove && price >= minLow) isLiquidated = true;
-    if (isLiquidated) return;
-
-    // Filter by distance range
-    if (distPct < minDist || distPct > maxDist) return;
-
-    // Score = intensity / distance (closer + stronger = better target)
-    const score = leverage / distPct;
-    pools.push({ price, leverage, distPct, isAbove, score, yIdx });
-  });
-
-  if (pools.length === 0) {
-    updateAutoStatus('scanning', 'Scanning... No valid pools');
-    return;
-  }
-
-  // Find best pool by score
-  pools.sort((a, b) => b.score - a.score);
-  const best = pools[0];
-
-  // Determine trade parameters
-  const direction = best.isAbove ? 'LONG' : 'SHORT';
-  const entry = currentPrice;
-  const tp = best.price;
-  const tpDistance = Math.abs(((tp - entry) / entry) * 100);
-  const slDistance = tpDistance / minRR; // ensures minimum R:R
-
-  let sl;
-  if (direction === 'LONG') {
-    sl = entry * (1 - slDistance / 100);
-  } else {
-    sl = entry * (1 + slDistance / 100);
-  }
-
-  // Cooldown: skip if same direction+similar TP within last 30 min
-  const now = Date.now();
-  const recentSame = tradeLog.find(t => {
-    const tradeTime = parseInt(t.id.substring(1));
-    if (now - tradeTime > 30 * 60 * 1000) return false;
-    return t.direction === direction && Math.abs(t.tp - tp) < (tp * 0.005);
-  });
-  if (recentSame) {
-    updateAutoStatus('scanning', `Cooldown (recent ${direction} to similar TP)`);
-    return;
-  }
-
-  // Calculate position metrics
-  const riskUsd = capital * (riskPercent / 100);
-  const positionSizeUsd = riskUsd / (slDistance / 100);
-
-  // Capture initial TP pool volume
-  let initialTpVolume = null;
-  let vol = 0;
-  heatmapSeries.data.forEach(item => {
-    const v = Array.isArray(item) ? item : (item.value || []);
-    if (parseInt(v[1], 10) === best.yIdx) vol += parseFloat(v[2] || 0);
-  });
-  if (vol > 0) initialTpVolume = vol;
-
-  // Log the auto-trade
-  const rr = (tpDistance / slDistance).toFixed(1);
-  tradeLog.push({
-    id: 'T' + Date.now(),
-    time: new Date().toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
-    direction,
-    entry: parseFloat(entry.toFixed(2)),
-    tp: parseFloat(tp.toFixed(2)),
-    sl: parseFloat(sl.toFixed(2)),
-    capital, riskPercent, riskUsd,
-    positionSizeUsd, tpDistance, slDistance,
-    status: 'ACTIVE', pnl: 0, initialTpVolume,
-    note: `Bot (Pool $${formatIntensity(best.leverage)})`
-  });
-
-  saveTradeLog();
-  renderBacktestTable();
-
-  updateAutoStatus('trade', `${direction} @ ${formatUSD(entry)} → TP ${formatUSD(tp)} (R:R 1:${rr})`);
-  console.log(`[AutoTrade] ${direction} Entry:${formatUSD(entry)} TP:${formatUSD(tp)} SL:${formatUSD(sl)} R:R 1:${rr}`);
 }
 
 function updateAutoStatus(state, text) {
@@ -980,6 +810,9 @@ function setupAutoRefresh() {
 
 // ─── Initialization ─────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
+  // Load settings from server first, which will also set autoTradeEnabled and update the bot toggle button
+  loadSettingsFromServer();
+
   loadHeatmapData(false);
 
   // Setup initial adaptive refresh
@@ -1000,8 +833,13 @@ window.addEventListener('DOMContentLoaded', () => {
     setupAutoRefresh();
   });
 
-  // Load backtest trade logs from localStorage
-  loadTradeLog();
+  // Listen for setting inputs change to save them to the server
+  ['input-capital', 'input-risk', 'auto-min-rr', 'auto-max-active', 'auto-min-dist', 'auto-max-dist'].forEach(id => {
+    const el = document.getElementById(id);
+    if (el) {
+      el.addEventListener('change', saveSettingsToServer);
+    }
+  });
 
   // Direction toggle buttons
   const btnLong = document.getElementById('btn-toggle-long');
@@ -1032,17 +870,15 @@ window.addEventListener('DOMContentLoaded', () => {
   // Auto-Trade Bot toggle
   const btnAutoToggle = document.getElementById('btn-auto-trade-toggle');
   if (btnAutoToggle) {
-    btnAutoToggle.addEventListener('click', () => {
+    btnAutoToggle.addEventListener('click', async () => {
       autoTradeEnabled = !autoTradeEnabled;
       btnAutoToggle.className = `auto-toggle-btn ${autoTradeEnabled ? 'on' : 'off'}`;
       btnAutoToggle.innerText = autoTradeEnabled ? 'ON' : 'OFF';
-      if (autoTradeEnabled) {
-        updateAutoStatus('scanning', 'Bot activated! Scanning...');
-        // Run immediately on activation
-        autoTradeStrategy();
-      } else {
-        updateAutoStatus('', 'Bot inactive');
-      }
+      updateAutoStatus(autoTradeEnabled ? 'active' : '', autoTradeEnabled ? 'Bot active (Running on server)' : 'Bot inactive');
+      
+      // Save settings to server with updated autoTradeEnabled value
+      await saveSettingsToServer();
+      
       // Reconfigure refresh interval when bot state changes
       setupAutoRefresh();
     });

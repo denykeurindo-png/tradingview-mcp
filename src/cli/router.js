@@ -132,7 +132,8 @@ async function execute(handler, values, positionals) {
   try {
     const result = await handler(values, positionals);
     console.log(JSON.stringify(result, null, 2));
-    process.exit(0);
+    // Defer exit slightly to let fetch/network handles settle on Windows
+    setTimeout(() => process.exit(0), 50);
   } catch (err) {
     handleError(err);
   }
@@ -141,10 +142,7 @@ async function execute(handler, values, positionals) {
 function handleError(err) {
   const message = err.message || String(err);
   // Connection failures get exit code 2
-  if (/CDP|connection|ECONNREFUSED|not running/i.test(message)) {
-    console.error(JSON.stringify({ success: false, error: message }, null, 2));
-    process.exit(2);
-  }
+  const code = /CDP|connection|ECONNREFUSED|not running/i.test(message) ? 2 : 1;
   console.error(JSON.stringify({ success: false, error: message }, null, 2));
-  process.exit(1);
+  setTimeout(() => process.exit(code), 50);
 }
