@@ -1,4 +1,4 @@
-// WattVision — CoinGlass Liquidation HeatMap Logic (Simplified Backtest Grid)
+// JDA Trade Monitor — CoinGlass Liquidation HeatMap Logic (Simplified Backtest Grid)
 const EXCHANGE_RATE = 6.96; // 1 USD = 6.96 Bolivianos (Bs.)
 
 // DOM Elements

@@ -1,4 +1,4 @@
-// WattVision — CoinGlass ETF Monitor App Logic
+// JDA Trade Monitor — CoinGlass ETF Monitor App Logic
 const EXCHANGE_RATE = 6.96; // 1 USD = 6.96 Bolivianos (Bs.)
 
 // DOM Elements
@@ -219,7 +219,7 @@ function renderKPIs(kpis, data, btcPrice) {
   timeNetAssets.innerText = 'Last update: Fallback Calculation';
 }
 
-// Render dynamic WattVision Chart (USD & Bs flows)
+// Render dynamic JDA Trade Monitor Chart (USD & Bs flows)
 function renderChart(data, btcPrice) {
   const canvas = document.getElementById('etf-chart');
   if (!canvas) return; // Chart is disabled/removed
@@ -367,7 +367,7 @@ function renderTable(data, hdrs) {
   });
 }
 
-// Render WattVision Smart Alerts
+// Render JDA Trade Monitor Smart Alerts
 function renderAlerts(data, btcPrice) {
   if (!data || data.length === 0) return;
 

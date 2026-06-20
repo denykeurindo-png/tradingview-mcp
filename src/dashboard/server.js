@@ -958,7 +958,7 @@ async function startBackgroundBot() {
 
 app.listen(PORT, () => {
   console.log(`==================================================`);
-  console.log(`WattVision Dashboard listening at http://localhost:${PORT}`);
+  console.log(`JDA Trade Monitor Dashboard listening at http://localhost:${PORT}`);
   console.log(`Make sure TradingView is running with remote debugging`);
   console.log(`on port 9222 before triggering a refresh.`);
   console.log(`==================================================`);
