@@ -297,6 +297,17 @@ function renderLiquidationTables(data) {
       else if (ratio >= 0.7) { badgeClass = 'high'; badgeLabel = 'High'; }
       else if (ratio >= 0.3) { badgeClass = 'medium'; badgeLabel = 'Medium'; }
 
+      let cellStyle = 'font-size: 13px; font-weight: 500;';
+      if (lvl.isLiquidated) {
+        cellStyle = 'font-size: 11px; font-weight: 400;';
+      } else if (badgeClass === 'high') {
+        cellStyle = 'font-size: 15.5px; font-weight: 700;';
+      } else if (badgeClass === 'medium') {
+        cellStyle = 'font-size: 13.5px; font-weight: 600;';
+      } else if (badgeClass === 'low') {
+        cellStyle = 'font-size: 11.5px; font-weight: 500;';
+      }
+
       const distanceSign = lvl.distance > 0 ? '+' : '';
       const distanceFormatted = `${distanceSign}${lvl.distance.toFixed(2)}%`;
       const volumeBs = lvl.leverage * EXCHANGE_RATE;
@@ -312,13 +323,13 @@ function renderLiquidationTables(data) {
       `;
 
       html += `<tr ${rowStyle}>`;
-      html += `<td style="color: var(--text-muted);">#${idx + 1}</td>`;
-      html += `<td class="mono" style="font-weight: 600; color: ${priceColor};">$${lvl.price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}${quickActionBtns}</td>`;
-      html += `<td class="mono" style="color: var(--text-muted);">Bs. ${(lvl.price * EXCHANGE_RATE).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
-      html += `<td class="mono intensity-cell" style="color: ${volumeColor};">$${formatIntensity(lvl.leverage)}</td>`;
-      html += `<td class="mono" style="color: var(--text-muted);">Bs. ${formatIntensity(volumeBs)}</td>`;
-      html += `<td class="mono" style="font-weight: 500; color: ${distanceColor};">${distanceFormatted}</td>`;
-      html += `<td><span class="intensity-badge ${badgeClass}">${badgeLabel}</span></td>`;
+      html += `<td style="color: var(--text-muted); ${cellStyle}">#${idx + 1}</td>`;
+      html += `<td class="mono" style="font-weight: 600; color: ${priceColor}; ${cellStyle}">$${lvl.price.toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}${quickActionBtns}</td>`;
+      html += `<td class="mono" style="color: var(--text-muted); ${cellStyle}">Bs. ${(lvl.price * EXCHANGE_RATE).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2})}</td>`;
+      html += `<td class="mono intensity-cell" style="color: ${volumeColor}; ${cellStyle}">$${formatIntensity(lvl.leverage)}</td>`;
+      html += `<td class="mono" style="color: var(--text-muted); ${cellStyle}">Bs. ${formatIntensity(volumeBs)}</td>`;
+      html += `<td class="mono" style="color: ${distanceColor}; ${cellStyle}">${distanceFormatted}</td>`;
+      html += `<td style="${cellStyle}"><span class="intensity-badge ${badgeClass}">${badgeLabel}</span></td>`;
       html += `</tr>`;
     });
 
