@@ -1641,10 +1641,21 @@ app.get('/api/jda-signal', async (req, res) => {
   }
 });
 
-app.get('/api/bot-status', (req, res) => {
+app.get('/api/bot-status', async (req, res) => {
   const settings = loadSettings();
+  
+  let btcPrice = 65000; // default fallback
+  try {
+    const tickerResp = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
+    const tickerData = await tickerResp.json();
+    btcPrice = parseFloat(tickerData.price) || 65000;
+  } catch (e) {
+    console.error('Failed to fetch BTC price from Binance for bot-status, using default fallback:', e.message);
+  }
+
   res.json({
     success: true,
+    btcPrice,
     data: {
       ...botPhaseState,
       metrics: botMetrics,

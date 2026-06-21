@@ -59,10 +59,19 @@ function updateStatus(state, message) {
 // Fetch Bot Status
 async function loadBotStatus() {
   try {
+    updateStatus('loading', 'Updating...');
+    btnRefresh.disabled = true;
+    
     const res = await fetch('/api/bot-status');
     if (!res.ok) throw new Error(`HTTP error ${res.status}`);
     const resObj = await res.json();
     cachedBotStatus = resObj.data;
+
+    // Set BTC price directly from bot status response (Binance API source)
+    if (resObj.btcPrice) {
+      valBtcPrice.innerText = formatUSD(resObj.btcPrice);
+      footBtcPrice.innerText = formatBs(resObj.btcPrice) + ' (Equiv.)';
+    }
     
     // Update KPI panels
     if (cachedBotStatus.metrics) {
@@ -119,58 +128,27 @@ async function loadBotStatus() {
         topTraderEl.style.color = m.topTraderRatio > lsRatio ? '#0ECB81' : (m.topTraderRatio < lsRatio ? '#F6465D' : '#98989D');
       }
     }
-  } catch (err) {
-    console.error('Error fetching bot status:', err.message);
-  }
-}
-
-// Fetch Heatmap Data
-async function loadHeatmapData(forceRefresh = false) {
-  try {
-    updateStatus('loading', forceRefresh ? 'Scraping...' : 'Updating...');
-    btnRefresh.disabled = true;
-    
-    const url = `/api/heatmap-data${forceRefresh ? '?refresh=true' : ''}`;
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`HTTP error ${response.status}`);
-    const resObj = await response.json();
-    cachedHeatmapData = resObj.data;
-    
-    // Extract BTC Price from heatmap data
-    const candlestickSeries = cachedHeatmapData.data.series.find(s => s.type === 'candlestick');
-    if (candlestickSeries && candlestickSeries.data && candlestickSeries.data.length > 0) {
-      const lastCandle = candlestickSeries.data[candlestickSeries.data.length - 1];
-      const currentPrice = parseFloat(lastCandle[1]);
-      if (!isNaN(currentPrice)) {
-        valBtcPrice.innerText = formatUSD(currentPrice);
-        footBtcPrice.innerText = formatBs(currentPrice) + ' (Equiv.)';
-      }
-    }
-    
     updateStatus('normal', 'Live');
   } catch (err) {
+    console.error('Error fetching bot status:', err.message);
     updateStatus('error', err.message || 'Connection offline');
   } finally {
     btnRefresh.disabled = false;
   }
 }
 
-
-
 // Sync Now button
 btnRefresh.addEventListener('click', () => {
   loadBotStatus();
-  loadHeatmapData(true);
+  loadJDASignal();
 });
 
 // Initial load
 loadBotStatus();
-loadHeatmapData(false);
 
 // Auto refresh sync every 15 seconds for raw data tab
 setInterval(() => {
   loadBotStatus();
-  loadHeatmapData(false);
 }, 15000);
 
 
