@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JDA Trade Monitor — Login</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg-primary: #121212;
+      --bg-surface: #1E1E1E;
+      --border-color: #2C2C2E;
+      --accent-primary: #F0B90B;
+      --accent-alert: #FF453A;
+      --text-main: #FFFFFF;
+      --text-muted: #98989D;
+      --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background: var(--bg-primary);
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .wrapper { width: 100%; max-width: 380px; padding: 24px; }
+    .logo { text-align: center; margin-bottom: 36px; }
+    .logo h1 { font-size: 26px; font-weight: 700; letter-spacing: -0.5px; }
+    .logo .cyan { color: var(--accent-primary); font-weight: 400; }
+    .logo .live {
+      display: inline-flex; align-items: center; gap: 6px;
+      color: var(--text-muted); font-size: 12px; margin-top: 8px;
+    }
+    .dot-glow {
+      width: 6px; height: 6px; border-radius: 50%;
+      background: var(--accent-primary);
+      box-shadow: 0 0 6px var(--accent-primary);
+      animation: pulse 1.5s infinite ease-in-out;
+      flex-shrink: 0;
+    }
+    @keyframes pulse { 0%,100%{opacity:.35} 50%{opacity:1} }
+    .card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 20px;
+      padding: 32px;
+      box-shadow: 0 8px 40px rgba(0,0,0,.45);
+    }
+    .card-title {
+      font-size: 14px; font-weight: 600;
+      color: var(--text-muted); margin-bottom: 24px;
+      text-transform: uppercase; letter-spacing: .5px;
+    }
+    .form-group { margin-bottom: 18px; }
+    .form-group label {
+      display: block; font-size: 10px; font-weight: 600;
+      color: var(--text-muted); text-transform: uppercase;
+      letter-spacing: .6px; margin-bottom: 7px;
+    }
+    .form-group input {
+      width: 100%;
+      background: rgba(0,0,0,.3);
+      border: 1px solid var(--border-color);
+      border-radius: 10px;
+      padding: 11px 14px;
+      color: var(--text-main);
+      font-family: var(--font-sans);
+      font-size: 14px;
+      outline: none;
+      transition: border-color .2s, box-shadow .2s;
+    }
+    .form-group input::placeholder { color: #3A3A3E; }
+    .form-group input:focus {
+      border-color: var(--accent-primary);
+      box-shadow: 0 0 0 3px rgba(240,185,11,.1);
+    }
+    .btn-login {
+      width: 100%; margin-top: 8px;
+      background: var(--accent-primary);
+      color: #121212;
+      font-family: var(--font-sans);
+      font-size: 14px; font-weight: 700;
+      padding: 13px; border: none;
+      border-radius: 10px; cursor: pointer;
+      transition: all .2s; letter-spacing: .3px;
+    }
+    .btn-login:hover {
+      opacity: .9; transform: translateY(-1px);
+      box-shadow: 0 0 20px rgba(240,185,11,.25);
+    }
+    .btn-login:active { transform: translateY(0); }
+    .btn-login:disabled { opacity: .5; cursor: not-allowed; transform: none; }
+    .error-msg {
+      display: none;
+      background: rgba(255,69,58,.08);
+      border: 1px solid rgba(255,69,58,.25);
+      border-radius: 8px; padding: 10px 14px;
+      color: var(--accent-alert); font-size: 13px;
+      margin-bottom: 18px; text-align: center;
+    }
+    .error-msg.show { display: block; }
+    .footer {
+      text-align: center; margin-top: 28px;
+      color: var(--text-muted); font-size: 11px;
+    }
+    .divider {
+      height: 1px; background: var(--border-color);
+      margin: 20px 0;
+    }
+  </style>
+</head>
+<body>
+<div class="wrapper">
+  <div class="logo">
+    <h1>JDA <span class="cyan">Trade Monitor</span></h1>
+    <div class="live"><span class="dot-glow"></span> Live Dashboard</div>
+  </div>
+
+  <div class="card">
+    <p class="card-title">Sign in to continue</p>
+    <div id="err" class="error-msg">Username or password is incorrect.</div>
+
+    <form id="form">
+      <div class="form-group">
+        <label for="u">Username</label>
+        <input type="text" id="u" placeholder="Enter username" autocomplete="username" autofocus>
+      </div>
+      <div class="form-group">
+        <label for="p">Password</label>
+        <input type="password" id="p" placeholder="Enter password" autocomplete="current-password">
+      </div>
+      <button type="submit" class="btn-login" id="btn">Sign In</button>
+    </form>
+  </div>
+
+  <div class="footer">JDA Trade Monitor &copy; 2025</div>
+</div>
+
+<script>
+  const params = new URLSearchParams(location.search);
+  if (params.get('error')) document.getElementById('err').classList.add('show');
+
+  document.getElementById('form').addEventListener('submit', async e => {
+    e.preventDefault();
+    const btn = document.getElementById('btn');
+    const err = document.getElementById('err');
+    err.classList.remove('show');
+    btn.disabled = true;
+    btn.textContent = 'Signing in...';
+
+    try {
+      const res = await fetch('/auth/login', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          username: document.getElementById('u').value.trim(),
+          password: document.getElementById('p').value
+        })
+      });
+
+      if (res.ok) {
+        location.href = params.get('redirect') || '/';
+      } else {
+        err.classList.add('show');
+        btn.disabled = false;
+        btn.textContent = 'Sign In';
+      }
+    } catch {
+      err.textContent = 'Network error. Please try again.';
+      err.classList.add('show');
+      btn.disabled = false;
+      btn.textContent = 'Sign In';
+    }
+  });
+</script>
+</body>
+</html>
