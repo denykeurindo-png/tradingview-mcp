@@ -13,8 +13,8 @@
   <style>
     :root {
       --bg-primary: #0B0E11;
-      --bg-surface: #1E2026;
-      --bg-card-hover: #252930;
+      --bg-surface: #161A1E;
+      --bg-card-hover: #1E2329;
       --border-color: #2B3139;
     }
     
@@ -308,12 +308,12 @@
         <div style="overflow-x:auto; margin-bottom:var(--spacing-sm);">
           <table style="width:100%; border-collapse:collapse; font-size:12px;">
             <thead>
-              <tr style="background:#000;">
-                <th style="padding:8px 12px; color:#fff; text-align:left; font-weight:600; letter-spacing:.5px;">TF</th>
-                <th style="padding:8px 12px; color:#fff; text-align:left; font-weight:600;">ZLEMA</th>
-                <th style="padding:8px 12px; color:#fff; text-align:left; font-weight:600;">Z-STATUS</th>
-                <th style="padding:8px 12px; color:#fff; text-align:left; font-weight:600;">VZO</th>
-                <th style="padding:8px 12px; color:#fff; text-align:left; font-weight:600;">ZONE</th>
+              <tr style="background: rgba(0, 0, 0, 0.3); border-bottom: 2px solid var(--border-color);">
+                <th style="padding:10px 12px; color:var(--text-muted); text-align:left; font-weight:600; letter-spacing:.5px; text-transform: uppercase; border-bottom: 2px solid var(--border-color);">TF</th>
+                <th style="padding:10px 12px; color:var(--text-muted); text-align:left; font-weight:600; text-transform: uppercase; border-bottom: 2px solid var(--border-color);">ZLEMA</th>
+                <th style="padding:10px 12px; color:var(--text-muted); text-align:left; font-weight:600; text-transform: uppercase; border-bottom: 2px solid var(--border-color);">Z-STATUS</th>
+                <th style="padding:10px 12px; color:var(--text-muted); text-align:left; font-weight:600; text-transform: uppercase; border-bottom: 2px solid var(--border-color);">VZO</th>
+                <th style="padding:10px 12px; color:var(--text-muted); text-align:left; font-weight:600; text-transform: uppercase; border-bottom: 2px solid var(--border-color);">ZONE</th>
               </tr>
             </thead>
             <tbody id="jda-mtf-body">
@@ -324,15 +324,15 @@
 
         <!-- Bias + Phase + Action row -->
         <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:8px;">
-          <div id="jda-bias-cell" style="background:#111; border-radius:8px; padding:10px 14px;">
+          <div id="jda-bias-cell" style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-color); border-radius:8px; padding:10px 14px;">
             <div style="font-size:10px; color:var(--text-muted); margin-bottom:4px;">BIAS &amp; CONF</div>
             <div id="jda-bias-text" style="font-size:14px; font-weight:700; color:#98989D;">-- | --%</div>
           </div>
-          <div style="background:#111; border-radius:8px; padding:10px 14px;">
+          <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-color); border-radius:8px; padding:10px 14px;">
             <div style="font-size:10px; color:var(--text-muted); margin-bottom:4px;">PHASE</div>
             <div id="jda-phase-text" style="font-size:14px; font-weight:700; color:#98989D;">--</div>
           </div>
-          <div style="background:#111; border-radius:8px; padding:10px 14px;">
+          <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-color); border-radius:8px; padding:10px 14px;">
             <div style="font-size:10px; color:var(--text-muted); margin-bottom:4px;">DIR SCORE</div>
             <div id="jda-score-text" style="font-size:14px; font-weight:700; font-family:var(--font-mono); color:#98989D;">--</div>
           </div>
@@ -340,22 +340,22 @@
 
         <!-- Smart Filters Row -->
         <div style="display:grid; grid-template-columns:1fr 1fr 1fr; gap:8px; margin-bottom:8px;">
-          <div id="jda-filter-ema" style="background:#111; border-radius:8px; padding:10px 14px;">
+          <div id="jda-filter-ema" style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-color); border-radius:8px; padding:10px 14px;">
             <div style="font-size:10px; color:var(--text-muted); margin-bottom:4px;">EMA50 (4H) FILTER</div>
             <div id="jda-filter-ema-text" style="font-size:13px; font-weight:600; color:#98989D;">--</div>
           </div>
-          <div id="jda-filter-adx" style="background:#111; border-radius:8px; padding:10px 14px;">
+          <div id="jda-filter-adx" style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-color); border-radius:8px; padding:10px 14px;">
             <div style="font-size:10px; color:var(--text-muted); margin-bottom:4px;">ADX (15M) FILTER</div>
             <div id="jda-filter-adx-text" style="font-size:13px; font-weight:600; color:#98989D;">--</div>
           </div>
-          <div id="jda-filter-cross" style="background:#111; border-radius:8px; padding:10px 14px;">
+          <div id="jda-filter-cross" style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-color); border-radius:8px; padding:10px 14px;">
             <div style="font-size:10px; color:var(--text-muted); margin-bottom:4px;">EMA13/SMA50 (15M)</div>
             <div id="jda-filter-cross-text" style="font-size:13px; font-weight:600; color:#98989D;">--</div>
           </div>
         </div>
 
         <!-- Action Call Details -->
-        <div style="background:#111; border-radius:8px; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--spacing-sm);">
+        <div style="background: rgba(0, 0, 0, 0.2); border: 1px solid var(--border-color); border-radius:8px; padding:12px 14px; display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--spacing-sm);">
           <div>
             <div style="font-size:10px; color:var(--text-muted); margin-bottom:4px;">FINAL CALL</div>
             <div id="jda-final-call-text" style="font-size:13px; font-weight:700; color:#fff;">--</div>
@@ -371,6 +371,6 @@
 
   </div>
 
-  <script src="raw-data.js"></script>
+  <script src="raw-data.js?v=2.0.8"></script>
 </body>
 </html>
