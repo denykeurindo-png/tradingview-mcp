@@ -466,9 +466,9 @@ function renderHeatmap(data) {
   // Hide tooltip when mouse leaves the chart container
   myChart.on('globalout', () => {
     myChart.dispatchAction({ type: 'hideTip' });
-  });
-  chartDom.addEventListener('mouseleave', () => {
-    myChart && myChart.dispatchAction({ type: 'hideTip' });
+    myChart.dispatchAction({ type: 'updateAxisPointer', currTrigger: 'leave' });
+    myChart.dispatchAction({ type: 'downplay' });
+    myChart.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: -1 });
   });
 
   window.addEventListener('resize', () => { myChart && myChart.resize(); });
@@ -1417,9 +1417,9 @@ function renderHeatmap3D(data) {
   // Hide tooltip when mouse leaves the chart container
   myChart3D.on('globalout', () => {
     myChart3D.dispatchAction({ type: 'hideTip' });
-  });
-  chartDom.addEventListener('mouseleave', () => {
-    myChart3D && myChart3D.dispatchAction({ type: 'hideTip' });
+    myChart3D.dispatchAction({ type: 'updateAxisPointer', currTrigger: 'leave' });
+    myChart3D.dispatchAction({ type: 'downplay' });
+    myChart3D.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: -1 });
   });
 
   window.addEventListener('resize', () => myChart3D && myChart3D.resize());
@@ -1468,6 +1468,15 @@ function renderSweepPanel3D(d) {
 load3DData();
 setInterval(load3DData, 10 * 60 * 1000);
 
+// Helper function to force hide tooltip and axisPointer for an ECharts instance
+const forceHideEchartsTooltip = (chart) => {
+  if (!chart) return;
+  chart.dispatchAction({ type: 'hideTip' });
+  chart.dispatchAction({ type: 'updateAxisPointer', currTrigger: 'leave' });
+  chart.dispatchAction({ type: 'downplay' });
+  chart.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: -1 });
+};
+
 // Global mouse move tracker to force hide ECharts tooltips when mouse leaves the chart container
 document.addEventListener('mousemove', (e) => {
   const checkAndHide = (chart, elementId) => {
@@ -1489,10 +1498,18 @@ document.addEventListener('mousemove', (e) => {
     );
     
     if (!isInside) {
-      chart.dispatchAction({ type: 'hideTip' });
+      forceHideEchartsTooltip(chart);
     }
   };
   
   checkAndHide(myChart, 'liq-heatmap-chart');
   checkAndHide(myChart3D, 'liq-heatmap-chart-3d');
+});
+
+// One-time global mouseout listener to handle when mouse leaves the browser viewport completely
+document.addEventListener('mouseout', (e) => {
+  if (!e.relatedTarget || e.relatedTarget.nodeName === "HTML") {
+    forceHideEchartsTooltip(myChart);
+    forceHideEchartsTooltip(myChart3D);
+  }
 });
