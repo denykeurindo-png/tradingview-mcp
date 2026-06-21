@@ -118,7 +118,7 @@ app.use(express.static(path.join(__dirname, 'public')));
 // In-memory cache for ETF data
 let etfDataCache = null;
 let lastFetchTime = null;
-let isFetching = false;
+let isScrapingBusy = false;
 
 // Helper to parse values with suffixes like K, M, B
 const parseV = v => {
@@ -138,7 +138,7 @@ const parseV = v => {
 // CDP CoinGlass scraper
 async function scrapeCoinGlass(path, forceRefresh = false) {
   // 1. Find the CoinGlass tab
-  const tabsResponse = await fetch('http://localhost:9222/json', { signal: AbortSignal.timeout(5000) });
+  const tabsResponse = await fetch('http://127.0.0.1:9222/json', { signal: AbortSignal.timeout(5000) });
   const tabs = await tabsResponse.json();
   let tab = tabs.find(t => t.type === 'page' && t.url?.includes('coinglass.com' + path));
   let navigated = false;
@@ -356,7 +356,6 @@ async function scrapeCoinGlass(path, forceRefresh = false) {
 // Heatmap cache variables
 let heatmapDataCache = null;
 let lastHeatmapFetchTime = null;
-let isFetchingHeatmap = false;
 
 // Heatmap 3D cache
 let heatmap3DCache = null;
@@ -369,12 +368,20 @@ let sweepPrediction3DCache = null;
 // Uses the existing CoinGlass tab; navigates to heatmap and selects "3 day" period.
 let heatmap3DTabId = null;
 async function scrapeHeatMap3D() {
-  const listResp = await fetch('http://localhost:9222/json/list', { signal: AbortSignal.timeout(5000) });
+  const listResp = await fetch('http://127.0.0.1:9222/json', { signal: AbortSignal.timeout(5000) });
   const tabs = await listResp.json();
 
-  // Use existing CoinGlass tab (has session cookies)
-  const tab = tabs.find(t => t.type === 'page' && t.url && t.url.includes('coinglass.com')) || null;
-  if (!tab) throw new Error('No CoinGlass tab found for 3D scrape');
+  // Use existing CoinGlass tab, otherwise fall back to any active tab and navigate
+  let tab = tabs.find(t => t.type === 'page' && t.url && t.url.includes('coinglass.com')) || null;
+  let navigated = false;
+
+  if (!tab) {
+    // Fallback: Try any active http/https tab
+    tab = tabs.find(t => t.type === 'page' && t.url?.startsWith('http') && !t.url?.includes('devtools'));
+    if (!tab) throw new Error('No suitable tab found for 3D scrape. Please make sure a web page is open in Chrome/TradingView.');
+    navigated = true;
+  }
+  const savedUrl = navigated ? tab.url : null;
 
   const ws = await new Promise((resolve, reject) => {
     const socket = new WebSocket(tab.webSocketDebuggerUrl);
@@ -396,121 +403,163 @@ async function scrapeHeatMap3D() {
     ws.send(JSON.stringify({ id, method, params }));
   });
 
-  await cdp('Runtime.enable');
-  await cdp('Page.enable');
+  try {
+    await cdp('Runtime.enable');
+    await cdp('Page.enable');
 
-  // Navigate to LiquidationHeatMap (may be on ETF page after restoration)
-  const curUrl = await cdp('Runtime.evaluate', { expression: 'location.href', returnByValue: true });
-  const isOnHeatmap = (curUrl?.result?.value || '').includes('LiquidationHeatMap');
+    // Navigate to LiquidationHeatMap (may be on ETF page after restoration)
+    const curUrl = await cdp('Runtime.evaluate', { expression: 'location.href', returnByValue: true });
+    const isOnHeatmap = (curUrl?.result?.value || '').includes('LiquidationHeatMap');
 
-  if (!isOnHeatmap) {
-    console.log('[Heatmap3D] Navigating to LiquidationHeatMap...');
-    await cdp('Page.navigate', { url: 'https://www.coinglass.com/pro/futures/LiquidationHeatMap' });
-    await new Promise(r => setTimeout(r, 15000)); // full React render
-  } else {
-    await new Promise(r => setTimeout(r, 2000));
-  }
+    if (!isOnHeatmap) {
+      console.log('[Heatmap3D] Navigating to LiquidationHeatMap...');
+      await cdp('Page.navigate', { url: 'https://www.coinglass.com/pro/futures/LiquidationHeatMap' });
+      await new Promise(r => setTimeout(r, 15000)); // full React render
+    } else {
+      await new Promise(r => setTimeout(r, 2000));
+    }
 
-  // Select "3 day" via React fiber onChange (most reliable for React-managed state)
-  const clickResult = await cdp('Runtime.evaluate', {
-    expression: ,
-    awaitPromise: true,
-    returnByValue: true
-  });
-  console.log('[Heatmap3D] Period select result:', clickResult?.result?.value);
-  // Poll until chart re-renders with 3D data (xAxis first value changes from 24H baseline)
-  // Get current xAxis[0] to detect change
-  const baseline = await cdp('Runtime.evaluate', {
-    expression: `(function(){
-      var el=document.querySelector('.echarts-for-react');
-      if(!el)return '';
-      var keys=Object.keys(el),fk=keys.find(k=>k.startsWith('__reactFiber$')||k.startsWith('__reactContainer$'));
-      if(!fk)return '';
-      var f=el[fk],opt=null;
-      while(f){if(f.memoizedProps&&f.memoizedProps.option){opt=f.memoizedProps.option;break;}f=f.return;}
-      if(!opt||!opt.xAxis)return '';
-      var xa=Array.isArray(opt.xAxis)?opt.xAxis[0].data:opt.xAxis.data;
-      return xa&&xa[0]?String(xa[0]):'';
-    })()`,
-    returnByValue: true
-  });
-  const baselineVal = baseline?.result?.value || '';
-  console.log('[Heatmap3D] Baseline xAxis[0]:', baselineVal);
+    // Select "3 day" via React fiber onChange (most reliable for React-managed state)
+    const clickResult = await cdp('Runtime.evaluate', {
+      expression: `
+        (async function() {
+          function rc(el) {
+            ['mousedown','mouseup','click'].forEach(ev =>
+              el.dispatchEvent(new MouseEvent(ev, {bubbles:true, cancelable:true, view:window}))
+            );
+          }
 
-  // Wait up to 30s for chart to update
-  let chartUpdated = false;
-  for (let attempt = 0; attempt < 10; attempt++) {
-    await new Promise(r => setTimeout(r, 3000));
-    const check = await cdp('Runtime.evaluate', {
-      expression: `(function(){
-        var el=document.querySelector('.echarts-for-react');
-        if(!el)return '';
-        var keys=Object.keys(el),fk=keys.find(k=>k.startsWith('__reactFiber$')||k.startsWith('__reactContainer$'));
-        if(!fk)return '';
-        var f=el[fk],opt=null;
-        while(f){if(f.memoizedProps&&f.memoizedProps.option){opt=f.memoizedProps.option;break;}f=f.return;}
-        if(!opt||!opt.xAxis)return '';
-        var xa=Array.isArray(opt.xAxis)?opt.xAxis[0].data:opt.xAxis.data;
-        return xa&&xa[0]?String(xa[0]):'';
-      })()`,
+          // Walk all elements looking for "24 hour" text
+          var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+          var nodes24 = [];
+          var node;
+          while (node = walker.nextNode()) {
+            if (/^24\\s*hour$/i.test(node.nodeValue.trim())) nodes24.push(node.parentElement);
+          }
+
+          if (nodes24.length === 0) {
+            var all = Array.from(document.querySelectorAll('*'));
+            var el = all.find(e => /^24\\s*hour$/i.test(Array.from(e.childNodes).filter(n=>n.nodeType===3).map(n=>n.nodeValue).join('').trim()));
+            if (el) nodes24.push(el);
+          }
+
+          if (nodes24.length === 0) {
+            return 'no 24h text node; page title=' + document.title.slice(0,40);
+          }
+
+          var el24 = nodes24[0];
+          var node2 = el24;
+          for (var i = 0; i < 10; i++) {
+            rc(node2);
+            if (!node2.parentElement || node2 === document.body) break;
+            node2 = node2.parentElement;
+          }
+          await new Promise(r => setTimeout(r, 2500));
+
+          // Find "3 day" text node
+          var walker2 = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+          var day3El = null;
+          while (node = walker2.nextNode()) {
+            if (/^3\\s*day$/i.test(node.nodeValue.trim())) { day3El = node.parentElement; break; }
+          }
+
+          if (day3El) {
+            rc(day3El);
+            if (day3El.parentElement) rc(day3El.parentElement);
+            await new Promise(r => setTimeout(r, 1000));
+            return 'clicked 3day: ' + day3El.tagName;
+          }
+
+          return 'no 3day found';
+        })()
+      `,
+      awaitPromise: true,
       returnByValue: true
     });
-    const newVal = check?.result?.value || '';
-    if (newVal && newVal !== baselineVal) {
-      console.log('[Heatmap3D] Chart updated after', (attempt+1)*3, 's. New xAxis[0]:', newVal);
-      chartUpdated = true;
-      break;
+    console.log('[Heatmap3D] Period select result:', clickResult?.result?.value);
+    
+    // Wait up to 45s for chart to update to 3D period (xAxis data length > 150)
+    let chartUpdated = false;
+    for (let attempt = 0; attempt < 15; attempt++) {
+      await new Promise(r => setTimeout(r, 3000));
+      const check = await cdp('Runtime.evaluate', {
+        expression: `(function(){
+          var el=document.querySelector('.echarts-for-react');
+          if(!el) return 0;
+          var keys=Object.keys(el),fk=keys.find(k=>k.startsWith('__reactFiber$')||k.startsWith('__reactContainer$'));
+          if(!fk) return 0;
+          var f=el[fk],opt=null;
+          while(f){if(f.memoizedProps&&f.memoizedProps.option){opt=f.memoizedProps.option;break;}f=f.return;}
+          if(!opt||!opt.xAxis) return 0;
+          var xa=Array.isArray(opt.xAxis)?opt.xAxis[0].data:opt.xAxis.data;
+          return xa ? xa.length : 0;
+        })()`,
+        returnByValue: true
+      });
+      const newVal = parseInt(check?.result?.value, 10) || 0;
+      if (newVal > 150) {
+        console.log('[Heatmap3D] Chart updated to 3D period after', (attempt+1)*3, 's. xAxis length:', newVal);
+        chartUpdated = true;
+        break;
+      }
+      console.log('[Heatmap3D] Waiting for 3D chart update... attempt', attempt+1, 'xAxis length:', newVal);
     }
-    console.log('[Heatmap3D] Waiting for chart update... attempt', attempt+1, 'xAxis[0]:', newVal);
-  }
-  if (!chartUpdated) console.log('[Heatmap3D] Chart did not update - scraping current state');
+    if (!chartUpdated) console.log('[Heatmap3D] Chart did not update to 3D period - scraping current state');
 
-  // Scrape chart data
-  const result = await cdp('Runtime.evaluate', {
-    expression: `
-      new Promise(function(resolve) {
-        var start = Date.now();
-        function check() {
-          var el = document.querySelector('.echarts-for-react');
-          if (el) {
-            var keys = Object.keys(el);
-            var fiberKey = keys.find(k => k.startsWith('__reactFiber$') || k.startsWith('__reactContainer$'));
-            if (fiberKey) {
-              var fiber = el[fiberKey];
-              var option = null;
-              while (fiber) {
-                if (fiber.memoizedProps && fiber.memoizedProps.option) { option = fiber.memoizedProps.option; break; }
-                fiber = fiber.return;
-              }
-              if (option && option.series && option.series.length > 0) {
-                resolve(JSON.stringify({
-                  xAxis: option.xAxis ? (Array.isArray(option.xAxis) ? option.xAxis[0].data : option.xAxis.data) : null,
-                  yAxis: option.yAxis ? (Array.isArray(option.yAxis) ? option.yAxis[0].data : option.yAxis.data) : null,
-                  series: option.series.map(s => ({ name: s.name, type: s.type, data: s.data })),
-                  visualMap: option.visualMap ? { min: option.visualMap.min, max: option.visualMap.max } : null
-                }));
-                return;
+    // Scrape chart data
+    const result = await cdp('Runtime.evaluate', {
+      expression: `
+        new Promise(function(resolve) {
+          var start = Date.now();
+          function check() {
+            var el = document.querySelector('.echarts-for-react');
+            if (el) {
+              var keys = Object.keys(el);
+              var fiberKey = keys.find(k => k.startsWith('__reactFiber$') || k.startsWith('__reactContainer$'));
+              if (fiberKey) {
+                var fiber = el[fiberKey];
+                var option = null;
+                while (fiber) {
+                  if (fiber.memoizedProps && fiber.memoizedProps.option) { option = fiber.memoizedProps.option; break; }
+                  fiber = fiber.return;
+                }
+                if (option && option.series && option.series.length > 0) {
+                  var xa = option.xAxis ? (Array.isArray(option.xAxis) ? option.xAxis[0].data : option.xAxis.data) : null;
+                  if (xa && xa.length > 150) {
+                    resolve(JSON.stringify({
+                      xAxis: xa,
+                      yAxis: option.yAxis ? (Array.isArray(option.yAxis) ? option.yAxis[0].data : option.yAxis.data) : null,
+                      series: option.series.map(s => ({ name: s.name, type: s.type, data: s.data })),
+                      visualMap: option.visualMap ? { min: option.visualMap.min, max: option.visualMap.max } : null
+                    }));
+                    return;
+                  }
+                }
               }
             }
+            if (Date.now() - start < 45000) setTimeout(check, 2000);
+            else resolve(JSON.stringify({ error: 'timeout waiting for 3D chart data' }));
           }
-          if (Date.now() - start < 30000) setTimeout(check, 2000);
-          else resolve(JSON.stringify({ error: 'timeout' }));
-        }
-        setTimeout(check, 2000);
-      })
-    `,
-    awaitPromise: true,
-    returnByValue: true
-  });
+          setTimeout(check, 1000);
+        })
+      `,
+      awaitPromise: true,
+      returnByValue: true
+    });
 
-  ws.close();
+    const val = result?.result?.value;
+    if (!val) throw new Error('No 3D data returned');
+    const parsed = JSON.parse(val);
+    if (parsed.error) throw new Error('3D scrape: ' + parsed.error);
 
-  const val = result?.result?.value;
-  if (!val) throw new Error('No 3D data returned');
-  const parsed = JSON.parse(val);
-  if (parsed.error) throw new Error('3D scrape: ' + parsed.error);
-
-  return { data: parsed, timestamp: new Date().toISOString(), period: '3d' };
+    return { data: parsed, timestamp: new Date().toISOString(), period: '3d' };
+  } finally {
+    if (navigated && savedUrl) {
+      console.log(`[Heatmap3D] Restoring original URL: ${savedUrl}`);
+      await cdp('Page.navigate', { url: savedUrl }).catch(e => console.error('[Heatmap3D] Failed to navigate back:', e));
+    }
+    ws.close();
+  }
 }
 
 
@@ -525,7 +574,7 @@ async function scrapeHeatMap(forceRefresh = false) {
 
   while (retries > 0) {
     try {
-      const tabsResponse = await fetch('http://localhost:9222/json', { signal: AbortSignal.timeout(4000) });
+      const tabsResponse = await fetch('http://127.0.0.1:9222/json', { signal: AbortSignal.timeout(4000) });
       tabs = await tabsResponse.json();
       break;
     } catch (e) {
@@ -734,11 +783,11 @@ app.get('/api/heatmap-data', async (req, res) => {
     return res.json({ success: true, source: 'cache', data: heatmapDataCache });
   }
 
-  if (isFetchingHeatmap) {
-    if (heatmapDataCache) return res.json({ success: true, source: "stale-cache", data: heatmapDataCache }); return res.status(409).json({ success: false, error: "Scrape in progress." });
+  if (isScrapingBusy) {
+    if (heatmapDataCache) return res.json({ success: true, source: "stale-cache", data: heatmapDataCache }); return res.status(409).json({ success: false, error: "A scrape is already in progress, please wait." });
   }
 
-  isFetchingHeatmap = true;
+  isScrapingBusy = true;
   try {
     console.log('Starting CoinGlass Heatmap scrape...');
     const result = await scrapeHeatMap(forceRefresh);
@@ -749,7 +798,7 @@ app.get('/api/heatmap-data', async (req, res) => {
     console.error('Heatmap scrape error:', error.message);
     res.status(500).json({ success: false, error: error.message });
   } finally {
-    isFetchingHeatmap = false;
+    isScrapingBusy = false;
   }
 });
 
@@ -771,11 +820,11 @@ app.get('/api/etf-data', async (req, res) => {
     return res.json({ success: true, source: 'cache', data: etfDataCache, btcPrice });
   }
 
-  if (isFetching) {
+  if (isScrapingBusy) {
     return res.status(409).json({ success: false, error: 'A scrape is already in progress, please wait.' });
   }
 
-  isFetching = true;
+  isScrapingBusy = true;
   try {
     console.log('Starting CoinGlass scrape...');
     const result = await scrapeCoinGlass('/etf/bitcoin', forceRefresh);
@@ -786,7 +835,7 @@ app.get('/api/etf-data', async (req, res) => {
     console.error('Scrape error:', error.message);
     res.status(500).json({ success: false, error: error.message });
   } finally {
-    isFetching = false;
+    isScrapingBusy = false;
   }
 });
 
@@ -2272,12 +2321,12 @@ function predictSweepTargets(heatmapData, metrics) {
 }
 
 async function runBotCycle() {
-  if (isFetchingHeatmap) {
+  if (isScrapingBusy) {
     console.log('[Background Bot] Scrape already in progress, skipping background cycle.');
     return;
   }
 
-  isFetchingHeatmap = true;
+  isScrapingBusy = true;
   try {
     console.log('[Background Bot] Running scheduled scraper and trade evaluation cycle...');
     
@@ -2360,19 +2409,30 @@ async function runBotCycle() {
     console.log('[SweepPredict] Result:', sweepPredictionCache ? sweepPredictionCache.direction + ' ' + sweepPredictionCache.confidence + '%' : 'NULL');
 
     // Scrape 3D heatmap in background after main cycle
-    scrapeHeatMap3D().then(r3d => {
+    try {
+      const r3d = await scrapeHeatMap3D();
       heatmap3DCache = r3d;
       lastHeatmap3DFetchTime = Date.now();
       const hd3 = r3d.data;
+      if (hd3) {
+        if (!hd3.series) hd3.series = [];
+        if (!hd3.series.some(s => s.type === 'candlestick' || s.type === 'candlestick_raw')) {
+          const mainData = heatmapDataCache?.data?.data || heatmapDataCache?.data || heatmapDataCache;
+          const cs2d = mainData?.series?.find(s => s.type === 'candlestick' || s.type === 'candlestick_raw');
+          if (cs2d) hd3.series.push(cs2d);
+        }
+      }
       sweepPrediction3DCache = predictSweepTargets(hd3, botMetrics);
       console.log('[Heatmap3D] OK. Sweep3D:', sweepPrediction3DCache ? sweepPrediction3DCache.direction + ' ' + sweepPrediction3DCache.confidence + '%' : 'NULL');
-    }).catch(e => console.error('[Heatmap3D] Error:', e.message));
+    } catch(e) {
+      console.error('[Heatmap3D] Error:', e.message);
+    }
 
     console.log('[Background Bot] Cycle completed successfully. Metrics:', JSON.stringify(botMetrics));
   } catch (error) {
     console.error('[Background Bot] Cycle error:', error.message);
   } finally {
-    isFetchingHeatmap = false;
+    isScrapingBusy = false;
   }
 }
 
