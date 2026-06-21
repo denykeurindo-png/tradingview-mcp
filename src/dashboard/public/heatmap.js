@@ -459,6 +459,15 @@ function renderHeatmap(data) {
   };
 
   myChart.setOption(option);
+
+  // Hide tooltip when mouse leaves the chart container
+  myChart.on('globalout', () => {
+    myChart.dispatchAction({ type: 'hideTip' });
+  });
+  chartDom.addEventListener('mouseleave', () => {
+    myChart && myChart.dispatchAction({ type: 'hideTip' });
+  });
+
   window.addEventListener('resize', () => { myChart && myChart.resize(); });
 }
 
@@ -1398,6 +1407,15 @@ function renderHeatmap3D(data) {
         itemStyle: { color: '#0ECB81', color0: '#F6465D', borderColor: '#0ECB81', borderColor0: '#F6465D' } }
     ]
   });
+
+  // Hide tooltip when mouse leaves the chart container
+  myChart3D.on('globalout', () => {
+    myChart3D.dispatchAction({ type: 'hideTip' });
+  });
+  chartDom.addEventListener('mouseleave', () => {
+    myChart3D && myChart3D.dispatchAction({ type: 'hideTip' });
+  });
+
   window.addEventListener('resize', () => myChart3D && myChart3D.resize());
 }
 
