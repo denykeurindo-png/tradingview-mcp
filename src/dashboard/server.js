@@ -118,7 +118,34 @@ app.use(express.static(path.join(__dirname, 'public')));
 // In-memory cache for ETF data
 let etfDataCache = null;
 let lastFetchTime = null;
-let isScrapingBusy = false;
+
+// Page-specific scraping locks
+let isEtfScrapingBusy = false;
+let isHeatmapScrapingBusy = false;
+
+// Serial queue/mutex for Chrome remote debugging (CDP) interactions
+let cdpMutex = Promise.resolve();
+
+async function runWithCdpLock(fn) {
+  const currentLock = cdpMutex;
+  let resolveLock;
+  cdpMutex = new Promise((resolve) => {
+    resolveLock = resolve;
+  });
+  
+  try {
+    await currentLock;
+  } catch (e) {
+    // Ignore errors from previous queue item
+  }
+  
+  try {
+    return await fn();
+  } finally {
+    // Allow 2 seconds for Chrome tab states/URLs to stabilize before releasing the lock
+    setTimeout(resolveLock, 2000);
+  }
+}
 
 // Helper to parse values with suffixes like K, M, B
 const parseV = v => {
@@ -783,14 +810,15 @@ app.get('/api/heatmap-data', async (req, res) => {
     return res.json({ success: true, source: 'cache', data: heatmapDataCache });
   }
 
-  if (isScrapingBusy) {
-    if (heatmapDataCache) return res.json({ success: true, source: "stale-cache", data: heatmapDataCache }); return res.status(409).json({ success: false, error: "A scrape is already in progress, please wait." });
+  if (isHeatmapScrapingBusy) {
+    if (heatmapDataCache) return res.json({ success: true, source: "stale-cache", data: heatmapDataCache });
+    return res.status(409).json({ success: false, error: "A scrape is already in progress, please wait." });
   }
 
-  isScrapingBusy = true;
+  isHeatmapScrapingBusy = true;
   try {
     console.log('Starting CoinGlass Heatmap scrape...');
-    const result = await scrapeHeatMap(forceRefresh);
+    const result = await runWithCdpLock(() => scrapeHeatMap(forceRefresh));
     heatmapDataCache = result;
     lastHeatmapFetchTime = Date.now();
     res.json({ success: true, source: 'live', data: result });
@@ -798,7 +826,7 @@ app.get('/api/heatmap-data', async (req, res) => {
     console.error('Heatmap scrape error:', error.message);
     res.status(500).json({ success: false, error: error.message });
   } finally {
-    isScrapingBusy = false;
+    isHeatmapScrapingBusy = false;
   }
 });
 
@@ -820,14 +848,14 @@ app.get('/api/etf-data', async (req, res) => {
     return res.json({ success: true, source: 'cache', data: etfDataCache, btcPrice });
   }
 
-  if (isScrapingBusy) {
+  if (isEtfScrapingBusy) {
     return res.status(409).json({ success: false, error: 'A scrape is already in progress, please wait.' });
   }
 
-  isScrapingBusy = true;
+  isEtfScrapingBusy = true;
   try {
     console.log('Starting CoinGlass scrape...');
-    const result = await scrapeCoinGlass('/etf/bitcoin', forceRefresh);
+    const result = await runWithCdpLock(() => scrapeCoinGlass('/etf/bitcoin', forceRefresh));
     etfDataCache = result;
     lastFetchTime = Date.now();
     res.json({ success: true, source: 'live', data: result, btcPrice });
@@ -835,7 +863,7 @@ app.get('/api/etf-data', async (req, res) => {
     console.error('Scrape error:', error.message);
     res.status(500).json({ success: false, error: error.message });
   } finally {
-    isScrapingBusy = false;
+    isEtfScrapingBusy = false;
   }
 });
 
@@ -2321,12 +2349,12 @@ function predictSweepTargets(heatmapData, metrics) {
 }
 
 async function runBotCycle() {
-  if (isScrapingBusy) {
+  if (isHeatmapScrapingBusy) {
     console.log('[Background Bot] Scrape already in progress, skipping background cycle.');
     return;
   }
 
-  isScrapingBusy = true;
+  isHeatmapScrapingBusy = true;
   try {
     console.log('[Background Bot] Running scheduled scraper and trade evaluation cycle...');
     
@@ -2396,7 +2424,7 @@ async function runBotCycle() {
     botMetrics = { ...botMetrics
     };
 
-    const result = await scrapeHeatMap(true); // force refresh to get latest data from CoinGlass!
+    const result = await runWithCdpLock(() => scrapeHeatMap(true)); // force refresh to get latest data from CoinGlass!
     heatmapDataCache = result;
     lastHeatmapFetchTime = Date.now();
 
@@ -2410,7 +2438,7 @@ async function runBotCycle() {
 
     // Scrape 3D heatmap in background after main cycle
     try {
-      const r3d = await scrapeHeatMap3D();
+      const r3d = await runWithCdpLock(() => scrapeHeatMap3D());
       heatmap3DCache = r3d;
       lastHeatmap3DFetchTime = Date.now();
       const hd3 = r3d.data;
@@ -2432,7 +2460,7 @@ async function runBotCycle() {
   } catch (error) {
     console.error('[Background Bot] Cycle error:', error.message);
   } finally {
-    isScrapingBusy = false;
+    isHeatmapScrapingBusy = false;
   }
 }
 
