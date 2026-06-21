@@ -87,8 +87,15 @@ async function loadHeatmapData(forceRefresh = false) {
     const url = `/api/heatmap-data${forceRefresh ? '?refresh=true' : ''}`;
     const response = await fetch(url);
     if (!response.ok) {
-      const errData = await response.json();
-      throw new Error(errData.error || `HTTP error ${response.status}`);
+      if (response.status === 409) {
+        // Scrape in progress — silent retry, keep showing last data
+        updateStatus('loading', 'Scraping...');
+        scheduleRetry();
+        btnRefresh.disabled = false;
+        return;
+      }
+      const errData = await response.json().catch(() => ({}));
+      throw new Error(errData.error || 'HTTP error ' + response.status);
     }
 
     const resObj = await response.json();
@@ -113,6 +120,7 @@ async function loadHeatmapData(forceRefresh = false) {
       console.log(`[Heatmap] Rendering new data from ${sourceLabel}...`);
       renderKPIs(result, lastUpdate);
       renderHeatmap(result);
+      renderLiquidationTables(result);
     } else {
       console.log('[Heatmap] Data identical (cache unchanged). Bypassing charts/tables rendering for power efficiency.');
     }
@@ -183,6 +191,117 @@ function renderKPIs(data, updateTime) {
   }
 }
 
+
+
+// ─── Liquidation Pool Tables ────────────────────────────────
+function renderLiquidationTables(data) {
+  const aboveContainer = document.getElementById('above-chart-container');
+  const belowContainer = document.getElementById('below-chart-container');
+  if (!aboveContainer || !belowContainer) return;
+
+  if (!data || !data.series) { aboveContainer.innerHTML = ''; belowContainer.innerHTML = ''; return; }
+
+  const heatmapSeries = data.series.find(s => s.type === 'heatmap');
+  const candlestickSeries = data.series.find(s => s.type === 'candlestick');
+
+  if (!heatmapSeries || !heatmapSeries.data || heatmapSeries.data.length === 0) {
+    aboveContainer.innerHTML = ''; belowContainer.innerHTML = ''; return;
+  }
+
+  let currentPrice = null;
+  if (candlestickSeries && candlestickSeries.data && candlestickSeries.data.length > 0) {
+    const lastCandle = candlestickSeries.data[candlestickSeries.data.length - 1];
+    currentPrice = parseFloat(lastCandle[1]);
+  }
+  if (!currentPrice) { aboveContainer.innerHTML = ''; belowContainer.innerHTML = ''; return; }
+
+  let maxHigh = currentPrice, minLow = currentPrice;
+  if (candlestickSeries && candlestickSeries.data) {
+    candlestickSeries.data.forEach(c => {
+      const low = parseFloat(c[2]), high = parseFloat(c[3]);
+      if (!isNaN(high) && high > maxHigh) maxHigh = high;
+      if (!isNaN(low) && low < minLow) minLow = low;
+    });
+  }
+
+  const yAxisData = data.yAxis || [];
+  const leveragePerY = {};
+  heatmapSeries.data.forEach(item => {
+    const yIdx = item[1];
+    const val = parseFloat(item[2] || 0);
+    leveragePerY[yIdx] = (leveragePerY[yIdx] || 0) + val;
+  });
+
+  const levels = [];
+  Object.keys(leveragePerY).forEach(yIdxStr => {
+    const yIdx = parseInt(yIdxStr, 10);
+    const priceStr = yAxisData[yIdx];
+    if (!priceStr) return;
+    const price = parseFloat(priceStr);
+    const leverage = leveragePerY[yIdx];
+    const distancePercent = ((price - currentPrice) / currentPrice) * 100;
+    const isAbove = price > currentPrice;
+    const isLiquidated = isAbove ? (price <= maxHigh) : (price >= minLow);
+    levels.push({ price, leverage, distance: distancePercent, isAbove, isLiquidated });
+  });
+
+  const aboveLevels = levels.filter(l => l.isAbove).sort((a, b) => b.leverage - a.leverage).slice(0, 5).sort((a, b) => a.price - b.price);
+  const belowLevels = levels.filter(l => !l.isAbove).sort((a, b) => b.leverage - a.leverage).slice(0, 5).sort((a, b) => b.price - a.price);
+  const maxLeverage = Math.max(...levels.map(l => l.leverage), 1);
+
+  const renderTableHtml = (pools, isAbove) => {
+    const totalActive = pools.reduce((sum, lvl) => sum + (lvl.isLiquidated ? 0 : lvl.leverage), 0);
+    const totalActiveBs = totalActive * EXCHANGE_RATE;
+
+    if (pools.length === 0) return '<div class="liq-table-container ' + (isAbove ? 'above' : 'below') + '">'
+      + '<h4>' + (isAbove ? '▲ Resistance Liquidation Pools (Above Price)' : '▼ Support Liquidation Pools (Below Price)') + '</h4>'
+      + '<div style="text-align:center;color:var(--text-muted);font-size:12px;padding:12px;">No significant liquidation pools detected.</div></div>';
+
+    let html = '<div class="liq-table-container ' + (isAbove ? 'above' : 'below') + '">';
+    html += '<h4>' + (isAbove ? '▲ Top Resistance Liquidation Pools' : '▼ Top Support Liquidation Pools')
+      + ' — Current: ' + formatUSD(currentPrice) + ' | Active: $' + formatIntensity(totalActive) + '</h4>';
+    html += '<table class="liq-data-table"><thead><tr>'
+      + '<th>Rank</th><th>Price (USD)</th>'
+      + '<th>Pool Vol (USD)</th><th>Distance</th><th>Intensity</th>'
+      + '</tr></thead><tbody>';
+
+    pools.forEach((lvl, idx) => {
+      const ratio = lvl.leverage / maxLeverage;
+      let badgeClass = 'low', badgeLabel = 'Low';
+      if (lvl.isLiquidated) { badgeClass = 'liquidated'; badgeLabel = 'Liquidated'; }
+      else if (ratio >= 0.7) { badgeClass = 'high'; badgeLabel = 'High'; }
+      else if (ratio >= 0.3) { badgeClass = 'medium'; badgeLabel = 'Medium'; }
+
+      let cellStyle = 'font-size:13px;font-weight:500;';
+      if (lvl.isLiquidated) cellStyle = 'font-size:11px;font-weight:400;';
+      else if (badgeClass === 'high') cellStyle = 'font-size:15.5px;font-weight:700;';
+      else if (badgeClass === 'medium') cellStyle = 'font-size:13.5px;font-weight:600;';
+
+      const distSign = lvl.distance > 0 ? '+' : '';
+      const volBs = lvl.leverage * EXCHANGE_RATE;
+      const isLiq = lvl.isLiquidated;
+      const rowOpacity = isLiq ? ' style="opacity:0.45;"' : '';
+      const priceColor = isLiq ? 'var(--text-muted)' : '#FFFFFF';
+      const volColor = isLiq ? 'var(--text-muted)' : (isAbove ? '#bfdc21' : '#3ab56e');
+      const distColor = isLiq ? 'var(--text-muted)' : (isAbove ? '#FF453A' : '#32D74B');
+      const quickBtns = isLiq ? '' : '<span class="quick-set-btn entry-set" onclick="setPlannerPrice(\'entry\',' + lvl.price + ')">E</span>'
+        + '<span class="quick-set-btn tp-set" onclick="setPlannerPrice(\'tp\',' + lvl.price + ')">TP</span>';
+
+      html += '<tr' + rowOpacity + '>'
+        + '<td style="color:var(--text-muted);' + cellStyle + '">#' + (idx+1) + '</td>'
+        + '<td class="mono" style="font-weight:600;color:' + priceColor + ';' + cellStyle + '">$' + lvl.price.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) + quickBtns + '</td>'
+        + '<td class="mono intensity-cell" style="color:' + volColor + ';' + cellStyle + '">$' + formatIntensity(lvl.leverage) + '</td>'
+        + '<td class="mono" style="color:' + distColor + ';' + cellStyle + '">' + distSign + lvl.distance.toFixed(2) + '%</td>'
+        + '<td style="' + cellStyle + '"><span class="intensity-badge ' + badgeClass + '">' + badgeLabel + '</span></td>'
+        + '</tr>';
+    });
+    html += '</tbody></table></div>';
+    return html;
+  };
+
+  aboveContainer.innerHTML = renderTableHtml(aboveLevels, true);
+  belowContainer.innerHTML = renderTableHtml(belowLevels, false);
+}
 
 
 // ─── ECharts 2D HeatMap with Candlestick Overlay ────────────
@@ -937,3 +1056,332 @@ window.addEventListener('DOMContentLoaded', () => {
     });
   }
 });
+
+
+// ── Sweep Prediction Panel ────────────────────────────────────────────────────
+async function loadSweepPrediction() {
+  try {
+    const res = await fetch('/api/sweep-prediction');
+    if (!res.ok) return;
+    const json = await res.json();
+    const d = json.data;
+    if (!d) return;
+
+    const panel = document.getElementById('sweep-prediction-panel');
+    if (!panel) return;
+
+    const isUp = d.direction === 'UP';
+    const dirColor = isUp ? '#13fed9' : '#f23744';
+    const dirArrow = isUp ? '▲' : '▼';
+    const dirLabel = isUp ? 'UPSIDE SWEEP' : 'DOWNSIDE SWEEP';
+
+    // Confidence bar
+    const confW = d.confidence + '%';
+
+    // Hot pool
+    const hot = d.hotPool;
+    const cascade = d.cascadePool;
+    const hotSide = hot ? (hot.side === 'RESISTANCE' ? '▲' : '▼') : '';
+    const hotColor = hot ? (hot.side === 'RESISTANCE' ? '#f23744' : '#13fed9') : '#98989D';
+
+    panel.innerHTML =
+      '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #2C2C2E; padding-bottom:10px;">' +
+        '<div>' +
+          '<span style="font-size:10px; color:#98989D; text-transform:uppercase; letter-spacing:.5px;">Next Sweep Prediction</span>' +
+          '<div style="display:flex; align-items:baseline; gap:8px; margin-top:2px;">' +
+            '<span style="font-size:20px; font-weight:800; color:' + dirColor + ';">' + dirArrow + ' ' + dirLabel + '</span>' +
+            '<span style="font-size:11px; color:#98989D;">(' + d.confidence + '% confidence)</span>' +
+          '</div>' +
+        '</div>' +
+        '<div style="text-align:right;">' +
+          '<div style="font-size:10px; color:#98989D; margin-bottom:4px;">UP ' + d.upProb + '% / DOWN ' + d.downProb + '%</div>' +
+          '<div style="height:6px; width:120px; background:#1E1E1E; border-radius:3px; overflow:hidden;">' +
+            '<div style="height:100%; width:' + d.upProb + '%; background:linear-gradient(90deg,#13fed9,#f23744); border-radius:3px;"></div>' +
+          '</div>' +
+        '</div>' +
+      '</div>' +
+
+      '<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">' +
+        // Hot Pool
+        '<div style="background:rgba(0,0,0,0.25); border:1px solid ' + hotColor + '33; border-radius:8px; padding:10px;">' +
+          '<div style="font-size:9px; color:#98989D; text-transform:uppercase; margin-bottom:4px;">🔥 Hot Sweep Target</div>' +
+          (hot ?
+            '<div style="font-size:16px; font-weight:700; color:' + hotColor + '; font-family:\'JetBrains Mono\',monospace;">$' + hot.price.toLocaleString() + '</div>' +
+            '<div style="font-size:11px; color:#98989D;">' + hotSide + ' ' + hot.side + ' • ' + hot.distPct + ' away</div>' +
+            '<div style="font-size:10px; color:#555;">Vol: $' + hot.volume + 'M</div>'
+          : '<div style="color:#555; font-size:12px;">No data</div>') +
+        '</div>' +
+        // Cascade Pool
+        '<div style="background:rgba(0,0,0,0.25); border:1px solid #2C2C2E; border-radius:8px; padding:10px;">' +
+          '<div style="font-size:9px; color:#98989D; text-transform:uppercase; margin-bottom:4px;">⚡ Cascade Pool (if swept)</div>' +
+          (cascade ?
+            '<div style="font-size:16px; font-weight:700; color:#FFD60A; font-family:\'JetBrains Mono\',monospace;">$' + cascade.price.toLocaleString() + '</div>' +
+            '<div style="font-size:11px; color:#98989D;">' + cascade.side + ' • ' + cascade.distPct + ' away</div>' +
+            '<div style="font-size:10px; color:#555;">Vol: $' + cascade.volume + 'M</div>'
+          : '<div style="color:#555; font-size:12px;">No cascade data</div>') +
+        '</div>' +
+      '</div>' +
+
+      // Nearest resistance + support
+      '<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">' +
+        '<div style="font-size:11px; color:#98989D;">Nearest Resistance: <span style="color:#f23744; font-weight:600; font-family:\'JetBrains Mono\',monospace;">' +
+          (d.nearestResistance ? '$' + d.nearestResistance.price.toLocaleString() + ' (' + d.nearestResistance.distPct + ')' : '--') + '</span></div>' +
+        '<div style="font-size:11px; color:#98989D;">Nearest Support: <span style="color:#13fed9; font-weight:600; font-family:\'JetBrains Mono\',monospace;">' +
+          (d.nearestSupport ? '$' + d.nearestSupport.price.toLocaleString() + ' (' + d.nearestSupport.distPct + ')' : '--') + '</span></div>' +
+      '</div>' +
+
+      // Reasons
+      '<div style="border-top:1px solid #2C2C2E; padding-top:8px;">' +
+        '<div style="font-size:9px; color:#98989D; text-transform:uppercase; margin-bottom:5px;">Signal Factors</div>' +
+        '<div style="display:flex; flex-wrap:wrap; gap:5px;">' +
+          (d.reasons || []).map(r =>
+            '<span style="font-size:10px; background:rgba(255,255,255,0.05); border:1px solid #2C2C2E; border-radius:4px; padding:2px 7px; color:#ccc;">' + r + '</span>'
+          ).join('') +
+        '</div>' +
+      '</div>' +
+      '<div style="font-size:9px; color:#444; margin-top:6px; text-align:right;">Updated: ' + new Date(d.timestamp).toLocaleTimeString() + '</div>';
+
+  } catch(e) {
+    console.error('[SweepPredict] UI error:', e);
+  }
+}
+
+// Auto-refresh every 3 min
+loadSweepPrediction();
+setInterval(loadSweepPrediction, 3 * 60 * 1000);
+
+
+// ── Chart Tab Switching ───────────────────────────────────────────────────────
+let activeTab = '24h';
+let myChart3D = null;
+
+function switchChartTab(tab) {
+  activeTab = tab;
+  const chart24 = document.getElementById('liq-heatmap-chart');
+  const chart3d  = document.getElementById('liq-heatmap-chart-3d');
+  const btn24 = document.getElementById('tab-24h');
+  const btn3d  = document.getElementById('tab-3d');
+
+  if (tab === '24h') {
+    chart24.style.display = ''; chart3d.style.display = 'none';
+    btn24.style.background = 'var(--accent-primary)'; btn24.style.color = '#0B0E11'; btn24.style.fontWeight = '700';
+    btn3d.style.background = 'transparent'; btn3d.style.color = 'var(--text-muted)'; btn3d.style.fontWeight = '600';
+  } else {
+    chart24.style.display = 'none'; chart3d.style.display = '';
+    btn3d.style.background = 'var(--accent-primary)'; btn3d.style.color = '#0B0E11'; btn3d.style.fontWeight = '700';
+    btn24.style.background = 'transparent'; btn24.style.color = 'var(--text-muted)'; btn24.style.fontWeight = '600';
+    if (myChart3D) myChart3D.resize();
+  }
+}
+
+// ── 3D Heatmap + Tables + Sweep Prediction ────────────────────────────────────
+async function load3DData() {
+  try {
+    const [heatRes, sweepRes] = await Promise.all([
+      fetch('/api/heatmap-data-3d'),
+      fetch('/api/sweep-prediction')
+    ]);
+
+    if (heatRes.ok) {
+      const heatJson = await heatRes.json();
+      const data3d = heatJson.data?.data || heatJson.data;
+      if (data3d && data3d.series) {
+        renderLiquidationTables3D(data3d);
+        renderHeatmap3D(data3d);
+      }
+    } else if (heatRes.status === 503) {
+      // 3D data not ready yet — silently wait
+      console.log('[3D] Data not ready yet (503), will retry in 3 min');
+    }
+
+    if (sweepRes.ok) {
+      const sweepJson = await sweepRes.json();
+      const d3d = sweepJson.data3d;
+      renderSweepPanel3D(d3d);
+    }
+  } catch (e) {
+    console.error('[3D] Load error:', e);
+  }
+}
+
+function renderLiquidationTables3D(data) {
+  const aboveEl = document.getElementById('above-chart-container-3d');
+  const belowEl = document.getElementById('below-chart-container-3d');
+  if (!aboveEl || !belowEl || !data || !data.series) return;
+
+  const heatmapSeries = data.series.find(s => s.type === 'heatmap');
+  const candleSeries  = data.series.find(s => s.type === 'candlestick');
+  if (!heatmapSeries || !heatmapSeries.data || heatmapSeries.data.length === 0) return;
+
+  let currentPrice = null;
+  if (candleSeries && candleSeries.data && candleSeries.data.length > 0) {
+    currentPrice = parseFloat(candleSeries.data[candleSeries.data.length - 1][1]);
+  }
+  if (!currentPrice) return;
+
+  let maxHigh = currentPrice, minLow = currentPrice;
+  if (candleSeries && candleSeries.data) {
+    candleSeries.data.forEach(c => {
+      const h = parseFloat(c[3]), l = parseFloat(c[2]);
+      if (!isNaN(h) && h > maxHigh) maxHigh = h;
+      if (!isNaN(l) && l < minLow) minLow = l;
+    });
+  }
+
+  const yAxisData = data.yAxis || [];
+  const leveragePerY = {};
+  heatmapSeries.data.forEach(item => {
+    const yIdx = item[1], val = parseFloat(item[2] || 0);
+    leveragePerY[yIdx] = (leveragePerY[yIdx] || 0) + val;
+  });
+
+  const levels = [];
+  Object.keys(leveragePerY).forEach(yIdxStr => {
+    const yIdx = parseInt(yIdxStr, 10);
+    const priceStr = yAxisData[yIdx];
+    if (!priceStr) return;
+    const price = parseFloat(priceStr);
+    const leverage = leveragePerY[yIdx];
+    const distPct = ((price - currentPrice) / currentPrice) * 100;
+    const isAbove = price > currentPrice;
+    const isLiquidated = isAbove ? (price <= maxHigh) : (price >= minLow);
+    levels.push({ price, leverage, distance: distPct, isAbove, isLiquidated });
+  });
+
+  const aboveLevels = levels.filter(l => l.isAbove).sort((a,b) => b.leverage - a.leverage).slice(0,5).sort((a,b) => a.price - b.price);
+  const belowLevels = levels.filter(l => !l.isAbove).sort((a,b) => b.leverage - a.leverage).slice(0,5).sort((a,b) => b.price - a.price);
+  const maxLev = Math.max(...levels.map(l => l.leverage), 1);
+
+  const buildTable = (pools, isAbove) => {
+    if (!pools.length) return '<div style="color:#555;font-size:12px;padding:12px;text-align:center;">No pools</div>';
+    const side = isAbove ? 'above' : 'below';
+    const total = pools.reduce((s,p) => s + (p.isLiquidated ? 0 : p.leverage), 0);
+    let h = '<div class="liq-table-container ' + side + '"><h4>' +
+      (isAbove ? '▲ Resistance 3D' : '▼ Support 3D') + ' | Active: $' + formatIntensity(total) + '</h4>' +
+      '<table class="liq-data-table"><thead><tr>' +
+      '<th>Rank</th><th>Price (USD)</th><th>Pool Vol</th><th>Dist</th><th>Intensity</th>' +
+      '</tr></thead><tbody>';
+
+    pools.forEach((lvl, idx) => {
+      const ratio = lvl.leverage / maxLev;
+      let bc = 'low', bl = 'Low';
+      if (lvl.isLiquidated) { bc = 'liquidated'; bl = 'Liquidated'; }
+      else if (ratio >= 0.7) { bc = 'high'; bl = 'High'; }
+      else if (ratio >= 0.3) { bc = 'medium'; bl = 'Medium'; }
+
+      const ds = lvl.distance > 0 ? '+' : '';
+      const pc = lvl.isLiquidated ? 'var(--text-muted)' : '#FFFFFF';
+      const vc = lvl.isLiquidated ? 'var(--text-muted)' : (isAbove ? '#F0B90B' : '#0ECB81');
+      const dc = lvl.isLiquidated ? 'var(--text-muted)' : (isAbove ? '#F6465D' : '#0ECB81');
+      const rowStyle = lvl.isLiquidated ? ' style="opacity:0.45;"' : '';
+      const qb = lvl.isLiquidated ? '' :
+        '<span class="quick-set-btn entry-set" onclick="setPlannerPrice(\'entry\',' + lvl.price + ')">E</span>' +
+        '<span class="quick-set-btn tp-set" onclick="setPlannerPrice(\'tp\',' + lvl.price + ')">TP</span>';
+
+      h += '<tr' + rowStyle + '>' +
+        '<td style="color:var(--text-muted)">#' + (idx+1) + '</td>' +
+        '<td class="mono" style="color:' + pc + '">$' + lvl.price.toLocaleString(undefined,{minimumFractionDigits:2,maximumFractionDigits:2}) + qb + '</td>' +
+        '<td class="mono" style="color:' + vc + '">$' + formatIntensity(lvl.leverage) + '</td>' +
+        '<td class="mono" style="color:' + dc + '">' + ds + lvl.distance.toFixed(2) + '%</td>' +
+        '<td><span class="intensity-badge ' + bc + '">' + bl + '</span></td>' +
+        '</tr>';
+    });
+
+    h += '</tbody></table></div>';
+    return h;
+  };
+
+  aboveEl.innerHTML = buildTable(aboveLevels, true);
+  belowEl.innerHTML  = buildTable(belowLevels, false);
+}
+
+function renderHeatmap3D(data) {
+  const chartDom = document.getElementById('liq-heatmap-chart-3d');
+  if (!chartDom) return;
+  if (myChart3D) myChart3D.dispose();
+  myChart3D = echarts.init(chartDom, 'dark', { renderer: 'canvas' });
+
+  // Same rendering logic as 24H but on 3D data
+  const xAxisData = data.xAxis || [];
+  const yAxisData = data.yAxis || [];
+  const heatmapSeries = data.series.find(s => s.type === 'heatmap');
+  const candleSeries  = data.series.find(s => s.type === 'candlestick');
+  const minPrice = yAxisData.length > 0 ? parseFloat(yAxisData[0]) : null;
+  const maxPrice = yAxisData.length > 0 ? parseFloat(yAxisData[yAxisData.length-1]) : null;
+  const maxIntensity = data.visualMap ? data.visualMap.max : 20000000;
+
+  myChart3D.setOption({
+    backgroundColor: '#010409',
+    axisPointer: { show: true, type: 'cross', lineStyle: { color: '#F0B90B', width: 1, type: 'dashed' } },
+    grid: { top: '5%', bottom: '10%', left: '8%', right: '4%', show: true, backgroundColor: '#0a0e17', borderColor: 'transparent' },
+    xAxis: {
+      type: 'category', data: xAxisData, boundaryGap: true,
+      splitLine: { show: true, lineStyle: { color: '#1a2030' } },
+      axisLine: { lineStyle: { color: '#1a2030' } },
+      axisLabel: { color: '#848E9C', fontSize: 10, formatter: v => (v || '').split(', ')[1] || v }
+    },
+    yAxis: [
+      { type: 'category', data: yAxisData, splitLine: { show: true, lineStyle: { color: '#1a2030' } },
+        axisLine: { lineStyle: { color: '#1a2030' } },
+        axisLabel: { color: '#848E9C', fontSize: 10, formatter: v => '$' + parseInt(v).toLocaleString() } },
+      { type: 'value', scale: true, min: minPrice, max: maxPrice, show: false }
+    ],
+    visualMap: {
+      show: true, min: 0, max: maxIntensity, calculable: true, orient: 'horizontal', left: 'center', bottom: '2%',
+      itemWidth: 15, itemHeight: 250,
+      textStyle: { color: '#848E9C', fontSize: 11 },
+      inRange: { color: ['#0a0e17','#373d77','#28738f','#238c89','#24a480','#3ab56e','#66c751','#F0B90B'] }
+    },
+    series: [
+      { name: 'Liq 3D', type: 'heatmap', data: heatmapSeries ? heatmapSeries.data : [],
+        label: { show: false }, emphasis: { itemStyle: { shadowBlur: 10 } } },
+      { name: 'Candles 3D', type: 'candlestick', yAxisIndex: 1,
+        data: candleSeries ? candleSeries.data.map(c => [parseFloat(c[0]),parseFloat(c[1]),parseFloat(c[2]),parseFloat(c[3])]) : [],
+        itemStyle: { color: '#0ECB81', color0: '#F6465D', borderColor: '#0ECB81', borderColor0: '#F6465D' } }
+    ]
+  });
+  window.addEventListener('resize', () => myChart3D && myChart3D.resize());
+}
+
+function renderSweepPanel3D(d) {
+  const panel = document.getElementById('sweep-prediction-panel-3d');
+  if (!panel) return;
+  if (!d) {
+    panel.innerHTML = '<div style="color:#848E9C;font-size:12px;text-align:center;padding:12px;">3D prediction loading...</div>';
+    return;
+  }
+  // Reuse same rendering logic but with "3D" label
+  const isUp = d.direction === 'UP';
+  const dirColor = isUp ? '#0ECB81' : '#F6465D';
+  const hot = d.hotPool;
+  const cascade = d.cascadePool;
+
+  panel.innerHTML =
+    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid #2B3139;padding-bottom:8px;">' +
+      '<div>' +
+        '<span style="font-size:9px;color:#848E9C;text-transform:uppercase;letter-spacing:.5px;">3D Sweep Prediction</span>' +
+        '<div style="font-size:16px;font-weight:800;color:' + dirColor + ';margin-top:2px;">' +
+          (isUp ? '▲' : '▼') + ' ' + d.direction + 'SIDE (' + d.confidence + '%)</div>' +
+      '</div>' +
+      '<div style="text-align:right;font-size:10px;color:#848E9C;">↑' + d.upProb + '% / ↓' + d.downProb + '%</div>' +
+    '</div>' +
+    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">' +
+      '<div style="background:rgba(0,0,0,0.2);border:1px solid ' + dirColor + '33;border-radius:6px;padding:8px;">' +
+        '<div style="font-size:9px;color:#848E9C;margin-bottom:3px;">🔥 Hot Pool (3D)</div>' +
+        (hot ? '<div style="font-size:14px;font-weight:700;color:' + dirColor + ';font-family:\'JetBrains Mono\',monospace;">$' + hot.price.toLocaleString() + '</div>' +
+               '<div style="font-size:10px;color:#848E9C;">' + hot.side + ' · ' + hot.distPct + '</div>'
+             : '<div style="color:#555;font-size:11px;">—</div>') +
+      '</div>' +
+      '<div style="background:rgba(0,0,0,0.2);border:1px solid #2B3139;border-radius:6px;padding:8px;">' +
+        '<div style="font-size:9px;color:#848E9C;margin-bottom:3px;">⚡ Cascade (3D)</div>' +
+        (cascade ? '<div style="font-size:14px;font-weight:700;color:#F0B90B;font-family:\'JetBrains Mono\',monospace;">$' + cascade.price.toLocaleString() + '</div>' +
+                   '<div style="font-size:10px;color:#848E9C;">' + cascade.distPct + '</div>'
+                 : '<div style="color:#555;font-size:11px;">—</div>') +
+      '</div>' +
+    '</div>' +
+    '<div style="font-size:9px;color:#848E9C;">Factors: ' + (d.reasons || []).slice(0,2).join(' · ') + '</div>';
+}
+
+// Load 3D data on start and every 10 min (3D data changes slowly)
+load3DData();
+setInterval(load3DData, 10 * 60 * 1000);

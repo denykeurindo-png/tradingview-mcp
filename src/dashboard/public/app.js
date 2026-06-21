@@ -128,7 +128,7 @@ async function loadData(forceRefresh = false) {
 
     // Update table subtitle with exact update time
     if (result.kpis && result.kpis.totalNetInflow) {
-      document.getElementById('table-update-time').innerText = `Update Time: ${result.kpis.totalNetInflow.time.replace('Last update : ', '')}`;
+      document.getElementById('table-update-time').innerText = `Update Time: ${(result.kpis.totalNetInflow.time || '').replace('Last update : ', '')}`;
     }
 
     updateStatus('normal', 'Live');
@@ -160,9 +160,9 @@ function renderKPIs(kpis, data, btcPrice) {
   if (kpis && kpis.totalNetInflow && kpis.dailyTotalNetInflow && kpis.dailyTradingVolume && kpis.totalNetAssets) {
     // Card 1: Total Net Inflow
     valTotalInflow.innerText = kpis.totalNetInflow.usd;
-    valTotalInflow.className = `kpi-value select-mono ${kpis.totalNetInflow.usd.includes('-') ? 'text-negative' : 'text-positive'}`;
+    valTotalInflow.className = `kpi-value select-mono ${(kpis.totalNetInflow.usd || '').includes('-') ? 'text-negative' : 'text-positive'}`;
     subTotalInflow.innerText = kpis.totalNetInflow.btc;
-    subTotalInflow.className = `kpi-sub-value select-mono ${kpis.totalNetInflow.btc.includes('-') ? 'text-negative' : 'text-positive'}`;
+    subTotalInflow.className = `kpi-sub-value select-mono ${(kpis.totalNetInflow.btc || '').includes('-') ? 'text-negative' : 'text-positive'}`;
     
     const totalInflowUsd = parseUSDStringToNumber(kpis.totalNetInflow.usd);
     footTotalInflow.innerText = `${formatBs(totalInflowUsd)} (Equiv.)`;
@@ -170,9 +170,9 @@ function renderKPIs(kpis, data, btcPrice) {
 
     // Card 2: Daily Total Net Inflow
     valDailyInflow.innerText = kpis.dailyTotalNetInflow.usd;
-    valDailyInflow.className = `kpi-value select-mono ${kpis.dailyTotalNetInflow.usd.includes('-') ? 'text-negative' : 'text-positive'}`;
+    valDailyInflow.className = `kpi-value select-mono ${(kpis.dailyTotalNetInflow.usd || '').includes('-') ? 'text-negative' : 'text-positive'}`;
     subDailyInflow.innerText = kpis.dailyTotalNetInflow.btc;
-    subDailyInflow.className = `kpi-sub-value select-mono ${kpis.dailyTotalNetInflow.btc.includes('-') ? 'text-negative' : 'text-positive'}`;
+    subDailyInflow.className = `kpi-sub-value select-mono ${(kpis.dailyTotalNetInflow.btc || '').includes('-') ? 'text-negative' : 'text-positive'}`;
     
     const dailyInflowUsd = parseUSDStringToNumber(kpis.dailyTotalNetInflow.usd);
     footDailyInflow.innerText = `${formatBs(dailyInflowUsd)} (Equiv.)`;
@@ -238,8 +238,8 @@ function renderChart(data, btcPrice) {
 
   // Create gradient fill for area chart
   const gradient = ctx.createLinearGradient(0, 0, 0, 400);
-  gradient.addColorStop(0, 'rgba(0, 229, 255, 0.4)');
-  gradient.addColorStop(1, 'rgba(0, 229, 255, 0)');
+  gradient.addColorStop(0, 'rgba(240, 185, 11, 0.4)');
+  gradient.addColorStop(1, 'rgba(240, 185, 11, 0)');
 
   chartInstance = new Chart(ctx, {
     type: 'line',
@@ -248,15 +248,15 @@ function renderChart(data, btcPrice) {
       datasets: [{
         label: 'Daily Net Flow Equiv. (USD)',
         data: totalFlowsUsd,
-        borderColor: '#00E5FF',
+        borderColor: '#F0B90B',
         borderWidth: 2,
         backgroundColor: gradient,
         fill: true,
         tension: 0.3,
-        pointBackgroundColor: '#00E5FF',
+        pointBackgroundColor: '#F0B90B',
         pointBorderColor: '#121212',
         pointHoverBackgroundColor: '#FFFFFF',
-        pointHoverBorderColor: '#00E5FF',
+        pointHoverBorderColor: '#F0B90B',
         pointHoverRadius: 6,
         pointRadius: 4
       }]
@@ -271,7 +271,7 @@ function renderChart(data, btcPrice) {
         tooltip: {
           backgroundColor: '#1E1E1E',
           titleColor: '#FFFFFF',
-          bodyColor: '#00E5FF',
+          bodyColor: '#F0B90B',
           borderColor: '#2C2C2E',
           borderWidth: 1,
           padding: 12,
