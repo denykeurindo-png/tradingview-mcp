@@ -164,10 +164,11 @@ function jdaZStatusLabel(status, above) {
 }
 
 function jdaVzoBg(state) {
-  if (state === 'BULL+') return 'rgba(8,153,129,0.15)';
-  if (state === 'BULL')  return 'rgba(8,153,129,0.30)';
-  if (state === 'BEAR+') return 'rgba(242,54,69,0.15)';
-  if (state === 'BEAR')  return 'rgba(242,54,69,0.30)';
+  const s = state.replace(/\s+/g, '');
+  if (s === 'BULL+') return 'rgba(8,153,129,0.25)';
+  if (s === 'BULL')  return 'rgba(8,153,129,0.25)';
+  if (s === 'BEAR+') return 'rgba(242,54,69,0.25)';
+  if (s === 'BEAR')  return 'rgba(242,54,69,0.25)';
   return 'rgba(152,152,157,0.15)';
 }
 
@@ -201,14 +202,17 @@ function renderJDATable(tfs) {
     const vzoBg = jdaVzoBg(d.state);
     const zBg = jdaZoneBg(d.zone);
     const zCol = jdaZoneColor(d.zone);
-    const vzoSign = d.vzo >= 0 ? '+' : '';
+    
+    const absVzoInt = Math.round(Math.abs(d.vzo));
+    const absVzoDec = Math.abs(d.vzo).toFixed(1);
+    const zoneShort = d.zone === 'NORMAL' ? 'N' : d.zone;
 
     return '<tr>' +
       '<td style="padding:7px 12px; color:#fff; font-weight:700; background:#0a0a0a;">' + labels[key] + '</td>' +
       '<td style="padding:7px 12px; background:' + (d.trend===1?'rgba(8,153,129,0.25)':'rgba(242,54,69,0.25)') + '; color:' + zlColor + '; font-weight:600;">' + jdaZlemaLabel(d.trend) + '</td>' +
       '<td style="padding:7px 12px; background:' + (d.above?'rgba(8,153,129,0.15)':'rgba(242,54,69,0.15)') + '; color:' + stColor + ';">' + jdaZStatusLabel(d.status, d.above) + '</td>' +
-      '<td style="padding:7px 12px; background:' + vzoBg + '; color:#fff; font-family:var(--font-mono);">' + d.state + ' (' + vzoSign + d.vzo + '%)</td>' +
-      '<td style="padding:7px 12px; background:' + zBg + '; color:' + zCol + '; font-weight:700;">' + d.zone + '</td>' +
+      '<td style="padding:7px 12px; background:' + vzoBg + '; color:#fff; font-family:var(--font-mono);">' + d.state + ' (' + absVzoInt + '%)</td>' +
+      '<td style="padding:7px 12px; background:' + zBg + '; color:' + zCol + '; font-weight:700;">' + zoneShort + ' (' + absVzoDec + '%)</td>' +
       '</tr>';
   }).join('');
 }

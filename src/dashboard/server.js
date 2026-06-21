@@ -2443,7 +2443,7 @@ async function fetchJDASignal() {
   try {
     const intervals = ['15m', '1h', '4h', '1d', '1w'];
     const fetchKlines = async (interval) => {
-      const url = `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=${interval}&limit=120`;
+      const url = `https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=${interval}&limit=200`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP error ${res.status} for ${interval}`);
       return await res.json();
