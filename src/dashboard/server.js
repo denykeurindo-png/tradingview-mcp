@@ -2208,59 +2208,127 @@ async function fetchBinance15mKlines() {
 // ─── JDA Signal (simplified — uses Binance klines for VZO-based MTF bias) ─────
 
 function jda_ema(vals, period) {
-  const k = 2 / (period + 1); let r = vals[0] || 0;
-  for (let i = 1; i < vals.length; i++) r = (vals[i] || 0) * k + r * (1 - k);
+  if (!vals || vals.length === 0) return 0;
+  const k = 2 / (period + 1);
+  let r = vals[0] || 0;
+  for (let i = 1; i < vals.length; i++) {
+    r = (vals[i] || 0) * k + r * (1 - k);
+  }
   return r;
+}
+
+function jda_zlema(closes, period) {
+  const lag = Math.floor((period - 1) / 2);
+  const data = [];
+  for (let i = 0; i < closes.length; i++) {
+    if (i < lag) {
+      data.push(closes[i]);
+    } else {
+      data.push(closes[i] + (closes[i] - closes[i - lag]));
+    }
+  }
+  
+  // Calculate EMA of data
+  const k = 2 / (period + 1);
+  let ema = data[0] || 0;
+  const emaValues = [ema];
+  for (let i = 1; i < data.length; i++) {
+    ema = data[i] * k + ema * (1 - k);
+    emaValues.push(ema);
+  }
+  return emaValues;
 }
 
 async function fetchJDASignal() {
   try {
-    const [k1h, k4h] = await Promise.all([
-      fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=60').then(r=>r.json()),
-      fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=4h&limit=60').then(r=>r.json()),
-    ]);
-
-    const vzo = klines => {
-      const c = klines.map(k=>parseFloat(k[4])), v = klines.map(k=>parseFloat(k[5]));
-      const sma = arr => arr.reduce((s,x)=>s+x,0)/arr.length;
-      const rv = v.map((vi,i)=>vi/(sma(v.slice(Math.max(0,i-9),i+1))||1));
-      const dc = c.map((ci,i)=>i===0?0:ci-c[i-1]);
-      const mom = dc.map((d,i)=>d*rv[i]);
-      const pm = mom.map(m=>Math.max(m,0)), nm = mom.map(m=>Math.abs(Math.min(m,0)));
-      const pa = jda_ema(pm,9), na = jda_ema(nm,9);
-      const ratio = na>0.00001 ? pa/na : (pa>0.00001?100:1);
-      return Math.min(100,Math.max(-100,100*(ratio-1)/(ratio+1)));
+    const intervals = ['15m', '1h', '4h', '1d', '1w'];
+    const fetchKlines = async (interval) => {
+      const url = `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=${interval}&limit=100`;
+      const res = await fetch(url);
+      if (!res.ok) throw new Error(`HTTP error ${res.status} for ${interval}`);
+      return await res.json();
     };
 
-    const v1h = Array.isArray(k1h) ? vzo(k1h) : 0;
-    const v4h = Array.isArray(k4h) ? vzo(k4h) : 0;
-    const dirScore = v1h*0.30 + v4h*0.10;
-    const bias = v4h > 10 ? 'BULLISH' : v4h < -10 ? 'BEARISH' : 'NEUTRAL';
+    const klinesList = await Promise.all(intervals.map(fetchKlines));
+    const timeframes = {};
 
     const tfState = v => v > 40 ? 'BULL+' : v > 0 ? 'BULL' : v < -40 ? 'BEAR+' : v < 0 ? 'BEAR' : 'RANGE';
-    const tfTrend = s => s.includes('BULL') ? 'BULLISH' : s.includes('BEAR') ? 'BEARISH' : 'RANGING';
     const tfStr   = s => (s === 'BULL+' || s === 'BEAR+') ? 'STRONG' : s === 'RANGE' ? 'WEAK' : 'MODERATE';
-    const tfScore = (v, dir) => dir === 'LONG' ? Math.min(10,Math.max(-10,v/10)) : -Math.min(10,Math.max(-10,v/10));
+
+    intervals.forEach((interval, idx) => {
+      const klines = klinesList[idx];
+      if (!Array.isArray(klines) || klines.length === 0) {
+        timeframes[interval] = { vzo: 0, state: 'RANGE', trend: 0, status: -1, above: false, strength: 'WEAK', zone: 'NORMAL' };
+        return;
+      }
+
+      const closes = klines.map(k => parseFloat(k[4]));
+      const volumes = klines.map(k => parseFloat(k[5]));
+
+      // 1. VZO calculation
+      const sma = arr => arr.reduce((s, x) => s + x, 0) / arr.length;
+      const rv = volumes.map((vi, i) => vi / (sma(volumes.slice(Math.max(0, i - 9), i + 1)) || 1));
+      const dc = closes.map((ci, i) => i === 0 ? 0 : ci - closes[i - 1]);
+      const mom = dc.map((d, i) => d * rv[i]);
+      const pm = mom.map(m => Math.max(m, 0));
+      const nm = mom.map(m => Math.abs(Math.min(m, 0)));
+      const pa = jda_ema(pm, 9);
+      const na = jda_ema(nm, 9);
+      const ratio = na > 0.00001 ? pa / na : (pa > 0.00001 ? 100 : 1);
+      const vzoVal = Math.min(100, Math.max(-100, 100 * (ratio - 1) / (ratio + 1)));
+
+      // 2. ZLEMA calculation (20 period)
+      const zlemaVals = jda_zlema(closes, 20);
+      const currentPrice = closes[closes.length - 1];
+      const currentZlema = zlemaVals[zlemaVals.length - 1];
+      const prevZlema = zlemaVals[zlemaVals.length - 2] || currentZlema;
+
+      const above = currentPrice > currentZlema;
+      const trend = currentZlema > prevZlema ? 1 : (currentZlema < prevZlema ? -1 : 0);
+
+      timeframes[interval] = {
+        vzo: Math.round(vzoVal * 10) / 10,
+        state: tfState(vzoVal),
+        trend: trend, // 1 for bullish, -1 for bearish, 0 for neutral
+        status: above ? 1 : -1, // ZLEMA status
+        above: above,
+        strength: tfStr(tfState(vzoVal)),
+        zone: vzoVal > 40 ? 'OB' : (vzoVal < -40 ? 'OS' : 'NORMAL')
+      };
+    });
+
+    const v1h = timeframes['1h'].vzo;
+    const v4h = timeframes['4h'].vzo;
+    const dirScore = v1h * 0.30 + v4h * 0.10;
+    const bias = v4h > 10 ? 'BULLISH' : v4h < -10 ? 'BEARISH' : 'NEUTRAL';
 
     return {
-      timeframes: {
-        '15m': { vzo:0, state:'RANGE', trend:'RANGING', strength:'WEAK' },
-        '1h':  { vzo:Math.round(v1h*10)/10, state:tfState(v1h), trend:tfTrend(tfState(v1h)), strength:tfStr(tfState(v1h)) },
-        '4h':  { vzo:Math.round(v4h*10)/10, state:tfState(v4h), trend:tfTrend(tfState(v4h)), strength:tfStr(tfState(v4h)) },
-        '1d':  { vzo:0, state:'RANGE', trend:'RANGING', strength:'WEAK' },
-        '1w':  { vzo:0, state:'RANGE', trend:'RANGING', strength:'WEAK' },
-      },
-      dirScore: Math.round(dirScore*10)/10,
+      timeframes,
+      dirScore: Math.round(dirScore * 10) / 10,
       conf: Math.min(Math.abs(dirScore), 100),
-      confLevel: Math.abs(dirScore)>=65?'HIGH':Math.abs(dirScore)>=60?'MEDIUM':'LOW',
+      confLevel: Math.abs(dirScore) >= 65 ? 'HIGH' : Math.abs(dirScore) >= 60 ? 'MEDIUM' : 'LOW',
       phase: v4h > 40 ? 'STRONG BULL TREND' : v4h < -40 ? 'STRONG BEAR TREND' : 'NEUTRAL',
       marketBias: bias,
       action: 'WAIT',
       fetchTime: Date.now()
     };
-  } catch(e) {
+  } catch (e) {
     console.error('[JDA] Error:', e.message);
-    return { timeframes:{'1h':{vzo:0,state:'RANGE'},'4h':{vzo:0,state:'RANGE'}}, dirScore:0, conf:0, phase:'NEUTRAL', marketBias:'NEUTRAL', action:'WAIT', fetchTime:Date.now() };
+    return {
+      timeframes: {
+        '15m': { vzo: 0, state: 'RANGE', trend: 0, status: -1, above: false, strength: 'WEAK', zone: 'NORMAL' },
+        '1h': { vzo: 0, state: 'RANGE', trend: 0, status: -1, above: false, strength: 'WEAK', zone: 'NORMAL' },
+        '4h': { vzo: 0, state: 'RANGE', trend: 0, status: -1, above: false, strength: 'WEAK', zone: 'NORMAL' },
+        '1d': { vzo: 0, state: 'RANGE', trend: 0, status: -1, above: false, strength: 'WEAK', zone: 'NORMAL' },
+        '1w': { vzo: 0, state: 'RANGE', trend: 0, status: -1, above: false, strength: 'WEAK', zone: 'NORMAL' }
+      },
+      dirScore: 0,
+      conf: 0,
+      phase: 'NEUTRAL',
+      marketBias: 'NEUTRAL',
+      action: 'WAIT',
+      fetchTime: Date.now()
+    };
   }
 }
 
