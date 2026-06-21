@@ -2207,43 +2207,243 @@ async function fetchBinance15mKlines() {
 
 // ─── JDA Signal (simplified — uses Binance klines for VZO-based MTF bias) ─────
 
-function jda_ema(vals, period) {
-  if (!vals || vals.length === 0) return 0;
+// ─── JDA Signal (Pine Script JDAv85-FSVZO & ZLEMA Pro v1.1 Reference Math) ─────
+
+function ema(arr, period) {
   const k = 2 / (period + 1);
-  let r = vals[0] || 0;
-  for (let i = 1; i < vals.length; i++) {
-    r = (vals[i] || 0) * k + r * (1 - k);
+  const result = [];
+  if (arr.length === 0) return result;
+  let cur = arr[0];
+  result.push(cur);
+  for (let i = 1; i < arr.length; i++) {
+    cur = arr[i] * k + cur * (1 - k);
+    result.push(cur);
   }
-  return r;
+  return result;
 }
 
-function jda_zlema(closes, period) {
-  const lag = Math.floor((period - 1) / 2);
-  const data = [];
-  for (let i = 0; i < closes.length; i++) {
-    if (i < lag) {
-      data.push(closes[i]);
+function sma(arr, period) {
+  const result = [];
+  for (let i = 0; i < arr.length; i++) {
+    if (i < period - 1) {
+      result.push(arr[i]);
     } else {
-      data.push(closes[i] + (closes[i] - closes[i - lag]));
+      const sum = arr.slice(i - period + 1, i + 1).reduce((s, x) => s + x, 0);
+      result.push(sum / period);
     }
   }
-  
-  // Calculate EMA of data
-  const k = 2 / (period + 1);
-  let ema = data[0] || 0;
-  const emaValues = [ema];
-  for (let i = 1; i < data.length; i++) {
-    ema = data[i] * k + ema * (1 - k);
-    emaValues.push(ema);
+  return result;
+}
+
+function atr(highs, lows, closes, period) {
+  if (closes.length === 0) return [];
+  const tr = [highs[0] - lows[0]];
+  for (let i = 1; i < closes.length; i++) {
+    tr.push(Math.max(
+      highs[i] - lows[i],
+      Math.abs(highs[i] - closes[i - 1]),
+      Math.abs(lows[i] - closes[i - 1])
+    ));
   }
-  return emaValues;
+  const result = [];
+  let cur = tr[0];
+  result.push(cur);
+  const k = 1 / period;
+  for (let i = 1; i < tr.length; i++) {
+    cur = tr[i] * k + cur * (1 - k);
+    result.push(cur);
+  }
+  return result;
+}
+
+function highest(arr, period) {
+  const result = [];
+  for (let i = 0; i < arr.length; i++) {
+    const start = Math.max(0, i - period + 1);
+    const val = Math.max(...arr.slice(start, i + 1));
+    result.push(val);
+  }
+  return result;
+}
+
+function calculateADX(highs, lows, closes, period = 14) {
+  const n = closes.length;
+  if (n < period) return 0;
+  const tr = [highs[0] - lows[0]];
+  const plusDM = [0];
+  const minusDM = [0];
+  for (let i = 1; i < n; i++) {
+    const up = highs[i] - highs[i - 1];
+    const down = lows[i - 1] - lows[i];
+    plusDM.push((up > down && up > 0) ? up : 0);
+    minusDM.push((down > up && down > 0) ? down : 0);
+    tr.push(Math.max(
+      highs[i] - lows[i],
+      Math.abs(highs[i] - closes[i - 1]),
+      Math.abs(lows[i] - closes[i - 1])
+    ));
+  }
+
+  const rma = (arr, len) => {
+    const res = [];
+    let cur = arr[0];
+    res.push(cur);
+    const k = 1 / len;
+    for (let i = 1; i < arr.length; i++) {
+      cur = arr[i] * k + cur * (1 - k);
+      res.push(cur);
+    }
+    return res;
+  };
+
+  const str = rma(tr, period);
+  const sdmPlus = rma(plusDM, period);
+  const sdmMinus = rma(minusDM, period);
+
+  const dx = [];
+  for (let i = 0; i < n; i++) {
+    const pDI = str[i] > 0.00001 ? (sdmPlus[i] / str[i] * 100) : 0;
+    const mDI = str[i] > 0.00001 ? (sdmMinus[i] / str[i] * 100) : 0;
+    const sum = pDI + mDI;
+    dx.push(sum > 0.00001 ? (Math.abs(pDI - mDI) / sum * 100) : 0);
+  }
+
+  const adx = rma(dx, period);
+  return adx[adx.length - 1] || 0;
+}
+
+function jda_zlema(closes, len) {
+  const lag = Math.floor((len - 1) / 2);
+  const data = [];
+  for (let i = 0; i < closes.length; i++) {
+    const val = closes[i - lag] !== undefined ? closes[i - lag] : closes[i];
+    data.push(closes[i] + (closes[i] - val));
+  }
+  return ema(data, len);
+}
+
+function getZlemaEngine(highs, lows, closes, z_len = 34, z_mult = 1.2) {
+  const zl = jda_zlema(closes, z_len);
+  const _atr = atr(highs, lows, closes, z_len);
+  const vol = highest(_atr, z_len * 3).map(v => v * z_mult);
+
+  const n = closes.length;
+  const status = [];
+  const neutral = [];
+  const above = [];
+  const crossUp = [false];
+  const crossDown = [false];
+
+  for (let i = 0; i < n; i++) {
+    const zlVal = zl[i];
+    const volVal = vol[i];
+    const closeVal = closes[i];
+
+    const st = closeVal > zlVal + volVal ? 1 : (closeVal < zlVal - volVal ? -1 : 0);
+    status.push(st);
+    neutral.push(closeVal <= zlVal + volVal && closeVal >= zlVal - volVal);
+    above.push(closeVal > zlVal);
+
+    if (i > 0) {
+      const prevZl = zl[i - 1];
+      const prevVol = vol[i - 1];
+      const prevClose = closes[i - 1];
+
+      crossUp.push(prevClose <= prevZl + prevVol && closeVal > zlVal + volVal);
+      crossDown.push(prevClose >= prevZl - prevVol && closeVal < zlVal - volVal);
+    }
+  }
+
+  let trendVal = 0;
+  const trend = [];
+  for (let i = 0; i < n; i++) {
+    if (crossUp[i]) trendVal = 1;
+    else if (crossDown[i]) trendVal = -1;
+    trend.push(trendVal);
+  }
+
+  return { zl, vol, crossUp, crossDown, status, neutral, above, trend };
+}
+
+function calculateZDeltaRaw(closes, volumes, trend, crossUp, crossDown) {
+  const n = closes.length;
+  let z_up_vol = 0;
+  let z_down_vol = 0;
+
+  for (let i = 1; i < n; i++) {
+    const z_changed = (trend[i] !== trend[i - 1] && trend[i] !== 0);
+    if (z_changed) {
+      z_up_vol = 0;
+      z_down_vol = 0;
+    } else {
+      const prevClose = closes[i - 1];
+      const closeVal = closes[i];
+      const volVal = volumes[i];
+
+      const volume_buy = closeVal > prevClose ? volVal : (closeVal < prevClose ? 0 : volVal / 2);
+      const volume_sell = closeVal < prevClose ? volVal : (closeVal > prevClose ? 0 : volVal / 2);
+
+      z_up_vol += volume_buy;
+      z_down_vol += volume_sell;
+    }
+  }
+
+  const z_avg_vol = (z_up_vol + z_down_vol) / 2;
+  const z_delta_raw = z_avg_vol !== 0 ? ((z_up_vol - z_down_vol) / z_avg_vol * 100) : 0;
+  return z_delta_raw;
+}
+
+function calculateVZO(closes, volumes, len = 9, f_len = 31, s_len = 3) {
+  const n = closes.length;
+  
+  const volSma = [];
+  for (let i = 0; i < n; i++) {
+    if (i < len - 1) {
+      volSma.push(volumes[i]);
+    } else {
+      const sum = volumes.slice(i - len + 1, i + 1).reduce((s, x) => s + x, 0);
+      volSma.push(sum / len);
+    }
+  }
+
+  const relVol = volumes.map((v, i) => v / (volSma[i] || 1));
+  const smoothedVol = ema(relVol, s_len);
+
+  const changes = [0];
+  for (let i = 1; i < n; i++) {
+    changes.push(closes[i] - closes[i - 1]);
+  }
+  const smoothedChange = ema(changes, s_len);
+
+  const mom = smoothedChange.map((sc, i) => sc * smoothedVol[i]);
+  const smoothedMom = ema(mom, s_len);
+
+  const posMom = ema(smoothedMom.map(m => Math.max(m, 0)), len);
+  const negMom = ema(smoothedMom.map(m => Math.abs(Math.min(m, 0))), len);
+
+  const vzoRaw = [];
+  for (let i = 0; i < n; i++) {
+    const ratio = negMom[i] > 0.00001 ? (posMom[i] / negMom[i]) : 1.0;
+    vzoRaw.push(100.0 * (ratio - 1.0) / (ratio + 1.0));
+  }
+
+  const emaVzoS = ema(vzoRaw, s_len);
+  const emaVzoF = ema(vzoRaw, f_len);
+  const vzo = [];
+  for (let i = 0; i < n; i++) {
+    const val = emaVzoS[i] * 0.6 + emaVzoF[i] * 0.4;
+    vzo.push(Math.min(Math.max(val, -100), 100));
+  }
+
+  const signal = sma(vzo, 3);
+  return { vzo, signal };
 }
 
 async function fetchJDASignal() {
   try {
     const intervals = ['15m', '1h', '4h', '1d', '1w'];
     const fetchKlines = async (interval) => {
-      const url = `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=${interval}&limit=100`;
+      const url = `https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=${interval}&limit=120`;
       const res = await fetch(url);
       if (!res.ok) throw new Error(`HTTP error ${res.status} for ${interval}`);
       return await res.json();
@@ -2252,68 +2452,186 @@ async function fetchJDASignal() {
     const klinesList = await Promise.all(intervals.map(fetchKlines));
     const timeframes = {};
 
-    const tfState = v => v > 40 ? 'BULL+' : v > 0 ? 'BULL' : v < -40 ? 'BEAR+' : v < 0 ? 'BEAR' : 'RANGE';
-    const tfStr   = s => (s === 'BULL+' || s === 'BEAR+') ? 'STRONG' : s === 'RANGE' ? 'WEAK' : 'MODERATE';
+    const tfState = (v, s) => {
+      if (v > 40 && v > s) return "BULL +";
+      if (v > 0 && v > s) return "BULL";
+      if (v < -40 && v < s) return "BEAR +";
+      if (v < 0 && v < s) return "BEAR";
+      return "RANGE";
+    };
+
+    const tfStr = s => (s === 'BULL +' || s === 'BEAR +') ? 'STRONG' : s === 'RANGE' ? 'WEAK' : 'MODERATE';
+
+    const closes = {};
+    const highs = {};
+    const lows = {};
+    const volumes = {};
 
     intervals.forEach((interval, idx) => {
       const klines = klinesList[idx];
-      if (!Array.isArray(klines) || klines.length === 0) {
-        timeframes[interval] = { vzo: 0, state: 'RANGE', trend: 0, status: -1, above: false, strength: 'WEAK', zone: 'NORMAL' };
+      if (Array.isArray(klines)) {
+        closes[interval] = klines.map(k => parseFloat(k[4]));
+        highs[interval] = klines.map(k => parseFloat(k[2]));
+        lows[interval] = klines.map(k => parseFloat(k[3]));
+        volumes[interval] = klines.map(k => parseFloat(k[5]));
+      } else {
+        closes[interval] = [];
+        highs[interval] = [];
+        lows[interval] = [];
+        volumes[interval] = [];
+      }
+    });
+
+    intervals.forEach((interval) => {
+      const cls = closes[interval];
+      const hgs = highs[interval];
+      const lws = lows[interval];
+      const vls = volumes[interval];
+
+      if (cls.length < 50) {
+        timeframes[interval] = { vzo: 0, signal: 0, state: 'RANGE', trend: 0, status: 0, above: false, strength: 'WEAK', zone: 'NORMAL', neutralCount20: 0, z_delta_raw: 0 };
         return;
       }
 
-      const closes = klines.map(k => parseFloat(k[4]));
-      const volumes = klines.map(k => parseFloat(k[5]));
+      // Calculate VZO (9, 31, 3)
+      const { vzo, signal } = calculateVZO(cls, vls, 9, 31, 3);
+      const vzoVal = vzo[vzo.length - 1];
+      const sigVal = signal[signal.length - 1];
 
-      // 1. VZO calculation
-      const sma = arr => arr.reduce((s, x) => s + x, 0) / arr.length;
-      const rv = volumes.map((vi, i) => vi / (sma(volumes.slice(Math.max(0, i - 9), i + 1)) || 1));
-      const dc = closes.map((ci, i) => i === 0 ? 0 : ci - closes[i - 1]);
-      const mom = dc.map((d, i) => d * rv[i]);
-      const pm = mom.map(m => Math.max(m, 0));
-      const nm = mom.map(m => Math.abs(Math.min(m, 0)));
-      const pa = jda_ema(pm, 9);
-      const na = jda_ema(nm, 9);
-      const ratio = na > 0.00001 ? pa / na : (pa > 0.00001 ? 100 : 1);
-      const vzoVal = Math.min(100, Math.max(-100, 100 * (ratio - 1) / (ratio + 1)));
+      // Calculate ZLEMA Engine (34, 1.2)
+      const { zl, vol, crossUp, crossDown, status, neutral, above, trend } = getZlemaEngine(hgs, lws, cls, 34, 1.2);
+      const currentStatus = status[status.length - 1];
+      const currentAbove = above[above.length - 1];
+      
+      let trendVal = currentStatus;
+      if (currentStatus === 0) {
+        trendVal = currentAbove ? 1 : -1;
+      }
 
-      // 2. ZLEMA calculation (20 period)
-      const zlemaVals = jda_zlema(closes, 20);
-      const currentPrice = closes[closes.length - 1];
-      const currentZlema = zlemaVals[zlemaVals.length - 1];
-      const prevZlema = zlemaVals[zlemaVals.length - 2] || currentZlema;
+      const neutralCount20 = neutral.slice(-20).filter(x => x).length;
 
-      const above = currentPrice > currentZlema;
-      const trend = currentZlema > prevZlema ? 1 : (currentZlema < prevZlema ? -1 : 0);
+      // Calculate Z Delta Raw
+      const z_delta_raw = calculateZDeltaRaw(cls, vls, trend, crossUp, crossDown);
 
       timeframes[interval] = {
         vzo: Math.round(vzoVal * 10) / 10,
-        state: tfState(vzoVal),
-        trend: trend, // 1 for bullish, -1 for bearish, 0 for neutral
-        status: above ? 1 : -1, // ZLEMA status
-        above: above,
-        strength: tfStr(tfState(vzoVal)),
-        zone: vzoVal > 40 ? 'OB' : (vzoVal < -40 ? 'OS' : 'NORMAL')
+        signal: Math.round(sigVal * 10) / 10,
+        state: tfState(vzoVal, sigVal),
+        trend: trendVal,
+        status: currentStatus,
+        above: currentAbove,
+        strength: tfStr(tfState(vzoVal, sigVal)),
+        zone: vzoVal > 60 ? 'OB' : (vzoVal < -60 ? 'OS' : 'NORMAL'),
+        neutralCount20,
+        z_delta_raw
       };
     });
 
+    const v15 = timeframes['15m'].vzo;
+    const s15 = timeframes['15m'].signal;
     const v1h = timeframes['1h'].vzo;
+    const s1h = timeframes['1h'].signal;
     const v4h = timeframes['4h'].vzo;
-    const dirScore = v1h * 0.30 + v4h * 0.10;
-    const bias = v4h > 10 ? 'BULLISH' : v4h < -10 ? 'BEARISH' : 'NEUTRAL';
+    const v1d = timeframes['1d'].vzo;
+    const vw = timeframes['1w'].vzo;
+
+    // CONFIDENCE & PHASE DETECTION (JDA Weights Engine)
+    const total_w = 0.50 + 0.30 + 0.10 + 0.05 + 0.05; // 1.0
+    const dirScore = v15 * 0.50 + v1h * 0.30 + v4h * 0.10 + v1d * 0.05 + vw * 0.05;
+    let conf = Math.min(Math.abs(dirScore), 100);
+    const aligned = (v15 > 0 && v4h > 0) || (v15 < 0 && v4h < 0);
+
+    const zb4h = timeframes['4h'].neutralCount20;
+    let phase_text = "NEUTRAL";
+    if (zb4h >= 15) {
+      phase_text = "SQUEEZE";
+    } else if (v4h > 40) {
+      phase_text = "STRONG BULL TREND";
+    } else if (v4h < -40) {
+      phase_text = "STRONG BEAR TREND";
+    }
+
+    if (!aligned) {
+      conf = conf * (phase_text === "SQUEEZE" ? 0.9 : phase_text === "NEUTRAL" ? 0.75 : 0.6);
+    }
+
+    const confLevel = conf >= 65 ? "HIGH" : (conf >= 60 ? "MEDIUM" : "LOW");
+    const bias = v4h > 10 ? "BULLISH" : (v4h < -10 ? "BEARISH" : "NEUTRAL");
+
+    // FILTERS
+    // 4H EMA 50
+    const ema4h_50 = ema(closes['4h'], 50);
+    const ema200_htf_val = ema4h_50[ema4h_50.length - 1];
+    
+    // We assume current close is 15m close
+    const closes15m = closes['15m'];
+    const currentPrice = closes15m[closes15m.length - 1];
+
+    const ema200_long_ok = currentPrice > ema200_htf_val;
+    const ema200_short_ok = currentPrice < ema200_htf_val;
+
+    // ADX on 15M
+    const adx_val = calculateADX(highs['15m'], lows['15m'], closes15m, 14);
+    const adx_ok = adx_val >= 25;
+
+    // EMA 13 and SMA 50 on 15M
+    const ema15m_13 = ema(closes15m, 13);
+    const sma15m_50 = sma(closes15m, 50);
+    const cross_long_ok = ema15m_13[ema15m_13.length - 1] > sma15m_50[sma15m_50.length - 1];
+    const cross_short_ok = ema15m_13[ema15m_13.length - 1] < sma15m_50[sma15m_50.length - 1];
+
+    // Reversal trigger conditions: 1H VZO crossover
+    const { vzo: vzoHist1h, signal: sigHist1h } = calculateVZO(closes['1h'], volumes['1h'], 9, 31, 3);
+    const len1h = vzoHist1h.length;
+    const crossUpVzo1h = len1h >= 2 && vzoHist1h[len1h - 1] > sigHist1h[len1h - 1] && vzoHist1h[len1h - 2] <= sigHist1h[len1h - 2];
+    const crossDnVzo1h = len1h >= 2 && vzoHist1h[len1h - 1] < sigHist1h[len1h - 1] && vzoHist1h[len1h - 2] >= sigHist1h[len1h - 2];
+
+    const currentLow15m = lows['15m'][lows['15m'].length - 1];
+    const currentHigh15m = highs['15m'][highs['15m'].length - 1];
+    const ema15m_20 = ema(closes15m, 20);
+    const currentEma20_15m = ema15m_20[ema15m_20.length - 1];
+
+    const no_squeeze = phase_text !== "SQUEEZE";
+
+    const rev_long = v1h < -50 && crossUpVzo1h && currentLow15m <= currentEma20_15m && v4h < 0 && conf >= 60 && no_squeeze && ema200_long_ok && adx_ok && cross_long_ok;
+    const rev_short = v1h > 50 && crossDnVzo1h && currentHigh15m >= currentEma20_15m && v4h > 0 && conf >= 60 && no_squeeze && ema200_short_ok && adx_ok && cross_short_ok;
+
+    const z_delta_raw = timeframes['15m'].z_delta_raw;
+    const tf_long = v15 > s15 && dirScore > 0 && conf >= 60 && z_delta_raw > 0 && v4h > 0 && no_squeeze && ema200_long_ok && adx_ok && cross_long_ok;
+    const tf_short = v15 < s15 && dirScore < 0 && conf >= 60 && z_delta_raw < 0 && v4h < 0 && no_squeeze && ema200_short_ok && adx_ok && cross_short_ok;
+
+    let action = "WAIT";
+    if (rev_long) {
+      action = "LONG (REVERSAL)";
+    } else if (rev_short) {
+      action = "SHORT (REVERSAL)";
+    } else if (tf_long) {
+      action = "LONG";
+    } else if (tf_short) {
+      action = "SHORT";
+    }
+
+    const is_ct = (action === "LONG" && v4h < 0) || (action === "SHORT" && v4h > 0);
+    const mode_display = "BOTH" + (conf >= 65 ? " | HIGH CONF" : (conf >= 60 ? " | MED CONF" : " | LOW CONF"));
+    const finalCall = action === "WAIT" ? ("WAIT — Conf: " + Math.round(conf) + "% (" + confLevel + ")") : (action + (is_ct ? " (COUNTER)" : " (TREND)") + " | " + mode_display);
 
     return {
       timeframes,
       dirScore: Math.round(dirScore * 10) / 10,
-      conf: Math.min(Math.abs(dirScore), 100),
-      confLevel: Math.abs(dirScore) >= 65 ? 'HIGH' : Math.abs(dirScore) >= 60 ? 'MEDIUM' : 'LOW',
-      phase: v4h > 40 ? 'STRONG BULL TREND' : v4h < -40 ? 'STRONG BEAR TREND' : 'NEUTRAL',
+      conf: Math.round(conf),
+      confLevel,
+      phase: phase_text,
       marketBias: bias,
-      action: 'WAIT',
+      action,
+      aligned,
+      finalCall,
+      emaFilter: { value: Math.round(ema200_htf_val), status: currentPrice > ema200_htf_val ? "ABOVE ✅" : "BELOW 🚫" },
+      adxFilter: { value: Math.round(adx_val * 10) / 10, status: adx_ok ? "TRENDING ✅" : "CHOPPY 🚫" },
+      crossFilter: { status: cross_long_ok ? "GOLDEN ✅" : "DEATH 🚫" },
       fetchTime: Date.now()
     };
   } catch (e) {
-    console.error('[JDA] Error:', e.message);
+    console.error('[JDA] Error:', e.stack || e.message);
     return {
       timeframes: {
         '15m': { vzo: 0, state: 'RANGE', trend: 0, status: -1, above: false, strength: 'WEAK', zone: 'NORMAL' },

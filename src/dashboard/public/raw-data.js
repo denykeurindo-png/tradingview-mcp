@@ -253,6 +253,41 @@ async function loadJDASignal() {
       scoreEl.style.color = d.dirScore > 0 ? '#0ECB81' : d.dirScore < 0 ? '#F6465D' : '#98989D';
     }
 
+    // Smart Filters
+    const emaFilterEl = document.getElementById('jda-filter-ema-text');
+    if (emaFilterEl && d.emaFilter) {
+      emaFilterEl.innerText = `${d.emaFilter.value} (${d.emaFilter.status})`;
+      emaFilterEl.style.color = d.emaFilter.status.includes('ABOVE') ? '#0ECB81' : '#F6465D';
+    }
+
+    const adxFilterEl = document.getElementById('jda-filter-adx-text');
+    if (adxFilterEl && d.adxFilter) {
+      adxFilterEl.innerText = `${d.adxFilter.value} (${d.adxFilter.status})`;
+      adxFilterEl.style.color = d.adxFilter.status.includes('TRENDING') ? '#0ECB81' : '#98989D';
+    }
+
+    const crossFilterEl = document.getElementById('jda-filter-cross-text');
+    if (crossFilterEl && d.crossFilter) {
+      crossFilterEl.innerText = d.crossFilter.status;
+      crossFilterEl.style.color = d.crossFilter.status.includes('GOLDEN') ? '#0ECB81' : '#F6465D';
+    }
+
+    // Final Call
+    const finalCallEl = document.getElementById('jda-final-call-text');
+    if (finalCallEl) {
+      finalCallEl.innerText = d.finalCall || d.action;
+      const isLong = d.action.includes('LONG');
+      const isShort = d.action.includes('SHORT');
+      finalCallEl.style.color = isLong ? '#0ECB81' : isShort ? '#F6465D' : '#FFD60A';
+    }
+
+    // Alignment status
+    const alignmentEl = document.getElementById('jda-alignment-text');
+    if (alignmentEl) {
+      alignmentEl.innerText = d.aligned ? 'ALIGNED ✅' : 'MIXED ⚠️';
+      alignmentEl.style.color = d.aligned ? '#0ECB81' : '#FFD60A';
+    }
+
     // Action badge
     const actionEl = document.getElementById('jda-action-badge');
     if (actionEl) {
