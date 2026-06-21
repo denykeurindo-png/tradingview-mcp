@@ -1432,36 +1432,79 @@ function renderSweepPanel3D(d) {
     panel.innerHTML = '<div style="color:#848E9C;font-size:12px;text-align:center;padding:12px;">3D prediction loading...</div>';
     return;
   }
-  // Reuse same rendering logic but with "3D" label
-  const isUp = d.direction === 'UP';
-  const dirColor = isUp ? '#0ECB81' : '#F6465D';
-  const hot = d.hotPool;
-  const cascade = d.cascadePool;
 
-  panel.innerHTML =
-    '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px;border-bottom:1px solid #2B3139;padding-bottom:8px;">' +
-      '<div>' +
-        '<span style="font-size:9px;color:#848E9C;text-transform:uppercase;letter-spacing:.5px;">3D Sweep Prediction</span>' +
-        '<div style="font-size:16px;font-weight:800;color:' + dirColor + ';margin-top:2px;">' +
-          (isUp ? '▲' : '▼') + ' ' + d.direction + 'SIDE (' + d.confidence + '%)</div>' +
+  try {
+    const isUp = d.direction === 'UP';
+    const dirColor = isUp ? '#0ECB81' : '#F6465D';
+    const dirArrow = isUp ? '▲' : '▼';
+    const dirLabel = isUp ? 'UPSIDE SWEEP' : 'DOWNSIDE SWEEP';
+
+    // Hot pool
+    const hot = d.hotPool;
+    const cascade = d.cascadePool;
+    const hotSide = hot ? (hot.side === 'RESISTANCE' ? '▲' : '▼') : '';
+    const hotColor = hot ? (hot.side === 'RESISTANCE' ? '#F6465D' : '#0ECB81') : '#848E9C';
+
+    panel.innerHTML =
+      '<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px solid #2B3139; padding-bottom:10px;">' +
+        '<div>' +
+          '<span style="font-size:10px; color:#848E9C; text-transform:uppercase; letter-spacing:.5px;">3D Sweep Prediction</span>' +
+          '<div style="display:flex; align-items:baseline; gap:8px; margin-top:2px;">' +
+            '<span style="font-size:20px; font-weight:800; color:' + dirColor + ';">' + dirArrow + ' ' + dirLabel + '</span>' +
+            '<span style="font-size:11px; color:#848E9C;">(' + d.confidence + '% confidence)</span>' +
+          '</div>' +
+        '</div>' +
+        '<div style="text-align:right;">' +
+          '<div style="font-size:10px; color:#848E9C; margin-bottom:4px;">UP ' + d.upProb + '% / DOWN ' + d.downProb + '%</div>' +
+          '<div style="height:6px; width:120px; background:#1e2329; border-radius:3px; overflow:hidden;">' +
+            '<div style="height:100%; width:' + d.upProb + '%; background:linear-gradient(90deg,' + (isUp ? '#0ECB81' : '#F6465D') + ',' + (isUp ? '#F6465D' : '#0ECB81') + '); border-radius:3px;"></div>' +
+          '</div>' +
+        '</div>' +
       '</div>' +
-      '<div style="text-align:right;font-size:10px;color:#848E9C;">↑' + d.upProb + '% / ↓' + d.downProb + '%</div>' +
-    '</div>' +
-    '<div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;">' +
-      '<div style="background:rgba(0,0,0,0.2);border:1px solid ' + dirColor + '33;border-radius:6px;padding:8px;">' +
-        '<div style="font-size:9px;color:#848E9C;margin-bottom:3px;">🔥 Hot Pool (3D)</div>' +
-        (hot ? '<div style="font-size:14px;font-weight:700;color:' + dirColor + ';font-family:\'JetBrains Mono\',monospace;">$' + hot.price.toLocaleString() + '</div>' +
-               '<div style="font-size:10px;color:#848E9C;">' + hot.side + ' · ' + hot.distPct + '</div>'
-             : '<div style="color:#555;font-size:11px;">—</div>') +
+
+      '<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">' +
+        // Hot Pool
+        '<div style="background:rgba(0,0,0,0.2); border:1px solid ' + hotColor + '33; border-radius:8px; padding:10px;">' +
+          '<div style="font-size:9px; color:#848E9C; text-transform:uppercase; margin-bottom:4px;">🔥 Hot Sweep Target (3D)</div>' +
+          (hot ?
+            '<div style="font-size:16px; font-weight:700; color:' + hotColor + '; font-family:\'JetBrains Mono\',monospace;">$' + hot.price.toLocaleString() + '</div>' +
+            '<div style="font-size:11px; color:#848E9C;">' + hotSide + ' ' + hot.side + ' • ' + hot.distPct + ' away</div>' +
+            '<div style="font-size:10px; color:#555;">Vol: $' + hot.volume + 'M</div>'
+          : '<div style="color:#555; font-size:12px;">No data</div>') +
+        '</div>' +
+        // Cascade Pool
+        '<div style="background:rgba(0,0,0,0.2); border:1px solid #2B3139; border-radius:8px; padding:10px;">' +
+          '<div style="font-size:9px; color:#848E9C; text-transform:uppercase; margin-bottom:4px;">⚡ Cascade Pool (if swept)</div>' +
+          (cascade ?
+            '<div style="font-size:16px; font-weight:700; color:#F0B90B; font-family:\'JetBrains Mono\',monospace;">$' + cascade.price.toLocaleString() + '</div>' +
+            '<div style="font-size:11px; color:#848E9C;">' + cascade.side + ' • ' + cascade.distPct + ' away</div>' +
+            '<div style="font-size:10px; color:#555;">Vol: $' + cascade.volume + 'M</div>'
+          : '<div style="color:#555; font-size:12px;">No cascade data</div>') +
+        '</div>' +
       '</div>' +
-      '<div style="background:rgba(0,0,0,0.2);border:1px solid #2B3139;border-radius:6px;padding:8px;">' +
-        '<div style="font-size:9px;color:#848E9C;margin-bottom:3px;">⚡ Cascade (3D)</div>' +
-        (cascade ? '<div style="font-size:14px;font-weight:700;color:#F0B90B;font-family:\'JetBrains Mono\',monospace;">$' + cascade.price.toLocaleString() + '</div>' +
-                   '<div style="font-size:10px;color:#848E9C;">' + cascade.distPct + '</div>'
-                 : '<div style="color:#555;font-size:11px;">—</div>') +
+
+      // Nearest resistance + support
+      '<div style="display:grid; grid-template-columns:1fr 1fr; gap:8px; margin-bottom:10px;">' +
+        '<div style="font-size:11px; color:#848E9C;">Nearest Resistance: <span style="color:#F6465D; font-weight:600; font-family:\'JetBrains Mono\',monospace;">' +
+          (d.nearestResistance ? '$' + d.nearestResistance.price.toLocaleString() + ' (' + d.nearestResistance.distPct + ')' : '--') + '</span></div>' +
+        '<div style="font-size:11px; color:#848E9C;">Nearest Support: <span style="color:#0ECB81; font-weight:600; font-family:\'JetBrains Mono\',monospace;">' +
+          (d.nearestSupport ? '$' + d.nearestSupport.price.toLocaleString() + ' (' + d.nearestSupport.distPct + ')' : '--') + '</span></div>' +
       '</div>' +
-    '</div>' +
-    '<div style="font-size:9px;color:#848E9C;">Factors: ' + (d.reasons || []).slice(0,2).join(' · ') + '</div>';
+
+      // Reasons
+      '<div style="border-top:1px solid #2B3139; padding-top:8px;">' +
+        '<div style="font-size:9px; color:#848E9C; text-transform:uppercase; margin-bottom:5px;">Signal Factors (3D)</div>' +
+        '<div style="display:flex; flex-wrap:wrap; gap:5px;">' +
+          (d.reasons || []).map(r =>
+            '<span style="font-size:10px; background:rgba(255,255,255,0.05); border:1px solid #2B3139; border-radius:4px; padding:2px 7px; color:#ccc;">' + r + '</span>'
+          ).join('') +
+        '</div>' +
+      '</div>' +
+      '<div style="font-size:9px; color:#555; margin-top:6px; text-align:right;">Updated: ' + new Date(d.timestamp).toLocaleTimeString() + '</div>';
+
+  } catch(e) {
+    console.error('[SweepPredict3D] UI error:', e);
+  }
 }
 
 // Load 3D data on start and every 10 min (3D data changes slowly)
