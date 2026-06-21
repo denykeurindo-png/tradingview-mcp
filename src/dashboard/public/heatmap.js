@@ -330,6 +330,9 @@ function renderHeatmap(data) {
     },
     tooltip: {
       trigger: 'item',
+      alwaysShowContent: false,
+      hideDelay: 0,
+      transitionDuration: 0,
       backgroundColor: '#121212',
       borderColor: '#2C2C2E',
       borderWidth: 1,
@@ -1325,6 +1328,9 @@ function renderHeatmap3D(data) {
     grid: { top: '5%', bottom: '10%', left: '8%', right: '4%', show: true, backgroundColor: '#0a0e17', borderColor: 'transparent' },
     tooltip: {
       trigger: 'item',
+      alwaysShowContent: false,
+      hideDelay: 0,
+      transitionDuration: 0,
       backgroundColor: '#121212',
       borderColor: '#2C2C2E',
       borderWidth: 1,
@@ -1461,3 +1467,32 @@ function renderSweepPanel3D(d) {
 // Load 3D data on start and every 10 min (3D data changes slowly)
 load3DData();
 setInterval(load3DData, 10 * 60 * 1000);
+
+// Global mouse move tracker to force hide ECharts tooltips when mouse leaves the chart container
+document.addEventListener('mousemove', (e) => {
+  const checkAndHide = (chart, elementId) => {
+    if (!chart) return;
+    const el = document.getElementById(elementId);
+    if (!el || el.style.display === 'none') return;
+    
+    // If hovering over the tooltip itself, keep it visible
+    if (e.target && (e.target.closest('.echarts-tooltip') || e.target.classList.contains('echarts-tooltip'))) {
+      return;
+    }
+    
+    const rect = el.getBoundingClientRect();
+    const isInside = (
+      e.clientX >= rect.left &&
+      e.clientX <= rect.right &&
+      e.clientY >= rect.top &&
+      e.clientY <= rect.bottom
+    );
+    
+    if (!isInside) {
+      chart.dispatchAction({ type: 'hideTip' });
+    }
+  };
+  
+  checkAndHide(myChart, 'liq-heatmap-chart');
+  checkAndHide(myChart3D, 'liq-heatmap-chart-3d');
+});
