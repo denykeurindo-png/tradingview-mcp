@@ -1477,7 +1477,7 @@ const forceHideEchartsTooltip = (chart) => {
   chart.dispatchAction({ type: 'showTip', seriesIndex: 0, dataIndex: -1 });
 };
 
-// Global mouse move tracker to force hide ECharts tooltips when mouse leaves the chart container
+// Global mouse move tracker to force hide ECharts tooltips when mouse leaves the chart grid area
 document.addEventListener('mousemove', (e) => {
   const checkAndHide = (chart, elementId) => {
     if (!chart) return;
@@ -1490,14 +1490,24 @@ document.addEventListener('mousemove', (e) => {
     }
     
     const rect = el.getBoundingClientRect();
-    const isInside = (
-      e.clientX >= rect.left &&
-      e.clientX <= rect.right &&
-      e.clientY >= rect.top &&
-      e.clientY <= rect.bottom
+    const relativeX = e.clientX - rect.left;
+    const relativeY = e.clientY - rect.top;
+    
+    // Grid margins: top 5%, bottom 10% (height 90%), left 8%, right 4% (width 96%)
+    // We add a tiny buffer (top 4.5%, bottom 10.5%, left 7.5%, right 4.5%) to allow smooth scrolling
+    const minX = rect.width * 0.075;
+    const maxX = rect.width * 0.955;
+    const minY = rect.height * 0.045;
+    const maxY = rect.height * 0.895;
+    
+    const isInsideGrid = (
+      relativeX >= minX &&
+      relativeX <= maxX &&
+      relativeY >= minY &&
+      relativeY <= maxY
     );
     
-    if (!isInside) {
+    if (!isInsideGrid) {
       forceHideEchartsTooltip(chart);
     }
   };
