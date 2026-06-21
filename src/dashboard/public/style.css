@@ -1333,7 +1333,7 @@ tr:hover td {
   top: 0; left: 0;
   width: 220px;
   height: 100vh;
-  background: #161A1E;
+  background: var(--bg-surface);
   border-right: 1px solid var(--border-color);
   display: flex;
   flex-direction: column;

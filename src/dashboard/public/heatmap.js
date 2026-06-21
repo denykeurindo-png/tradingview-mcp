@@ -1454,7 +1454,7 @@ function renderSweepPanel3D(d) {
         '</div>' +
         '<div style="text-align:right;">' +
           '<div style="font-size:10px; color:#848E9C; margin-bottom:4px;">UP ' + d.upProb + '% / DOWN ' + d.downProb + '%</div>' +
-          '<div style="height:6px; width:120px; background:#1e2329; border-radius:3px; overflow:hidden;">' +
+          '<div style="height:6px; width:120px; background:var(--bg-card-hover); border-radius:3px; overflow:hidden;">' +
             '<div style="height:100%; width:' + d.upProb + '%; background:linear-gradient(90deg,' + (isUp ? '#0ECB81' : '#F6465D') + ',' + (isUp ? '#F6465D' : '#0ECB81') + '); border-radius:3px;"></div>' +
           '</div>' +
         '</div>' +
