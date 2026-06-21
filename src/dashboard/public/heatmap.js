@@ -274,8 +274,6 @@ function renderLiquidationTables(data) {
 
       let cellStyle = 'font-size:13px;font-weight:500;';
       if (lvl.isLiquidated) cellStyle = 'font-size:11px;font-weight:400;';
-      else if (badgeClass === 'high') cellStyle = 'font-size:15.5px;font-weight:700;';
-      else if (badgeClass === 'medium') cellStyle = 'font-size:13.5px;font-weight:600;';
 
       const distSign = lvl.distance > 0 ? '+' : '';
       const volBs = lvl.leverage * EXCHANGE_RATE;
