@@ -446,44 +446,10 @@ async function scrapeHeatMap3D() {
       await new Promise(r => setTimeout(r, 2000));
     }
 
-    // Select "3 day" via multi-strategy click (PointerEvent + MouseEvent + React fiber)
-    const clickResult = await cdp('Runtime.evaluate', {
+    // Get coordinates of the "3 day" element (or "24 hour" if dropdown needed)
+    const elemCoords = await cdp('Runtime.evaluate', {
       expression: `
-        (async function() {
-          // Full event sequence including PointerEvents (required by some React versions)
-          function rc(el) {
-            var rect = el.getBoundingClientRect();
-            var cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
-            var opts = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy };
-            ['pointerover','pointerenter','mouseover','mouseenter',
-             'pointermove','mousemove',
-             'pointerdown','mousedown',
-             'pointerup','mouseup',
-             'click'].forEach(function(ev) {
-              var E = ev.startsWith('pointer') ? PointerEvent : MouseEvent;
-              el.dispatchEvent(new E(ev, Object.assign({}, opts, { pointerId: 1, isPrimary: true })));
-            });
-          }
-
-          // Try React fiber onClick handler directly — bypasses synthetic event system
-          function fireReactClick(el) {
-            var fk = Object.keys(el).find(function(k){ return k.startsWith('__reactFiber$') || k.startsWith('__reactProps$'); });
-            if (!fk) return false;
-            var fiber = el[fk];
-            // __reactProps$ is the props object directly
-            if (fiber && typeof fiber.onClick === 'function') { fiber.onClick({ preventDefault:function(){}, stopPropagation:function(){} }); return true; }
-            // __reactFiber$ — walk up to find onClick
-            var f = fiber;
-            while (f) {
-              if (f.pendingProps && typeof f.pendingProps.onClick === 'function') {
-                f.pendingProps.onClick({ preventDefault:function(){}, stopPropagation:function(){}, target: el, currentTarget: el });
-                return true;
-              }
-              f = f.return;
-            }
-            return false;
-          }
-
+        (function() {
           function findByText(patterns) {
             var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
             var node;
@@ -492,49 +458,75 @@ async function scrapeHeatMap3D() {
             }
             var all = Array.from(document.querySelectorAll('button,span,div,li,a'));
             for (var i = 0; i < all.length; i++) {
-              var txt = (all[i].innerText || '').trim();
+              var txt = (all[i].innerText||'').trim();
               if (patterns.some(function(p){ return p.test(txt); })) return all[i];
             }
             return null;
           }
-
-          var PATTERNS_3D  = [/^3\\s*day$/i, /^3\\s*days$/i, /^3d$/i, /^72\\s*h/i];
-          var PATTERNS_24H = [/^24\\s*hour$/i, /^24h$/i, /^24\\s*hours$/i, /^1\\s*day$/i];
-
-          // Step 1: Try direct click on "3 day" (visible tab)
-          var day3El = findByText(PATTERNS_3D);
-          if (day3El) {
-            var fired = fireReactClick(day3El);
-            rc(day3El);
-            if (day3El.parentElement) { fireReactClick(day3El.parentElement); rc(day3El.parentElement); }
-            await new Promise(r => setTimeout(r, 1500));
-            return 'direct:' + (fired?'fiber':'dom') + ' ' + day3El.tagName + ' "' + (day3El.innerText||'').trim().slice(0,20) + '"';
+          var P3D  = [/^3\\s*day$/i,/^3\\s*days$/i,/^3d$/i,/^72\\s*h/i];
+          var P24H = [/^24\\s*hour$/i,/^24h$/i,/^24\\s*hours$/i,/^1\\s*day$/i];
+          var el3d = findByText(P3D);
+          if (el3d) {
+            el3d.scrollIntoView({block:'center'});
+            var r = el3d.getBoundingClientRect();
+            return JSON.stringify({found:'3day', tag:el3d.tagName, text:(el3d.innerText||'').trim().slice(0,20), x:r.left+r.width/2, y:r.top+r.height/2, needDropdown:false});
           }
-
-          // Step 2: Open dropdown via "24 hour" then click "3 day"
-          var el24 = findByText(PATTERNS_24H);
-          if (!el24) return 'no-24h-node; title=' + document.title.slice(0,40);
-          fireReactClick(el24); rc(el24);
-          if (el24.parentElement) { fireReactClick(el24.parentElement); rc(el24.parentElement); }
-          await new Promise(r => setTimeout(r, 2500));
-
-          day3El = findByText(PATTERNS_3D);
-          if (day3El) {
-            fireReactClick(day3El); rc(day3El);
-            if (day3El.parentElement) { fireReactClick(day3El.parentElement); rc(day3El.parentElement); }
-            await new Promise(r => setTimeout(r, 1000));
-            return 'dropdown:fiber+dom ' + day3El.tagName + ' "' + (day3El.innerText||'').trim().slice(0,20) + '"';
+          var el24 = findByText(P24H);
+          if (el24) {
+            el24.scrollIntoView({block:'center'});
+            var r2 = el24.getBoundingClientRect();
+            return JSON.stringify({found:'24h', tag:el24.tagName, text:(el24.innerText||'').trim().slice(0,20), x:r2.left+r2.width/2, y:r2.top+r2.height/2, needDropdown:true});
           }
-
-          var btns = Array.from(document.querySelectorAll('button,li[role="option"],[role="tab"],li'));
-          var btnTexts = btns.map(function(b){ return (b.innerText||b.textContent||'').trim().slice(0,20); }).filter(Boolean).slice(0,20).join(' | ');
-          return 'no-3day; buttons: ' + btnTexts;
+          var btns = Array.from(document.querySelectorAll('button,li,span')).slice(0,30).map(function(b){return (b.innerText||'').trim().slice(0,15);}).filter(Boolean).join('|');
+          return JSON.stringify({found:'none', btns:btns});
         })()
       `,
-      awaitPromise: true,
       returnByValue: true
     });
-    console.log('[Heatmap3D] Period select result:', clickResult?.result?.value);
+
+    let coordInfo = {};
+    try { coordInfo = JSON.parse(elemCoords?.result?.value || '{}'); } catch(e) {}
+    console.log('[Heatmap3D] Element search:', JSON.stringify(coordInfo));
+
+    // Use CDP Input.dispatchMouseEvent for real OS-level events (bypasses JS synthetic event limits)
+    async function cdpClick(x, y) {
+      await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', clickCount: 0 });
+      await new Promise(r => setTimeout(r, 80));
+      await cdp('Input.dispatchMouseEvent', { type: 'mousePressed', x, y, button: 'left', buttons: 1, clickCount: 1 });
+      await new Promise(r => setTimeout(r, 80));
+      await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
+    }
+
+    let clickResult = 'no-element-found';
+    if (coordInfo.found === '3day') {
+      await cdpClick(coordInfo.x, coordInfo.y);
+      clickResult = 'cdp-click 3day direct: ' + coordInfo.tag + ' "' + coordInfo.text + '"';
+    } else if (coordInfo.found === '24h') {
+      // Click "24h" to open dropdown, wait, then find and click "3 day"
+      await cdpClick(coordInfo.x, coordInfo.y);
+      await new Promise(r => setTimeout(r, 2000));
+      const coords3d = await cdp('Runtime.evaluate', {
+        expression: `(function(){
+          var P3D=[/^3\\s*day$/i,/^3\\s*days$/i,/^3d$/i,/^72\\s*h/i];
+          var all=Array.from(document.querySelectorAll('button,span,div,li,a'));
+          for(var i=0;i<all.length;i++){if(P3D.some(function(p){return p.test((all[i].innerText||'').trim());})){
+            all[i].scrollIntoView({block:'center'});
+            var r=all[i].getBoundingClientRect();
+            return JSON.stringify({x:r.left+r.width/2,y:r.top+r.height/2,tag:all[i].tagName,text:(all[i].innerText||'').trim().slice(0,20)});
+          }}
+          return null;
+        })()`,
+        returnByValue: true
+      });
+      if (coords3d?.result?.value) {
+        const c3 = JSON.parse(coords3d.result.value);
+        await cdpClick(c3.x, c3.y);
+        clickResult = 'cdp-click 3day dropdown: ' + c3.tag + ' "' + c3.text + '"';
+      } else {
+        clickResult = 'cdp-click opened dropdown but no 3day found';
+      }
+    }
+    console.log('[Heatmap3D] Period select result:', clickResult);
     
     // Wait up to 45s for chart to update to 3D period.
     // Validate by time SPAN (first→last xAxis), not bar count — 24H also has 288 bars.
