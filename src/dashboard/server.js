@@ -517,33 +517,39 @@ async function scrapeHeatMap3D() {
     });
     console.log('[Heatmap3D] Period select result:', clickResult?.result?.value);
     
-    // Wait up to 45s for chart to update to 3D period (xAxis data length > 150)
+    // Wait up to 45s for chart to update to 3D period.
+    // Validate by time SPAN (first→last xAxis), not bar count — 24H also has 288 bars.
+    // 3D must span at least 48 hours to be genuine 3-day data.
     let chartUpdated = false;
     for (let attempt = 0; attempt < 15; attempt++) {
       await new Promise(r => setTimeout(r, 3000));
       const check = await cdp('Runtime.evaluate', {
         expression: `(function(){
           var el=document.querySelector('.echarts-for-react');
-          if(!el) return 0;
+          if(!el) return JSON.stringify({len:0,spanHours:0});
           var keys=Object.keys(el),fk=keys.find(k=>k.startsWith('__reactFiber$')||k.startsWith('__reactContainer$'));
-          if(!fk) return 0;
+          if(!fk) return JSON.stringify({len:0,spanHours:0});
           var f=el[fk],opt=null;
           while(f){if(f.memoizedProps&&f.memoizedProps.option){opt=f.memoizedProps.option;break;}f=f.return;}
-          if(!opt||!opt.xAxis) return 0;
+          if(!opt||!opt.xAxis) return JSON.stringify({len:0,spanHours:0});
           var xa=Array.isArray(opt.xAxis)?opt.xAxis[0].data:opt.xAxis.data;
-          return xa ? xa.length : 0;
+          if(!xa||xa.length<2) return JSON.stringify({len:xa?xa.length:0,spanHours:0});
+          var t0=new Date(xa[0]).getTime(), t1=new Date(xa[xa.length-1]).getTime();
+          var spanHours=isNaN(t0)||isNaN(t1)?0:((t1-t0)/3600000);
+          return JSON.stringify({len:xa.length,spanHours:Math.round(spanHours)});
         })()`,
         returnByValue: true
       });
-      const newVal = parseInt(check?.result?.value, 10) || 0;
-      if (newVal > 150) {
-        console.log('[Heatmap3D] Chart updated to 3D period after', (attempt+1)*3, 's. xAxis length:', newVal);
+      let info = { len: 0, spanHours: 0 };
+      try { info = JSON.parse(check?.result?.value || '{}'); } catch(e) {}
+      if (info.spanHours >= 48) {
+        console.log('[Heatmap3D] Chart confirmed 3D after', (attempt+1)*3, 's. bars:', info.len, 'span:', info.spanHours + 'h');
         chartUpdated = true;
         break;
       }
-      console.log('[Heatmap3D] Waiting for 3D chart update... attempt', attempt+1, 'xAxis length:', newVal);
+      console.log('[Heatmap3D] Waiting for 3D... attempt', attempt+1, 'bars:', info.len, 'span:', info.spanHours + 'h (need ≥48h)');
     }
-    if (!chartUpdated) console.log('[Heatmap3D] Chart did not update to 3D period - scraping current state');
+    if (!chartUpdated) console.log('[Heatmap3D] Period did not switch to 3D (time span <48h) — scraping skipped.');
 
     // Scrape chart data
     const result = await cdp('Runtime.evaluate', {
