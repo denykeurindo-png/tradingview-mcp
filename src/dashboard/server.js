@@ -579,7 +579,7 @@ async function scrapeHeatMap3D() {
     const parsed = JSON.parse(val);
     if (parsed.error) throw new Error('3D scrape: ' + parsed.error);
 
-    return { data: parsed, timestamp: new Date().toISOString(), period: '3d' };
+    return { data: parsed, timestamp: new Date().toISOString(), period: chartUpdated ? '3d' : '24h-fallback' };
   } finally {
     if (navigated && savedUrl) {
       console.log(`[Heatmap3D] Restoring original URL: ${savedUrl}`);
@@ -2989,19 +2989,23 @@ async function runBotCycle() {
     // Scrape 3D heatmap in background after main cycle
     try {
       const r3d = await runWithCdpLock(() => scrapeHeatMap3D());
-      heatmap3DCache = r3d;
-      lastHeatmap3DFetchTime = Date.now();
-      const hd3 = r3d.data;
-      if (hd3) {
-        if (!hd3.series) hd3.series = [];
-        if (!hd3.series.some(s => s.type === 'candlestick' || s.type === 'candlestick_raw')) {
-          const mainData = heatmapDataCache?.data?.data || heatmapDataCache?.data || heatmapDataCache;
-          const cs2d = mainData?.series?.find(s => s.type === 'candlestick' || s.type === 'candlestick_raw');
-          if (cs2d) hd3.series.push(cs2d);
+      if (r3d.period === '3d') {
+        heatmap3DCache = r3d;
+        lastHeatmap3DFetchTime = Date.now();
+        const hd3 = r3d.data;
+        if (hd3) {
+          if (!hd3.series) hd3.series = [];
+          if (!hd3.series.some(s => s.type === 'candlestick' || s.type === 'candlestick_raw')) {
+            const mainData = heatmapDataCache?.data?.data || heatmapDataCache?.data || heatmapDataCache;
+            const cs2d = mainData?.series?.find(s => s.type === 'candlestick' || s.type === 'candlestick_raw');
+            if (cs2d) hd3.series.push(cs2d);
+          }
         }
+        sweepPrediction3DCache = predictSweepTargets(hd3, botMetrics);
+        console.log('[Heatmap3D] OK. Sweep3D:', sweepPrediction3DCache ? sweepPrediction3DCache.direction + ' ' + sweepPrediction3DCache.confidence + '%' : 'NULL');
+      } else {
+        console.warn('[Heatmap3D] Period switch to 3D failed (got 24h-fallback), skipping cache update to avoid polluting 3D data.');
       }
-      sweepPrediction3DCache = predictSweepTargets(hd3, botMetrics);
-      console.log('[Heatmap3D] OK. Sweep3D:', sweepPrediction3DCache ? sweepPrediction3DCache.direction + ' ' + sweepPrediction3DCache.confidence + '%' : 'NULL');
     } catch(e) {
       console.error('[Heatmap3D] Error:', e.message);
     }
