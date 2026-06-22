@@ -6,14 +6,14 @@ Express server on **port 4000** (`src/dashboard/server.js`).
 
 ### Step 1 — Start the server
 
+**Recommended (PM2):** Run in the background so you can close the terminal window:
 ```powershell
-npm run dashboard
+pm2 start src/dashboard/server.js --name "trading-dashboard"
 ```
 
-Or directly:
-
+**Alternative (Foreground):** Run in the active terminal (will close if the terminal is shut down):
 ```powershell
-node src/dashboard/server.js
+npm run dashboard
 ```
 
 ### Step 2 — Verify the login page loads
@@ -44,11 +44,12 @@ Invoke-WebRequest -Uri "http://localhost:4000/auth/login" -Method POST -Body $bo
 
 ### Stop the server
 
-If started in the background (note the PID printed at launch):
-
+If using **PM2**:
 ```powershell
-Stop-Process -Id <PID>
+pm2 stop trading-dashboard
 ```
+
+If running in the **foreground**, simply press `Ctrl + C` in the active terminal.
 
 ---
 
