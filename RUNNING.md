@@ -11,6 +11,18 @@ Express server on **port 4000** (`src/dashboard/server.js`).
 pm2 start src/dashboard/server.js --name "trading-dashboard"
 ```
 
+To manage the background process under **PM2**:
+```powershell
+# Check status
+pm2 status
+
+# Check logs
+pm2 logs trading-dashboard
+
+# Stop it
+pm2 stop trading-dashboard
+```
+
 **Alternative (Foreground):** Run in the active terminal (will close if the terminal is shut down):
 ```powershell
 npm run dashboard
