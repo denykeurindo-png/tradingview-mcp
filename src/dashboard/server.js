@@ -1641,6 +1641,85 @@ app.get('/api/jda-signal', async (req, res) => {
   }
 });
 
+// ─── Connection Status Check ─────────────────────────────────────────────────
+app.get('/api/status', async (req, res) => {
+  const settings = loadSettings();
+  const checks = [];
+
+  // 1. Dashboard server (self — always ok if we got here)
+  checks.push({ name: 'Dashboard Server', key: 'server', status: 'ok', detail: `Running on port ${PORT}`, latency: 0 });
+
+  // 2. Chrome CDP
+  const cdpStart = Date.now();
+  try {
+    const r = await fetch('http://127.0.0.1:9222/json', { signal: AbortSignal.timeout(3000) });
+    const tabs = await r.json();
+    const cgTab = tabs.find(t => t.url?.includes('coinglass.com'));
+    checks.push({
+      name: 'Chrome DevTools (CDP)',
+      key: 'cdp',
+      status: 'ok',
+      detail: `${tabs.length} tab(s) open · ${cgTab ? 'CoinGlass tab found' : 'No CoinGlass tab (will navigate on sync)'}`,
+      latency: Date.now() - cdpStart
+    });
+  } catch (e) {
+    checks.push({ name: 'Chrome DevTools (CDP)', key: 'cdp', status: 'error', detail: 'Port 9222 unreachable — open Chrome with --remote-debugging-port=9222', latency: Date.now() - cdpStart });
+  }
+
+  // 3. Binance Spot API
+  const bsStart = Date.now();
+  try {
+    const r = await fetch('https://api.binance.com/api/v3/ping', { signal: AbortSignal.timeout(5000) });
+    checks.push({ name: 'Binance Spot API', key: 'binance_spot', status: r.ok ? 'ok' : 'error', detail: r.ok ? 'Reachable' : `HTTP ${r.status}`, latency: Date.now() - bsStart });
+  } catch (e) {
+    checks.push({ name: 'Binance Spot API', key: 'binance_spot', status: 'error', detail: e.message, latency: Date.now() - bsStart });
+  }
+
+  // 4. Binance Futures API
+  const bfStart = Date.now();
+  try {
+    const r = await fetch('https://fapi.binance.com/fapi/v1/ping', { signal: AbortSignal.timeout(5000) });
+    checks.push({ name: 'Binance Futures API', key: 'binance_futures', status: r.ok ? 'ok' : 'error', detail: r.ok ? 'Reachable' : `HTTP ${r.status}`, latency: Date.now() - bfStart });
+  } catch (e) {
+    checks.push({ name: 'Binance Futures API', key: 'binance_futures', status: 'error', detail: e.message, latency: Date.now() - bfStart });
+  }
+
+  // 5. Telegram Bot API
+  const token = settings.telegramBotToken;
+  const chatId = settings.telegramChatId;
+  const tokenValid = token && token.length > 20 && token !== 'admin123';
+  if (!tokenValid) {
+    checks.push({ name: 'Telegram Bot', key: 'telegram', status: 'unconfigured', detail: 'Bot token not set — configure in Settings', latency: 0 });
+  } else {
+    const tgStart = Date.now();
+    try {
+      const r = await fetch(`https://api.telegram.org/bot${token}/getMe`, { signal: AbortSignal.timeout(5000) });
+      const data = await r.json();
+      if (data.ok) {
+        checks.push({
+          name: 'Telegram Bot',
+          key: 'telegram',
+          status: chatId ? 'ok' : 'warning',
+          detail: `@${data.result.username}${!chatId ? ' · Chat ID not configured' : ' · Chat ID set'}`,
+          latency: Date.now() - tgStart
+        });
+      } else {
+        checks.push({ name: 'Telegram Bot', key: 'telegram', status: 'error', detail: data.description || 'Invalid token', latency: Date.now() - tgStart });
+      }
+    } catch (e) {
+      checks.push({ name: 'Telegram Bot', key: 'telegram', status: 'error', detail: e.message, latency: Date.now() - tgStart });
+    }
+  }
+
+  // 6. TradingView Webhook (inbound — always ready if server is up)
+  checks.push({ name: 'TradingView Webhook', key: 'tv_webhook', status: 'ok', detail: 'POST /api/tradingview/webhook · Public endpoint active', latency: 0 });
+
+  const okCount = checks.filter(c => c.status === 'ok').length;
+  const errCount = checks.filter(c => c.status === 'error').length;
+
+  res.json({ success: true, checks, okCount, errCount, checkedAt: new Date().toISOString() });
+});
+
 app.get('/api/bot-status', async (req, res) => {
   const settings = loadSettings();
   
@@ -1807,55 +1886,69 @@ function autoTradeStrategyBackend(heatmapData) {
     });
     if (alreadySweptOld) return;
     
-    // Check if any RECENT candle swept this pool with a rejection
-    for (const candle of recentCandles) {
+    // Find the sweep candle — wick through pool with close on the reversal side
+    const sweepIdx = recentCandles.findIndex(candle => {
       const cClose = parseFloat(candle[1]);
-      const cLow = parseFloat(candle[2]);
-      const cHigh = parseFloat(candle[3]);
-      if (isNaN(cClose) || isNaN(cLow) || isNaN(cHigh)) continue;
-      
-      if (p < currentPrice) {
-        // Pool BELOW price: wick went down to sweep, but price closed ABOVE pool → LONG reversal
-        if (cLow <= p && cClose > p) {
-          const wickDepth = Math.abs(((cLow - p) / p) * 100);
-          const rejectionStrength = Math.abs(((cClose - cLow) / cLow) * 100);
-          sweepCandidates.push({
-            price: p,
-            yIdx: idx,
-            volume,
-            direction: 'LONG',
-            distFromPrice: absDist,
-            wickDepth,
-            rejectionStrength,
-            sweepLow: cLow,
-            sweepHigh: cHigh,
-            sweepClose: cClose,
-            // Score: higher volume + stronger rejection + deeper wick = better
-            score: volume * (1 + rejectionStrength) * (1 + wickDepth)
-          });
-          break; // One sweep per pool is enough
-        }
-      } else {
-        // Pool ABOVE price: wick went up to sweep, but price closed BELOW pool → SHORT reversal
-        if (cHigh >= p && cClose < p) {
-          const wickDepth = Math.abs(((cHigh - p) / p) * 100);
-          const rejectionStrength = Math.abs(((cHigh - cClose) / cHigh) * 100);
-          sweepCandidates.push({
-            price: p,
-            yIdx: idx,
-            volume,
-            direction: 'SHORT',
-            distFromPrice: absDist,
-            wickDepth,
-            rejectionStrength,
-            sweepLow: cLow,
-            sweepHigh: cHigh,
-            sweepClose: cClose,
-            score: volume * (1 + rejectionStrength) * (1 + wickDepth)
-          });
-          break;
-        }
-      }
+      const cLow   = parseFloat(candle[2]);
+      const cHigh  = parseFloat(candle[3]);
+      if (isNaN(cClose) || isNaN(cLow) || isNaN(cHigh)) return false;
+      return p < currentPrice
+        ? (cLow <= p && cClose > p)   // LONG: wick below pool, close above
+        : (cHigh >= p && cClose < p); // SHORT: wick above pool, close below
+    });
+
+    if (sweepIdx === -1) return; // no sweep candle in window
+
+    // Fix 2: require ≥1 confirmation candle AFTER the sweep candle
+    const confirmCandles = recentCandles.slice(sweepIdx + 1);
+    const confirmCount = confirmCandles.filter(c => {
+      const close = parseFloat(c[1]);
+      return p < currentPrice ? close > p : close < p;
+    }).length;
+
+    if (confirmCount < 1) return; // price not confirmed on reversal side yet
+
+    const sweepCandle = recentCandles[sweepIdx];
+    const cClose = parseFloat(sweepCandle[1]);
+    const cLow   = parseFloat(sweepCandle[2]);
+    const cHigh  = parseFloat(sweepCandle[3]);
+
+    if (p < currentPrice) {
+      // Pool BELOW price: wick went down to sweep, but price closed ABOVE pool → LONG reversal
+      const wickDepth = Math.abs(((cLow - p) / p) * 100);
+      const rejectionStrength = Math.abs(((cClose - cLow) / cLow) * 100);
+      sweepCandidates.push({
+        price: p,
+        yIdx: idx,
+        volume,
+        direction: 'LONG',
+        distFromPrice: absDist,
+        wickDepth,
+        rejectionStrength,
+        confirmCount,
+        sweepLow: cLow,
+        sweepHigh: cHigh,
+        sweepClose: cClose,
+        score: volume * (1 + rejectionStrength) * (1 + wickDepth) * (1 + confirmCount * 0.2)
+      });
+    } else {
+      // Pool ABOVE price: wick went up to sweep, but price closed BELOW pool → SHORT reversal
+      const wickDepth = Math.abs(((cHigh - p) / p) * 100);
+      const rejectionStrength = Math.abs(((cHigh - cClose) / cHigh) * 100);
+      sweepCandidates.push({
+        price: p,
+        yIdx: idx,
+        volume,
+        direction: 'SHORT',
+        distFromPrice: absDist,
+        wickDepth,
+        rejectionStrength,
+        confirmCount,
+        sweepLow: cLow,
+        sweepHigh: cHigh,
+        sweepClose: cClose,
+        score: volume * (1 + rejectionStrength) * (1 + wickDepth) * (1 + confirmCount * 0.2)
+      });
     }
   });
 
@@ -1900,18 +1993,22 @@ function autoTradeStrategyBackend(heatmapData) {
   const direction = bestSweep.direction;
   const entry = currentPrice;
 
-  // ─── Step 8: Calculate SL (behind sweep wick + 0.1% buffer) ─
-  const slBuffer = entry * 0.001; // 0.1% buffer behind sweep wick
-  let sl = direction === 'LONG' 
-    ? (bestSweep.sweepLow - slBuffer) 
+  // ─── Step 8: Calculate SL (ATR-based, min 0.3% floor) ──────
+  const atr = calculateATRFromCandles(cs.data, 14);
+  const minBuffer = entry * 0.003;               // 0.3% floor
+  const atrBuffer = atr ? atr * 1.5 : minBuffer; // 1.5× ATR-14
+  const slBuffer  = Math.max(minBuffer, atrBuffer);
+
+  let sl = direction === 'LONG'
+    ? (bestSweep.sweepLow  - slBuffer)
     : (bestSweep.sweepHigh + slBuffer);
 
   let slDistance = Math.abs(((entry - sl) / entry) * 100);
-  
+
   // Safety: minimum SL distance to prevent extreme leverage
-  if (slDistance < 0.15) {
-    slDistance = 0.2;
-    sl = direction === 'LONG' ? (entry * (1 - 0.002)) : (entry * (1 + 0.002));
+  if (slDistance < 0.3) {
+    slDistance = 0.3;
+    sl = direction === 'LONG' ? (entry * (1 - 0.003)) : (entry * (1 + 0.003));
   }
 
   // ─── Step 9: Calculate TP (largest opposing unswept pool) ──
@@ -2007,6 +2104,47 @@ function autoTradeStrategyBackend(heatmapData) {
       lastUpdate: new Date().toISOString()
     };
     console.log(`[LSR Bot] COOLDOWN — ${direction} trade recently executed near this TP zone`);
+    return;
+  }
+
+  // ─── Step 11b: Conflicting Sweep Filter ──────────────────────────────────
+  // If an opposing sweep (e.g. support sweep while we want to SHORT) happened in
+  // the same candle window, the market is in a "both-sides sweep" trap — skip.
+  const allWindowCandles = [...olderCandles, ...recentCandles];
+  const hasConflictingSweep = yAxisData.some((priceStr, idx) => {
+    const p = parseFloat(priceStr);
+    if (isNaN(p)) return false;
+    const volume = volumeByY[idx] || 0;
+    if (volume < minPoolVolume) return false;
+
+    // For SHORT: conflict = a qualifying support pool (below price) was swept recently
+    // For LONG:  conflict = a qualifying resistance pool (above price) was swept recently
+    const isConflictingSide = direction === 'SHORT' ? (p < currentPrice) : (p > currentPrice);
+    if (!isConflictingSide) return false;
+
+    return allWindowCandles.some(c => {
+      const cLow   = parseFloat(c[2]);
+      const cHigh  = parseFloat(c[3]);
+      const cClose = parseFloat(c[1]);
+      if (isNaN(cLow) || isNaN(cHigh) || isNaN(cClose)) return false;
+      return direction === 'SHORT'
+        ? (cLow <= p && cClose > p)   // support swept → bounce in progress → don't SHORT
+        : (cHigh >= p && cClose < p); // resistance swept → rejection in progress → don't LONG
+    });
+  });
+
+  if (hasConflictingSweep) {
+    botPhaseState = {
+      phase: 'CONFLICTING_SWEEP',
+      nearestPool: bestSweep.price,
+      nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
+      nearestPoolVolume: bestSweep.volume,
+      nearestPoolSide: direction === 'LONG' ? 'SUPPORT' : 'RESISTANCE',
+      sweepCandidate: { direction, entry, tp, sl, rr },
+      message: `${direction} setup valid but conflicting ${direction === 'SHORT' ? 'SUPPORT' : 'RESISTANCE'} sweep found in same window — both-sides trap. Waiting for clean setup.`,
+      lastUpdate: new Date().toISOString()
+    };
+    console.log(`[LSR Bot] CONFLICTING_SWEEP — ${direction} at $${entry.toFixed(0)} rejected: opposing sweep active in window`);
     return;
   }
 
@@ -2264,6 +2402,21 @@ function highest(arr, period) {
     result.push(val);
   }
   return result;
+}
+
+// ATR from candlestick data in [closeTime, close, low, high] format
+function calculateATRFromCandles(candles, period = 14) {
+  if (candles.length < period + 1) return null;
+  const trs = [];
+  for (let i = 1; i < candles.length; i++) {
+    const high = parseFloat(candles[i][3]);
+    const low = parseFloat(candles[i][2]);
+    const prevClose = parseFloat(candles[i - 1][1]);
+    if (isNaN(high) || isNaN(low) || isNaN(prevClose)) continue;
+    trs.push(Math.max(high - low, Math.abs(high - prevClose), Math.abs(low - prevClose)));
+  }
+  if (trs.length < period) return null;
+  return trs.slice(-period).reduce((a, b) => a + b, 0) / period;
 }
 
 function calculateADX(highs, lows, closes, period = 14) {
