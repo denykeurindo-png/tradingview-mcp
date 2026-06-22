@@ -446,70 +446,89 @@ async function scrapeHeatMap3D() {
       await new Promise(r => setTimeout(r, 2000));
     }
 
-    // Select "3 day" via robust DOM search with multiple text patterns
+    // Select "3 day" via multi-strategy click (PointerEvent + MouseEvent + React fiber)
     const clickResult = await cdp('Runtime.evaluate', {
       expression: `
         (async function() {
+          // Full event sequence including PointerEvents (required by some React versions)
           function rc(el) {
-            ['mousedown','mouseup','click'].forEach(ev =>
-              el.dispatchEvent(new MouseEvent(ev, {bubbles:true, cancelable:true, view:window}))
-            );
+            var rect = el.getBoundingClientRect();
+            var cx = rect.left + rect.width / 2, cy = rect.top + rect.height / 2;
+            var opts = { bubbles: true, cancelable: true, view: window, clientX: cx, clientY: cy };
+            ['pointerover','pointerenter','mouseover','mouseenter',
+             'pointermove','mousemove',
+             'pointerdown','mousedown',
+             'pointerup','mouseup',
+             'click'].forEach(function(ev) {
+              var E = ev.startsWith('pointer') ? PointerEvent : MouseEvent;
+              el.dispatchEvent(new E(ev, Object.assign({}, opts, { pointerId: 1, isPrimary: true })));
+            });
+          }
+
+          // Try React fiber onClick handler directly — bypasses synthetic event system
+          function fireReactClick(el) {
+            var fk = Object.keys(el).find(function(k){ return k.startsWith('__reactFiber$') || k.startsWith('__reactProps$'); });
+            if (!fk) return false;
+            var fiber = el[fk];
+            // __reactProps$ is the props object directly
+            if (fiber && typeof fiber.onClick === 'function') { fiber.onClick({ preventDefault:function(){}, stopPropagation:function(){} }); return true; }
+            // __reactFiber$ — walk up to find onClick
+            var f = fiber;
+            while (f) {
+              if (f.pendingProps && typeof f.pendingProps.onClick === 'function') {
+                f.pendingProps.onClick({ preventDefault:function(){}, stopPropagation:function(){}, target: el, currentTarget: el });
+                return true;
+              }
+              f = f.return;
+            }
+            return false;
           }
 
           function findByText(patterns) {
             var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
             var node;
             while (node = walker.nextNode()) {
-              var t = node.nodeValue.trim();
-              if (patterns.some(function(p){ return p.test(t); })) return node.parentElement;
+              if (patterns.some(function(p){ return p.test(node.nodeValue.trim()); })) return node.parentElement;
             }
-            // fallback: check element innerText
             var all = Array.from(document.querySelectorAll('button,span,div,li,a'));
             for (var i = 0; i < all.length; i++) {
-              var el = all[i];
-              var txt = (el.innerText || '').trim();
-              if (patterns.some(function(p){ return p.test(txt); })) return el;
+              var txt = (all[i].innerText || '').trim();
+              if (patterns.some(function(p){ return p.test(txt); })) return all[i];
             }
             return null;
           }
 
-          // Step 1: Try clicking "3 day" directly (tab UI — already visible)
-          var PATTERNS_3D = [/^3\\s*day$/i, /^3\\s*days$/i, /^3d$/i, /^72\\s*h(our)?$/i];
+          var PATTERNS_3D  = [/^3\\s*day$/i, /^3\\s*days$/i, /^3d$/i, /^72\\s*h/i];
+          var PATTERNS_24H = [/^24\\s*hour$/i, /^24h$/i, /^24\\s*hours$/i, /^1\\s*day$/i];
+
+          // Step 1: Try direct click on "3 day" (visible tab)
           var day3El = findByText(PATTERNS_3D);
           if (day3El) {
+            var fired = fireReactClick(day3El);
             rc(day3El);
-            if (day3El.parentElement) rc(day3El.parentElement);
+            if (day3El.parentElement) { fireReactClick(day3El.parentElement); rc(day3El.parentElement); }
             await new Promise(r => setTimeout(r, 1500));
-            return 'direct-click 3day: ' + day3El.tagName + ' "' + (day3El.innerText||'').trim().slice(0,20) + '"';
+            return 'direct:' + (fired?'fiber':'dom') + ' ' + day3El.tagName + ' "' + (day3El.innerText||'').trim().slice(0,20) + '"';
           }
 
-          // Step 2: Open period dropdown first (click "24 hour" or similar)
-          var PATTERNS_24H = [/^24\\s*hour$/i, /^24h$/i, /^24\\s*hours$/i, /^1\\s*day$/i, /^today$/i];
+          // Step 2: Open dropdown via "24 hour" then click "3 day"
           var el24 = findByText(PATTERNS_24H);
-          if (!el24) {
-            return 'no 24h text node; title=' + document.title.slice(0, 40);
-          }
-          var node2 = el24;
-          for (var i = 0; i < 6; i++) {
-            rc(node2);
-            if (!node2.parentElement || node2 === document.body) break;
-            node2 = node2.parentElement;
-          }
+          if (!el24) return 'no-24h-node; title=' + document.title.slice(0,40);
+          fireReactClick(el24); rc(el24);
+          if (el24.parentElement) { fireReactClick(el24.parentElement); rc(el24.parentElement); }
           await new Promise(r => setTimeout(r, 2500));
 
-          // Step 3: Now look for "3 day" in dropdown
           day3El = findByText(PATTERNS_3D);
           if (day3El) {
-            rc(day3El);
-            if (day3El.parentElement) rc(day3El.parentElement);
+            fireReactClick(day3El); rc(day3El);
+            if (day3El.parentElement) { fireReactClick(day3El.parentElement); rc(day3El.parentElement); }
             await new Promise(r => setTimeout(r, 1000));
-            return 'dropdown-click 3day: ' + day3El.tagName + ' "' + (day3El.innerText||'').trim().slice(0,20) + '"';
+            return 'dropdown:fiber+dom ' + day3El.tagName + ' "' + (day3El.innerText||'').trim().slice(0,20) + '"';
           }
 
-          // Step 4: Log all visible button/tab texts for debugging
-          var btns = Array.from(document.querySelectorAll('button,li[role="option"],[role="tab"]'));
+          var btns = Array.from(document.querySelectorAll('button,li[role="option"],[role="tab"],li'));
           var btnTexts = btns.map(function(b){ return (b.innerText||b.textContent||'').trim().slice(0,20); }).filter(Boolean).slice(0,20).join(' | ');
-          return 'no 3day found; visible buttons: ' + btnTexts;
+          return 'no-3day; buttons: ' + btnTexts;
         })()
       `,
       awaitPromise: true,
