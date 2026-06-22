@@ -446,7 +446,7 @@ async function scrapeHeatMap3D() {
       await new Promise(r => setTimeout(r, 2000));
     }
 
-    // Use CDP Input.dispatchMouseEvent for real OS-level events (bypasses JS synthetic event limits)
+    // Use CDP Input.dispatchMouseEvent for real OS-level events
     async function cdpClick(x, y) {
       await cdp('Input.dispatchMouseEvent', { type: 'mouseMoved', x, y, button: 'none', clickCount: 0 });
       await new Promise(r => setTimeout(r, 80));
@@ -455,64 +455,34 @@ async function scrapeHeatMap3D() {
       await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
     }
 
-    // Find element coords — returns null if element hidden (x=0,y=0)
-    async function getVisibleCoords(patterns) {
-      const res = await cdp('Runtime.evaluate', {
-        expression: `(function(){
-          var P=${JSON.stringify(patterns.map(p => p.source))};
-          var RE=P.map(function(s){return new RegExp(s,'i');});
-          var walker=document.createTreeWalker(document.body,NodeFilter.SHOW_TEXT);
-          var node;
-          while(node=walker.nextNode()){
-            var t=node.nodeValue.trim();
-            if(RE.some(function(r){return r.test(t);})){
-              var el=node.parentElement;
-              el.scrollIntoView({block:'center'});
-              var r=el.getBoundingClientRect();
-              if(r.width>0&&r.height>0&&(r.left+r.width/2)>1&&(r.top+r.height/2)>1)
-                return JSON.stringify({x:r.left+r.width/2,y:r.top+r.height/2,tag:el.tagName,text:t.slice(0,20),visible:true});
-              return JSON.stringify({x:0,y:0,tag:el.tagName,text:t.slice(0,20),visible:false});
-            }
+    // Find "3 day" as a visible BUTTON (CoinGlass shows unselected periods as buttons)
+    const btn3dCoords = await cdp('Runtime.evaluate', {
+      expression: `(function(){
+        var P3D = [/^3\\s*day$/i, /^3\\s*days$/i, /^3d$/i, /^72\\s*h/i];
+        var btns = Array.from(document.querySelectorAll('button'));
+        for (var i = 0; i < btns.length; i++) {
+          var txt = (btns[i].innerText || btns[i].textContent || '').trim();
+          if (P3D.some(function(p){ return p.test(txt); })) {
+            btns[i].scrollIntoView({ block: 'center' });
+            var r = btns[i].getBoundingClientRect();
+            return JSON.stringify({ x: r.left + r.width/2, y: r.top + r.height/2, w: r.width, h: r.height, text: txt.slice(0,20) });
           }
-          return null;
-        })()`,
-        returnByValue: true
-      });
-      if (!res?.result?.value) return null;
-      try { return JSON.parse(res.result.value); } catch(e) { return null; }
-    }
-
-    const P3D  = [/^3\s*day$/i, /^3\s*days$/i, /^3d$/i, /^72\s*h/i];
-    const P24H = [/^24\s*hour$/i, /^24h$/i, /^24\s*hours$/i, /^1\s*day$/i];
-
-    // Step 1: Try direct click on "3 day" if it's already visible
-    let info3d = await getVisibleCoords(P3D);
-    console.log('[Heatmap3D] Element search 3day:', JSON.stringify(info3d));
-
-    let clickResult = 'no-element-found';
-
-    if (info3d?.visible) {
-      await cdpClick(info3d.x, info3d.y);
-      clickResult = 'cdp-direct ' + info3d.tag + ' "' + info3d.text + '" @' + Math.round(info3d.x) + ',' + Math.round(info3d.y);
-    } else {
-      // Element hidden or not found — open dropdown first by clicking current period selector
-      const info24 = await getVisibleCoords(P24H);
-      console.log('[Heatmap3D] Element search 24h:', JSON.stringify(info24));
-      if (info24?.visible) {
-        await cdpClick(info24.x, info24.y);
-        await new Promise(r => setTimeout(r, 1500)); // wait for dropdown to open
-        // Now "3 day" should be visible
-        info3d = await getVisibleCoords(P3D);
-        console.log('[Heatmap3D] Element search 3day after dropdown:', JSON.stringify(info3d));
-        if (info3d?.visible) {
-          await cdpClick(info3d.x, info3d.y);
-          clickResult = 'cdp-dropdown ' + info3d.tag + ' "' + info3d.text + '" @' + Math.round(info3d.x) + ',' + Math.round(info3d.y);
-        } else {
-          clickResult = 'dropdown-opened but 3day still not visible; coords=' + JSON.stringify(info3d);
         }
-      } else {
-        clickResult = '24h-trigger not visible: ' + JSON.stringify(info24);
-      }
+        // Log all buttons for diagnosis if not found
+        var allBtns = btns.map(function(b){ return (b.innerText||b.textContent||'').trim().slice(0,20); }).filter(Boolean);
+        return JSON.stringify({ notFound: true, buttons: allBtns });
+      })()`,
+      returnByValue: true
+    });
+
+    let btn3d = {};
+    try { btn3d = JSON.parse(btn3dCoords?.result?.value || '{}'); } catch(e) {}
+    console.log('[Heatmap3D] 3day button search:', JSON.stringify(btn3d));
+
+    let clickResult = 'no-3day-button-found';
+    if (!btn3d.notFound && btn3d.x > 1 && btn3d.y > 1) {
+      await cdpClick(btn3d.x, btn3d.y);
+      clickResult = 'cdp-button-click "' + btn3d.text + '" @' + Math.round(btn3d.x) + ',' + Math.round(btn3d.y);
     }
     console.log('[Heatmap3D] Period select result:', clickResult);
     
