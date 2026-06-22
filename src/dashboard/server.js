@@ -446,7 +446,7 @@ async function scrapeHeatMap3D() {
       await new Promise(r => setTimeout(r, 2000));
     }
 
-    // Select "3 day" via React fiber onChange (most reliable for React-managed state)
+    // Select "3 day" via robust DOM search with multiple text patterns
     const clickResult = await cdp('Runtime.evaluate', {
       expression: `
         (async function() {
@@ -456,48 +456,60 @@ async function scrapeHeatMap3D() {
             );
           }
 
-          // Walk all elements looking for "24 hour" text
-          var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-          var nodes24 = [];
-          var node;
-          while (node = walker.nextNode()) {
-            if (/^24\\s*hour$/i.test(node.nodeValue.trim())) nodes24.push(node.parentElement);
+          function findByText(patterns) {
+            var walker = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
+            var node;
+            while (node = walker.nextNode()) {
+              var t = node.nodeValue.trim();
+              if (patterns.some(function(p){ return p.test(t); })) return node.parentElement;
+            }
+            // fallback: check element innerText
+            var all = Array.from(document.querySelectorAll('button,span,div,li,a'));
+            for (var i = 0; i < all.length; i++) {
+              var el = all[i];
+              var txt = (el.innerText || '').trim();
+              if (patterns.some(function(p){ return p.test(txt); })) return el;
+            }
+            return null;
           }
 
-          if (nodes24.length === 0) {
-            var all = Array.from(document.querySelectorAll('*'));
-            var el = all.find(e => /^24\\s*hour$/i.test(Array.from(e.childNodes).filter(n=>n.nodeType===3).map(n=>n.nodeValue).join('').trim()));
-            if (el) nodes24.push(el);
+          // Step 1: Try clicking "3 day" directly (tab UI — already visible)
+          var PATTERNS_3D = [/^3\\s*day$/i, /^3\\s*days$/i, /^3d$/i, /^72\\s*h(our)?$/i];
+          var day3El = findByText(PATTERNS_3D);
+          if (day3El) {
+            rc(day3El);
+            if (day3El.parentElement) rc(day3El.parentElement);
+            await new Promise(r => setTimeout(r, 1500));
+            return 'direct-click 3day: ' + day3El.tagName + ' "' + (day3El.innerText||'').trim().slice(0,20) + '"';
           }
 
-          if (nodes24.length === 0) {
-            return 'no 24h text node; page title=' + document.title.slice(0,40);
+          // Step 2: Open period dropdown first (click "24 hour" or similar)
+          var PATTERNS_24H = [/^24\\s*hour$/i, /^24h$/i, /^24\\s*hours$/i, /^1\\s*day$/i, /^today$/i];
+          var el24 = findByText(PATTERNS_24H);
+          if (!el24) {
+            return 'no 24h text node; title=' + document.title.slice(0, 40);
           }
-
-          var el24 = nodes24[0];
           var node2 = el24;
-          for (var i = 0; i < 10; i++) {
+          for (var i = 0; i < 6; i++) {
             rc(node2);
             if (!node2.parentElement || node2 === document.body) break;
             node2 = node2.parentElement;
           }
           await new Promise(r => setTimeout(r, 2500));
 
-          // Find "3 day" text node
-          var walker2 = document.createTreeWalker(document.body, NodeFilter.SHOW_TEXT);
-          var day3El = null;
-          while (node = walker2.nextNode()) {
-            if (/^3\\s*day$/i.test(node.nodeValue.trim())) { day3El = node.parentElement; break; }
-          }
-
+          // Step 3: Now look for "3 day" in dropdown
+          day3El = findByText(PATTERNS_3D);
           if (day3El) {
             rc(day3El);
             if (day3El.parentElement) rc(day3El.parentElement);
             await new Promise(r => setTimeout(r, 1000));
-            return 'clicked 3day: ' + day3El.tagName;
+            return 'dropdown-click 3day: ' + day3El.tagName + ' "' + (day3El.innerText||'').trim().slice(0,20) + '"';
           }
 
-          return 'no 3day found';
+          // Step 4: Log all visible button/tab texts for debugging
+          var btns = Array.from(document.querySelectorAll('button,li[role="option"],[role="tab"]'));
+          var btnTexts = btns.map(function(b){ return (b.innerText||b.textContent||'').trim().slice(0,20); }).filter(Boolean).slice(0,20).join(' | ');
+          return 'no 3day found; visible buttons: ' + btnTexts;
         })()
       `,
       awaitPromise: true,
