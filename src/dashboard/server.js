@@ -1123,7 +1123,10 @@ app.post('/api/settings', (req, res) => {
     capital: parseNum(newSettings.capital, current.capital),
     riskPercent: parseNum(newSettings.riskPercent, current.riskPercent),
     minRR: parseNum(newSettings.minRR, current.minRR),
-    minReversalProbability: parseIntNum(newSettings.minReversalProbability, current.minReversalProbability || 65),
+    minReversalProbability: parseIntNum(newSettings.minReversalProbability, current.minReversalProbability || 55),
+    minConfirmCandles: parseIntNum(newSettings.minConfirmCandles, current.minConfirmCandles !== undefined ? current.minConfirmCandles : 0),
+    atrMultiplier: parseNum(newSettings.atrMultiplier, current.atrMultiplier !== undefined ? current.atrMultiplier : 2.0),
+    minSLPercent: parseNum(newSettings.minSLPercent, current.minSLPercent !== undefined ? current.minSLPercent : 0.5),
     maxActive: parseIntNum(newSettings.maxActive, current.maxActive),
     minDist: parseNum(newSettings.minDist, current.minDist),
     maxDist: parseNum(newSettings.maxDist, current.maxDist),
@@ -1447,7 +1450,7 @@ function calculateReversalProbability(sweepDetail, oiChange, spotCVD, trend1h, t
 
   // 1. Liquidation Pool Volume (Up to 15 points)
   const volBillions = sweepDetail.volume / 1e9;
-  score += Math.min(15, volBillions * 3);
+  score += Math.min(15, volBillions * 15); // Scale so that $1B pool volume yields the full +15 points
 
   // 2. Rejection Strength / Wick Depth (Up to 15 points)
   score += Math.min(15, sweepDetail.rejectionStrength * 15);
@@ -1464,19 +1467,15 @@ function calculateReversalProbability(sweepDetail, oiChange, spotCVD, trend1h, t
     score += 10;
   } else if (sweepDetail.direction === 'SHORT' && spotCVD < 0) {
     score += 10;
-  } else {
-    score -= 5;
   }
 
   // 5. HTF Trend Alignment (Up to 10 points)
   if (sweepDetail.direction === 'LONG') {
     if (trend1h === 'BULLISH') score += 5;
     if (trend4h === 'BULLISH') score += 5;
-    if (trend1h === 'BEARISH') score -= 5;
   } else if (sweepDetail.direction === 'SHORT') {
     if (trend1h === 'BEARISH') score += 5;
     if (trend4h === 'BEARISH') score += 5;
-    if (trend1h === 'BULLISH') score -= 5;
   }
 
   // 6. Funding Rate (Up to 10 points)
@@ -1974,14 +1973,15 @@ function autoTradeStrategyBackend(heatmapData) {
 
     if (sweepIdx === -1) return; // no sweep candle in window
 
-    // Fix 2: require ≥1 confirmation candle AFTER the sweep candle
+    // Fix 2: require ≥minConfirmCandles confirmation candles AFTER the sweep candle
     const confirmCandles = recentCandles.slice(sweepIdx + 1);
     const confirmCount = confirmCandles.filter(c => {
       const close = parseFloat(c[1]);
       return p < currentPrice ? close > p : close < p;
     }).length;
 
-    if (confirmCount < 1) return; // price not confirmed on reversal side yet
+    const minConfirm = settings.minConfirmCandles !== undefined ? settings.minConfirmCandles : 0;
+    if (confirmCount < minConfirm) return; // price not confirmed on reversal side yet
 
     const sweepCandle = recentCandles[sweepIdx];
     const cClose = parseFloat(sweepCandle[1]);
@@ -2068,10 +2068,14 @@ function autoTradeStrategyBackend(heatmapData) {
   const direction = bestSweep.direction;
   const entry = currentPrice;
 
-  // ─── Step 8: Calculate SL (ATR-based, min 0.3% floor) ──────
+  // ─── Step 8: Calculate SL (ATR-based, customizable floor and multiplier) ──────
+  const atrMultiplier = settings.atrMultiplier !== undefined ? settings.atrMultiplier : 2.0;
+  const minSLPercent = settings.minSLPercent !== undefined ? settings.minSLPercent : 0.5;
+  const slFloorFraction = minSLPercent / 100;
+
   const atr = calculateATRFromCandles(cs.data, 14);
-  const minBuffer = entry * 0.003;               // 0.3% floor
-  const atrBuffer = atr ? atr * 1.5 : minBuffer; // 1.5× ATR-14
+  const minBuffer = entry * slFloorFraction;
+  const atrBuffer = atr ? atr * atrMultiplier : minBuffer;
   const slBuffer  = Math.max(minBuffer, atrBuffer);
 
   let sl = direction === 'LONG'
@@ -2081,9 +2085,9 @@ function autoTradeStrategyBackend(heatmapData) {
   let slDistance = Math.abs(((entry - sl) / entry) * 100);
 
   // Safety: minimum SL distance to prevent extreme leverage
-  if (slDistance < 0.3) {
-    slDistance = 0.3;
-    sl = direction === 'LONG' ? (entry * (1 - 0.003)) : (entry * (1 + 0.003));
+  if (slDistance < minSLPercent) {
+    slDistance = minSLPercent;
+    sl = direction === 'LONG' ? (entry * (1 - slFloorFraction)) : (entry * (1 + slFloorFraction));
   }
 
   // ─── Step 9: Calculate TP (largest opposing unswept pool) ──
