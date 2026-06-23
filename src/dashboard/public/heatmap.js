@@ -725,9 +725,6 @@ function renderBacktestTable() {
 
     // Close timestamp logic
     let closeTimestamp = trade.closeTimestamp;
-    if (!closeTimestamp && trade.status !== 'ACTIVE') {
-      closeTimestamp = timestamp; // fallback to entry time
-    }
 
     const formatTimeOnly = (ts) => {
       if (!ts) return '';
