@@ -90,6 +90,73 @@
       font-weight: 600;
       border-color: var(--accent-primary);
     }
+
+    /* ── New Panel Styles ───────────────────────────── */
+    .panel-grid-2 {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: var(--spacing-md);
+    }
+    @media (max-width: 900px) { .panel-grid-2 { grid-template-columns: 1fr; } }
+
+    .metric-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 0;
+      border-bottom: 1px solid rgba(255,255,255,0.04);
+      font-size: 13px;
+    }
+    .metric-row:last-child { border-bottom: none; }
+    .metric-label { color: var(--text-muted); }
+    .metric-val { font-family: var(--font-mono); font-weight: 600; color: #EAECEF; }
+
+    .phase-badge {
+      display: inline-block;
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 12px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+    }
+    .phase-STANDBY    { background: rgba(132,142,156,0.15); color: #848E9C; }
+    .phase-ALERT      { background: rgba(240,185,11,0.15);  color: #F0B90B; }
+    .phase-SWEEP_DETECTED { background: rgba(14,203,129,0.15); color: #0ECB81; }
+    .phase-TRADE_EXECUTED { background: rgba(14,203,129,0.25); color: #0ECB81; }
+    .phase-COOLDOWN   { background: rgba(240,185,11,0.1);   color: #F0B90B; }
+    .phase-SWEEP_REJECTED { background: rgba(246,70,93,0.1);  color: #F6465D; }
+    .phase-CONFLICTING_SWEEP { background: rgba(246,70,93,0.1); color: #F6465D; }
+    .phase-DISABLED   { background: rgba(132,142,156,0.1);  color: #848E9C; }
+    .phase-INITIALIZING { background: rgba(132,142,156,0.1); color: #848E9C; }
+    .phase-default    { background: rgba(132,142,156,0.1);  color: #848E9C; }
+
+    .fng-bar-wrap {
+      height: 10px;
+      background: rgba(255,255,255,0.07);
+      border-radius: 6px;
+      overflow: hidden;
+      margin: 10px 0 6px;
+    }
+    .fng-bar-fill {
+      height: 100%;
+      border-radius: 6px;
+      transition: width 0.6s ease;
+    }
+
+    .signal-pill {
+      display: inline-block;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.06em;
+    }
+    .sig-BULLISH      { background: rgba(14,203,129,0.15); color: #0ECB81; }
+    .sig-BEARISH      { background: rgba(246,70,93,0.15);  color: #F6465D; }
+    .sig-NEUTRAL      { background: rgba(132,142,156,0.12); color: #848E9C; }
+    .sig-MIXED        { background: rgba(240,185,11,0.15);  color: #F0B90B; }
+    .sig-ACCUMULATION { background: rgba(14,203,129,0.15); color: #0ECB81; }
+    .sig-DISTRIBUTION { background: rgba(246,70,93,0.15);  color: #F6465D; }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
 </head>
@@ -292,6 +359,128 @@
           </div>
           <span class="kpi-footer" id="foot-ls-percentage">50.0% Long / 50.0% Short</span>
           <span class="kpi-time" id="foot-ls-top-trader" style="margin-top:2px;color:#98989D;">Top Traders: --</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── LSR Bot Status Panel ──────────────────────────────────── -->
+    <section>
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
+          <div>
+            <h3 style="font-size:16px; font-weight:700; color:var(--accent-primary);">🤖 LSR Bot Status</h3>
+            <span style="font-size:11px; color:var(--text-muted);">Liquidity Sweep Reversal — Real-time Phase</span>
+          </div>
+          <div id="bot-phase-badge" class="phase-badge phase-INITIALIZING">LOADING...</div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:8px; margin-bottom:12px;">
+          <div style="background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:8px; padding:10px 14px;">
+            <div style="font-size:10px; color:var(--text-muted); margin-bottom:4px;">NEAREST POOL</div>
+            <div id="bot-nearest-pool" style="font-size:14px; font-weight:700; font-family:var(--font-mono); color:#EAECEF;">--</div>
+            <div id="bot-pool-side" style="font-size:10px; color:#848E9C; margin-top:2px;">--</div>
+          </div>
+          <div style="background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:8px; padding:10px 14px;">
+            <div style="font-size:10px; color:var(--text-muted); margin-bottom:4px;">DISTANCE</div>
+            <div id="bot-pool-dist" style="font-size:14px; font-weight:700; font-family:var(--font-mono); color:#F0B90B;">--</div>
+          </div>
+          <div style="background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:8px; padding:10px 14px;">
+            <div style="font-size:10px; color:var(--text-muted); margin-bottom:4px;">REVERSAL PROB</div>
+            <div id="bot-reversal-prob" style="font-size:14px; font-weight:700; font-family:var(--font-mono); color:#EAECEF;">--%</div>
+          </div>
+          <div style="background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:8px; padding:10px 14px;">
+            <div style="font-size:10px; color:var(--text-muted); margin-bottom:4px;">SWEEP R:R</div>
+            <div id="bot-sweep-rr" style="font-size:14px; font-weight:700; font-family:var(--font-mono); color:#EAECEF;">--</div>
+          </div>
+        </div>
+        <div style="background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:8px; padding:10px 14px; font-size:12px; color:#848E9C; font-family:var(--font-mono);">
+          <span style="color:#5A6478;">MSG › </span><span id="bot-status-msg">Waiting for data...</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Fear & Greed + ETF Flow row ──────────────────────────── -->
+    <section class="panel-grid-2">
+
+      <!-- Fear & Greed Card -->
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
+          <div>
+            <h3 style="font-size:15px; font-weight:700; color:var(--accent-primary);">😱 Fear & Greed Index</h3>
+            <span style="font-size:11px; color:var(--text-muted);">alternative.me · Updated daily</span>
+          </div>
+          <div id="fng-signal-pill" class="signal-pill sig-NEUTRAL">--</div>
+        </div>
+        <div style="text-align:center; padding: 8px 0;">
+          <div id="fng-value" style="font-size:42px; font-weight:700; font-family:var(--font-mono); color:#EAECEF;">--</div>
+          <div id="fng-label" style="font-size:14px; color:#848E9C; margin-top:2px;">Loading...</div>
+        </div>
+        <div class="fng-bar-wrap">
+          <div id="fng-bar" class="fng-bar-fill" style="width:0%; background: #848E9C;"></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-size:10px; color:#5A6478;">
+          <span>0 Extreme Fear</span><span>50 Neutral</span><span>100 Extreme Greed</span>
+        </div>
+        <div id="fng-lsr-hint" style="margin-top:10px; font-size:11px; color:#5A6478; padding:8px; background:rgba(0,0,0,0.2); border-radius:6px;">--</div>
+      </div>
+
+      <!-- ETF Flow Summary Card -->
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
+          <div>
+            <h3 style="font-size:15px; font-weight:700; color:var(--accent-primary);">📊 BTC ETF Flow</h3>
+            <span style="font-size:11px; color:var(--text-muted);">CoinGlass · Institutional Flow</span>
+          </div>
+          <div id="etf-signal-pill" class="signal-pill sig-NEUTRAL">NEUTRAL</div>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Daily Net Inflow</span>
+          <span class="metric-val" id="etf-daily">--</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Total Net Inflow</span>
+          <span class="metric-val" id="etf-total">--</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">GBTC Flow</span>
+          <span class="metric-val" id="etf-gbtc">--</span>
+        </div>
+        <div class="metric-row">
+          <span class="metric-label">Last Sync</span>
+          <span class="metric-val" id="etf-update" style="font-size:11px; color:#5A6478;">--</span>
+        </div>
+        <div id="etf-lsr-hint" style="margin-top:10px; font-size:11px; color:#5A6478; padding:8px; background:rgba(0,0,0,0.2); border-radius:6px;">--</div>
+      </div>
+    </section>
+
+    <!-- ── Whale Trade Detector ──────────────────────────────────── -->
+    <section>
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
+          <div>
+            <h3 style="font-size:16px; font-weight:700; color:var(--accent-primary);">🐋 Whale Trade Detector</h3>
+            <span style="font-size:11px; color:var(--text-muted);">Binance aggTrades · Last 15 min · Threshold $500K</span>
+          </div>
+          <div id="whale-signal-pill" class="signal-pill sig-NEUTRAL">NEUTRAL</div>
+        </div>
+        <div style="display:grid; grid-template-columns:1fr 1fr 1fr 1fr; gap:8px;">
+          <div style="background:rgba(14,203,129,0.07); border:1px solid rgba(14,203,129,0.2); border-radius:8px; padding:10px 14px; text-align:center;">
+            <div style="font-size:10px; color:#0ECB81; margin-bottom:4px;">🟢 WHALE BUYS</div>
+            <div id="whale-buy-count" style="font-size:22px; font-weight:700; color:#0ECB81; font-family:var(--font-mono);">0</div>
+            <div id="whale-buy-vol" style="font-size:10px; color:#5A6478; margin-top:2px;">$0</div>
+          </div>
+          <div style="background:rgba(246,70,93,0.07); border:1px solid rgba(246,70,93,0.2); border-radius:8px; padding:10px 14px; text-align:center;">
+            <div style="font-size:10px; color:#F6465D; margin-bottom:4px;">🔴 WHALE SELLS</div>
+            <div id="whale-sell-count" style="font-size:22px; font-weight:700; color:#F6465D; font-family:var(--font-mono);">0</div>
+            <div id="whale-sell-vol" style="font-size:10px; color:#5A6478; margin-top:2px;">$0</div>
+          </div>
+          <div style="background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:8px; padding:10px 14px; text-align:center;">
+            <div style="font-size:10px; color:var(--text-muted); margin-bottom:4px;">NET WHALE FLOW</div>
+            <div id="whale-net-flow" style="font-size:16px; font-weight:700; font-family:var(--font-mono); color:#EAECEF;">$0</div>
+          </div>
+          <div style="background:rgba(0,0,0,0.2); border:1px solid var(--border-color); border-radius:8px; padding:10px 14px; text-align:center;">
+            <div style="font-size:10px; color:var(--text-muted); margin-bottom:4px;">LSR CONTEXT</div>
+            <div id="whale-lsr-hint" style="font-size:11px; font-weight:600; color:#848E9C; margin-top:4px;">--</div>
+          </div>
         </div>
       </div>
     </section>

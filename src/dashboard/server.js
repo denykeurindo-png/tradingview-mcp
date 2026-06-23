@@ -1760,18 +1760,18 @@ function evaluateActiveTradesBackend(heatmapData) {
       });
     }
 
-    if (trade.initialTpVolume && currentTpVolume < trade.initialTpVolume * 0.5) {
+    if (trade.initialTpVolume && currentTpVolume < trade.initialTpVolume * 0.7) {
       trade.status = 'CUT_LOSS';
       const diff = trade.direction === 'LONG' ? (lastClose - trade.entry) : (trade.entry - lastClose);
       const profit = trade.positionSizeUsd * (diff / trade.entry);
       trade.pnl = profit;
       trade.closePrice = lastClose;
       trade.closeTimestamp = Date.now();
-      trade.note = 'Auto (Pool -50%)';
+      trade.note = 'Auto (Pool -70%)';
       updated = true;
       console.log(`[LSR Bot] ⚠️ AUTO-CUT TRIGGERED — ${trade.direction} Closed at $${lastClose.toFixed(2)} (Initial Pool: $${(trade.initialTpVolume/1e9).toFixed(2)}B, Current Pool: $${(currentTpVolume/1e9).toFixed(2)}B), PnL: ${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}`);
       sendTelegramAlert(
-        `⚠️ <b>Trade Closed (Auto-Cut: Pool -50%)</b>\n` +
+        `⚠️ <b>Trade Closed (Auto-Cut: Pool -70%)</b>\n` +
         `Type: <b>${trade.direction}</b>\n` +
         `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
         `TP: <code>$${trade.tp.toFixed(2)}</code>\n` +
@@ -1928,9 +1928,40 @@ app.get('/api/bot-status', async (req, res) => {
     console.error('Failed to fetch BTC price from Binance for bot-status, using default fallback:', e.message);
   }
 
+  // Whale Trade Detector — fetch recent aggTrades and find large ones (>$500K)
+  let whaleData = { buyCount: 0, sellCount: 0, buyVol: 0, sellVol: 0, signal: 'NEUTRAL', threshold: 500000 };
+  try {
+    const whaleThreshold = 500000; // $500K per trade
+    const aggRes = await fetch('https://api.binance.com/api/v3/aggTrades?symbol=BTCUSDT&limit=500', { signal: AbortSignal.timeout(5000) });
+    if (aggRes.ok) {
+      const aggTrades = await aggRes.json();
+      const cutoffTime = Date.now() - 15 * 60 * 1000; // last 15 minutes
+      aggTrades.forEach(t => {
+        if (t.T < cutoffTime) return;
+        const tradeUsd = parseFloat(t.p) * parseFloat(t.q);
+        if (tradeUsd < whaleThreshold) return;
+        if (t.m) { // m=true → seller is market maker → buyer is taker (buy)
+          whaleData.buyCount++;
+          whaleData.buyVol += tradeUsd;
+        } else {
+          whaleData.sellCount++;
+          whaleData.sellVol += tradeUsd;
+        }
+      });
+      const netFlow = whaleData.buyVol - whaleData.sellVol;
+      whaleData.netFlow = netFlow;
+      if (netFlow > whaleThreshold * 2) whaleData.signal = 'ACCUMULATION';
+      else if (netFlow < -whaleThreshold * 2) whaleData.signal = 'DISTRIBUTION';
+      else whaleData.signal = 'NEUTRAL';
+    }
+  } catch (e) {
+    console.error('[Whale Detector] Error:', e.message);
+  }
+
   res.json({
     success: true,
     btcPrice,
+    whaleData,
     data: {
       ...botPhaseState,
       metrics: botMetrics,
@@ -1946,6 +1977,77 @@ app.get('/api/bot-status', async (req, res) => {
       }
     }
   });
+});
+
+// ─── Market Extras: Fear & Greed + ETF Flow ──────────────────────────────────
+let fngCache = null;
+let fngCacheTime = 0;
+
+app.get('/api/market-extras', async (req, res) => {
+  // 1. Fear & Greed Index (cache 1 hour — updates once/day)
+  let fng = fngCache;
+  if (!fng || Date.now() - fngCacheTime > 3600000) {
+    try {
+      const fngRes = await fetch('https://api.alternative.me/fng/?limit=1', { signal: AbortSignal.timeout(5000) });
+      if (fngRes.ok) {
+        const fngData = await fngRes.json();
+        if (fngData.data && fngData.data.length > 0) {
+          fng = {
+            value: parseInt(fngData.data[0].value),
+            label: fngData.data[0].value_classification,
+            timestamp: fngData.data[0].timestamp
+          };
+          fngCache = fng;
+          fngCacheTime = Date.now();
+        }
+      }
+    } catch (e) {
+      console.error('[Fear&Greed] Fetch error:', e.message);
+    }
+  }
+
+  // 2. ETF Flow Summary — read from existing etfDataCache (zero cost)
+  let etfSummary = null;
+  try {
+    const etfRaw = etfDataCache;
+    if (etfRaw) {
+      const kpis = etfRaw.kpis || {};
+      const parseUSD = (str) => {
+        if (!str) return 0;
+        const clean = str.replace(/[\$\+,]/g, '').trim();
+        const m = clean.match(/^([+-]?[\d.]+)([KMB])?$/i);
+        if (!m) return 0;
+        const num = parseFloat(m[1]);
+        const s = (m[2] || '').toUpperCase();
+        if (s === 'K') return num * 1000;
+        if (s === 'M') return num * 1000000;
+        if (s === 'B') return num * 1000000000;
+        return num;
+      };
+      const dailyUsd = kpis.dailyTotalNetInflow ? parseUSD(kpis.dailyTotalNetInflow.usd) : 0;
+      const totalUsd = kpis.totalNetInflow ? parseUSD(kpis.totalNetInflow.usd) : 0;
+      const gbtcBtc = etfRaw.formatted && etfRaw.formatted[0] ? (etfRaw.formatted[0].GBTC || 0) : 0;
+
+      let etfSignal = 'NEUTRAL';
+      if (dailyUsd > 50000000) etfSignal = 'BULLISH';       // > $50M daily inflow
+      else if (dailyUsd < -100000000) etfSignal = 'BEARISH'; // < -$100M daily outflow
+      if (gbtcBtc < -200) etfSignal = etfSignal === 'BULLISH' ? 'MIXED' : 'BEARISH'; // GBTC vampire
+
+      etfSummary = {
+        dailyUsd,
+        totalUsd,
+        gbtcBtc,
+        signal: etfSignal,
+        dailyLabel: kpis.dailyTotalNetInflow ? kpis.dailyTotalNetInflow.usd : 'N/A',
+        totalLabel: kpis.totalNetInflow ? kpis.totalNetInflow.usd : 'N/A',
+        lastUpdate: etfRaw.timestamp || null
+      };
+    }
+  } catch (e) {
+    console.error('[ETF Summary] Error:', e.message);
+  }
+
+  res.json({ success: true, fng, etfSummary });
 });
 
 function autoTradeStrategyBackend(heatmapData) {
@@ -2152,7 +2254,25 @@ function autoTradeStrategyBackend(heatmapData) {
   // ─── Step 6: No sweep detected → Report phase ────────────
   if (sweepCandidates.length === 0) {
     const nearDist = Math.abs(closestPool.distance);
-    
+
+    // Calculate a preview probability using closest pool as proxy sweep candidate
+    // This makes reversalProbability visible even when no sweep has been confirmed yet
+    const previewSweep = {
+      volume: closestPool.volume,
+      rejectionStrength: 0.1, // minimal — no actual sweep wick yet
+      direction: closestPool.distance > 0 ? 'SHORT' : 'LONG'
+    };
+    const previewProb = calculateReversalProbability(
+      previewSweep,
+      botMetrics.oiChange1h,
+      botMetrics.spotCvd1h,
+      botMetrics.trend1h,
+      botMetrics.trend4h,
+      botMetrics.fundingRate,
+      botMetrics.longShortRatio
+    );
+    botMetrics.reversalProbability = previewProb;
+
     if (nearDist <= 0.5) {
       // ALERT phase: price is close to a major pool
       botPhaseState = {
@@ -2162,10 +2282,11 @@ function autoTradeStrategyBackend(heatmapData) {
         nearestPoolVolume: closestPool.volume,
         nearestPoolSide: poolSide,
         sweepCandidate: null,
-        message: `⚠️ Price $${currentPrice.toFixed(0)} approaching ${poolSide} pool at $${closestPool.price.toFixed(0)} (${nearDist.toFixed(2)}% away). Watching for sweep...`,
+        reversalProbabilityPreview: previewProb,
+        message: `⚠️ Price $${currentPrice.toFixed(0)} approaching ${poolSide} pool at $${closestPool.price.toFixed(0)} (${nearDist.toFixed(2)}% away). Preview prob: ${previewProb}%. Watching for sweep...`,
         lastUpdate: new Date().toISOString()
       };
-      console.log(`[LSR Bot] ALERT — Price approaching ${poolSide} pool $${closestPool.price.toFixed(0)} (${nearDist.toFixed(2)}%)`);
+      console.log(`[LSR Bot] ALERT — Price approaching ${poolSide} pool $${closestPool.price.toFixed(0)} (${nearDist.toFixed(2)}%) Preview prob: ${previewProb}%`);
     } else {
       // STANDBY phase: price in mid-range, no qualifying sweep
       botPhaseState = {
@@ -2175,10 +2296,11 @@ function autoTradeStrategyBackend(heatmapData) {
         nearestPoolVolume: closestPool.volume,
         nearestPoolSide: poolSide,
         sweepCandidate: null,
-        message: `Waiting in mid-range. Nearest ${poolSide} pool: $${closestPool.price.toFixed(0)} (${nearDist.toFixed(2)}%). No sweep yet.`,
+        reversalProbabilityPreview: previewProb,
+        message: `Waiting in mid-range. Nearest ${poolSide} pool: $${closestPool.price.toFixed(0)} (${nearDist.toFixed(2)}%). No sweep yet. Preview prob: ${previewProb}%.`,
         lastUpdate: new Date().toISOString()
       };
-      console.log(`[LSR Bot] STANDBY — Mid-range at $${currentPrice.toFixed(0)}, nearest pool $${closestPool.price.toFixed(0)} (${nearDist.toFixed(2)}%)`);
+      console.log(`[LSR Bot] STANDBY — Mid-range at $${currentPrice.toFixed(0)}, nearest pool $${closestPool.price.toFixed(0)} (${nearDist.toFixed(2)}%) Preview prob: ${previewProb}%`);
     }
     return;
   }
