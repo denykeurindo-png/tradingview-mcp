@@ -1,1 +1,0 @@
-[ETF] Warm-up failed: CDP timeout: Page.navigate
