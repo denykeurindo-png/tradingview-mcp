@@ -902,6 +902,21 @@ app.post('/api/heatmap-data/update', (req, res) => {
     heatmap3DCache = { data, timestamp: new Date().toISOString(), period: '3d' };
     lastHeatmap3DFetchTime = Date.now();
     console.log('[Bridge API] Received 3D Heatmap update from local client.');
+    try {
+      const hd3 = data.data || data;
+      if (hd3) {
+        if (!hd3.series) hd3.series = [];
+        if (!hd3.series.some(s => s.type === 'candlestick' || s.type === 'candlestick_raw')) {
+          const mainData = heatmapDataCache?.data?.data || heatmapDataCache?.data || heatmapDataCache;
+          const cs2d = mainData?.series?.find(s => s.type === 'candlestick' || s.type === 'candlestick_raw');
+          if (cs2d) hd3.series.push(cs2d);
+        }
+      }
+      sweepPrediction3DCache = predictSweepTargets(hd3, botMetrics);
+      console.log('[Bridge API] Updated 3D Sweep Prediction from received 3D data.');
+    } catch (err) {
+      console.error('[Bridge API] Failed to compute 3D Sweep Prediction:', err.message);
+    }
   } else {
     heatmapDataCache = { data, timestamp: new Date().toISOString() };
     lastHeatmapFetchTime = Date.now();
@@ -3121,6 +3136,23 @@ async function runBotCycle() {
       }
     } catch(e) {
       console.error('[Heatmap3D] Error:', e.message);
+      if (heatmap3DCache) {
+        try {
+          const hd3 = heatmap3DCache.data?.data || heatmap3DCache.data || heatmap3DCache;
+          if (hd3) {
+            if (!hd3.series) hd3.series = [];
+            if (!hd3.series.some(s => s.type === 'candlestick' || s.type === 'candlestick_raw')) {
+              const mainData = heatmapDataCache?.data?.data || heatmapDataCache?.data || heatmapDataCache;
+              const cs2d = mainData?.series?.find(s => s.type === 'candlestick' || s.type === 'candlestick_raw');
+              if (cs2d) hd3.series.push(cs2d);
+            }
+          }
+          sweepPrediction3DCache = predictSweepTargets(hd3, botMetrics);
+          console.log('[Heatmap3D] Updated Sweep3D from cache fallback:', sweepPrediction3DCache ? sweepPrediction3DCache.direction + ' ' + sweepPrediction3DCache.confidence + '%' : 'NULL');
+        } catch (fallbackErr) {
+          console.error('[Heatmap3D] Fallback Sweep3D computation failed:', fallbackErr.message);
+        }
+      }
     }
 
     console.log('[Background Bot] Cycle completed successfully. Metrics:', JSON.stringify(botMetrics));
