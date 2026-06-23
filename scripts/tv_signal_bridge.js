@@ -202,112 +202,268 @@ function startMonitoring(ws) {
   bridgeHeatmaps(); // run once immediately
 }
 
+let isBridgeScrapingBusy = false;
+
 async function bridgeHeatmaps() {
+  if (isBridgeScrapingBusy) {
+    console.log('[Bridge] Scrape already in progress, skipping heatmap cycle.');
+    return;
+  }
+  isBridgeScrapingBusy = true;
+
+  let ws = null;
   try {
     const res = await fetch('http://localhost:9222/json');
     const tabs = await res.json();
     
-    // Find coinglass heatmap tabs
-    const cgTabs = tabs.filter(t => t.type === 'page' && t.url?.includes('LiquidationHeatMap'));
-    
-    if (cgTabs.length === 0) {
+    // Find a single coinglass heatmap tab
+    const cgTab = tabs.find(t => t.type === 'page' && t.url?.includes('LiquidationHeatMap'));
+    if (!cgTab) {
+      console.log('[Bridge] Peringatan: Tab CoinGlass Liquidation Heatmap tidak ditemukan.');
+      isBridgeScrapingBusy = false;
       return;
     }
-    
-    for (const tab of cgTabs) {
-      try {
-        const period = tab.url.includes('period=3d') ? '3d' : '24h';
-        const ws = new WebSocket(tab.webSocketDebuggerUrl);
-        await new Promise((resolve, reject) => {
-          const t = setTimeout(() => reject(new Error('WS timeout')), 3000);
-          ws.on('open', () => { clearTimeout(t); resolve(); });
-          ws.on('error', (err) => { clearTimeout(t); reject(err); });
-        });
-        
-        let msgId = 1;
-        const cdp = (method, params = {}) => new Promise((resOpt, rejOpt) => {
-          const id = msgId++;
-          ws.send(JSON.stringify({ id, method, params }));
-          const t = setTimeout(() => rejOpt(new Error(`CDP timeout: ${method}`)), 5000);
-          const handler = (data) => {
-            const m = JSON.parse(data.toString());
-            if (m.id === id) {
-              clearTimeout(t);
-              ws.off('message', handler);
-              if (m.error) rejOpt(new Error(m.error.message));
-              else resOpt(m.result);
-            }
-          };
-          ws.on('message', handler);
-        });
-        
-        await cdp('Runtime.enable');
-        const evalExpr = `
-          (() => {
-            try {
-              const el = document.querySelector('.echarts-for-react');
-              if (!el) return null;
-              const keys = Object.keys(el);
-              const fiberKey = keys.find(k => k.startsWith('__reactFiber$') || k.startsWith('__reactContainer$'));
-              if (!fiberKey) return null;
-              let fiber = el[fiberKey];
-              let option = null;
-              while (fiber) {
-                if (fiber.memoizedProps && fiber.memoizedProps.option) { option = fiber.memoizedProps.option; break; }
-                fiber = fiber.return;
-              }
-              if (!option) return null;
-              return JSON.stringify({
-                xAxis: option.xAxis ? (Array.isArray(option.xAxis) ? option.xAxis[0].data : option.xAxis.data) : null,
-                yAxis: option.yAxis ? (Array.isArray(option.yAxis) ? option.yAxis[0].data : option.yAxis.data) : null,
-                series: option.series ? option.series.map(s => {
-                  if (s.type === 'heatmap' && Array.isArray(s.data)) {
-                    return {
-                      name: s.name,
-                      type: s.type,
-                      data: s.data.filter(item => {
-                        const val = Array.isArray(item) ? item[2] : (item && item.value ? item.value[2] : null);
-                        return val !== null && val !== undefined && val > 0;
-                      })
-                    };
-                  }
-                  return { name: s.name, type: s.type, data: s.data };
-                }) : null,
-                visualMap: option.visualMap ? { min: option.visualMap.min, max: option.visualMap.max } : null
-              });
-            } catch (e) { return JSON.stringify({ error: e.message }); }
-          })()
-        `;
-        
-        const evalRes = await cdp('Runtime.evaluate', { expression: evalExpr, returnByValue: true });
-        ws.close();
-        
-        const raw = evalRes?.result?.value;
-        if (!raw) continue;
-        const parsed = JSON.parse(raw);
-        if (parsed && !parsed.error && parsed.series && parsed.series.length > 0) {
-          const postUrl = `${VPS_URL}/api/heatmap-data/update`;
-          const response = await fetch(postUrl, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-              period,
-              data: parsed
-            })
-          });
-          const resJson = await response.json();
-          if (resJson.success) {
-            console.log(`\n[Bridge] Sukses mengirim data Heatmap (${period}) ke VPS.`);
-          } else {
-            console.error(`\n[Bridge] Gagal mengirim data Heatmap (${period}): ${resJson.error}`);
-          }
+
+    ws = new WebSocket(cgTab.webSocketDebuggerUrl);
+    await new Promise((resolve, reject) => {
+      const t = setTimeout(() => reject(new Error('WS timeout')), 3000);
+      ws.on('open', () => { clearTimeout(t); resolve(); });
+      ws.on('error', (err) => { clearTimeout(t); reject(err); });
+    });
+
+    let msgId = 1;
+    const cdp = (method, params = {}) => new Promise((resOpt, rejOpt) => {
+      const id = msgId++;
+      ws.send(JSON.stringify({ id, method, params }));
+      const t = setTimeout(() => rejOpt(new Error(`CDP timeout: ${method}`)), 15000);
+      const handler = (data) => {
+        const m = JSON.parse(data.toString());
+        if (m.id === id) {
+          clearTimeout(t);
+          ws.off('message', handler);
+          if (m.error) rejOpt(new Error(m.error.message));
+          else resOpt(m.result);
         }
-      } catch (err) {
-        console.error(`\n[Bridge Heatmap Inner Error] ${tab.url}:`, err.message);
+      };
+      ws.on('message', handler);
+    });
+
+    await cdp('Runtime.enable');
+    await cdp('Page.enable');
+
+    const triggerClickExpr = `
+      function triggerEvents(el) {
+        var names = ['mouseenter', 'mouseover', 'pointerdown', 'mousedown', 'focus', 'pointerup', 'mouseup', 'click'];
+        names.forEach(function(n) {
+          if (n === 'focus') el.focus();
+          else el.dispatchEvent(new MouseEvent(n, { bubbles: true, cancelable: true, view: window }));
+        });
+      }
+    `;
+
+    async function selectPeriod(periodName) {
+      // 1. Try direct click
+      const directClick = await cdp('Runtime.evaluate', {
+        expression: `(function() {
+          ${triggerClickExpr}
+          var targetRegex = new RegExp('^' + '${periodName}'.replace(' ', '\\\\s*') + '$', 'i');
+          var allElems = Array.from(document.querySelectorAll('button, li, div, span, a'));
+          for (var i = 0; i < allElems.length; i++) {
+            var txt = (allElems[i].innerText || allElems[i].textContent || '').trim();
+            if (targetRegex.test(txt)) {
+              var r = allElems[i].getBoundingClientRect();
+              if (r.width > 0 && r.height > 0 && r.left > 0 && r.top > 0) {
+                triggerEvents(allElems[i]);
+                return JSON.stringify({ success: true, text: txt });
+              }
+            }
+          }
+          return JSON.stringify({ success: false });
+        })()`,
+        returnByValue: true
+      });
+
+      const directRes = JSON.parse(directClick?.result?.value || '{}');
+      if (directRes.success) return true;
+
+      // 2. Try dropdown click
+      const dropdownClick = await cdp('Runtime.evaluate', {
+        expression: `(function() {
+          ${triggerClickExpr}
+          var P_PERIOD = /^\\\\d+\\\\s*(hour|day|week|month|h|d|w|m)s?$/i;
+          var btns = Array.from(document.querySelectorAll('button'));
+          for (var i = 0; i < btns.length; i++) {
+            var txt = (btns[i].innerText || btns[i].textContent || '').trim();
+            if (P_PERIOD.test(txt)) {
+              var r = btns[i].getBoundingClientRect();
+              if (r.width > 0 && r.height > 0) {
+                triggerEvents(btns[i]);
+                return JSON.stringify({ success: true, text: txt });
+              }
+            }
+          }
+          return JSON.stringify({ success: false });
+        })()`,
+        returnByValue: true
+      });
+
+      const dropdownRes = JSON.parse(dropdownClick?.result?.value || '{}');
+      if (!dropdownRes.success) return false;
+
+      await new Promise(r => setTimeout(r, 1000));
+
+      // 3. Click option in dropdown menu
+      const dropdownItemClick = await cdp('Runtime.evaluate', {
+        expression: `(function() {
+          ${triggerClickExpr}
+          var targetRegex = new RegExp('^' + '${periodName}'.replace(' ', '\\\\s*') + '$', 'i');
+          var allElems = Array.from(document.querySelectorAll('li, button, div, span, a'));
+          for (var i = 0; i < allElems.length; i++) {
+            var txt = (allElems[i].innerText || allElems[i].textContent || '').trim();
+            if (targetRegex.test(txt)) {
+              var r = allElems[i].getBoundingClientRect();
+              if (r.width > 0 && r.height > 0 && r.left > 0 && r.top > 0) {
+                triggerEvents(allElems[i]);
+                return JSON.stringify({ success: true, text: txt });
+              }
+            }
+          }
+          return JSON.stringify({ success: false });
+        })()`,
+        returnByValue: true
+      });
+
+      const dropdownItemRes = JSON.parse(dropdownItemClick?.result?.value || '{}');
+      return !!dropdownItemRes.success;
+    }
+
+    async function waitForPeriod(expect3d) {
+      for (let attempt = 0; attempt < 10; attempt++) {
+        const check = await cdp('Runtime.evaluate', {
+          expression: `(function(){
+            var el=document.querySelector('.echarts-for-react');
+            if(!el) return JSON.stringify({len:0,spanHours:0});
+            var keys=Object.keys(el),fk=keys.find(k=>k.startsWith('__reactFiber$')||k.startsWith('__reactContainer$'));
+            if(!fk) return JSON.stringify({len:0,spanHours:0});
+            var f=el[fk],opt=null;
+            while(f){if(f.memoizedProps&&f.memoizedProps.option){opt=f.memoizedProps.option;break;}f=f.return;}
+            if(!opt||!opt.xAxis) return JSON.stringify({len:0,spanHours:0});
+            var xa=Array.isArray(opt.xAxis)?opt.xAxis[0].data:opt.xAxis.data;
+            if(!xa||xa.length<2) return JSON.stringify({len:xa?xa.length:0,spanHours:0});
+            var t0=new Date(xa[0]).getTime(), t1=new Date(xa[xa.length-1]).getTime();
+            var spanHours=isNaN(t0)||isNaN(t1)?0:((t1-t0)/3600000);
+            return JSON.stringify({len:xa.length,spanHours:Math.round(spanHours)});
+          })()`,
+          returnByValue: true
+        });
+        let info = { len: 0, spanHours: 0 };
+        try { info = JSON.parse(check?.result?.value || '{}'); } catch(e) {}
+        const is3d = info.spanHours >= 48;
+        if (expect3d === is3d) return true;
+        await new Promise(r => setTimeout(r, 1000));
+      }
+      return false;
+    }
+
+    async function scrapeHeatmapData() {
+      const evalExpr = `
+        (() => {
+          try {
+            const el = document.querySelector('.echarts-for-react');
+            if (!el) return null;
+            const keys = Object.keys(el);
+            const fiberKey = keys.find(k => k.startsWith('__reactFiber$') || k.startsWith('__reactContainer$'));
+            if (!fiberKey) return null;
+            let fiber = el[fiberKey];
+            let option = null;
+            while (fiber) {
+              if (fiber.memoizedProps && fiber.memoizedProps.option) { option = fiber.memoizedProps.option; break; }
+              fiber = fiber.return;
+            }
+            if (!option) return null;
+            return JSON.stringify({
+              xAxis: option.xAxis ? (Array.isArray(option.xAxis) ? option.xAxis[0].data : option.xAxis.data) : null,
+              yAxis: option.yAxis ? (Array.isArray(option.yAxis) ? option.yAxis[0].data : option.yAxis.data) : null,
+              series: option.series ? option.series.map(s => {
+                if (s.type === 'heatmap' && Array.isArray(s.data)) {
+                  return {
+                    name: s.name,
+                    type: s.type,
+                    data: s.data.filter(item => {
+                      const val = Array.isArray(item) ? item[2] : (item && item.value ? item.value[2] : null);
+                      return val !== null && val !== undefined && val > 0;
+                    })
+                  };
+                }
+                return { name: s.name, type: s.type, data: s.data };
+              }) : null,
+              visualMap: option.visualMap ? { min: option.visualMap.min, max: option.visualMap.max } : null
+            });
+          } catch (e) { return JSON.stringify({ error: e.message }); }
+        })()
+      `;
+      const evalRes = await cdp('Runtime.evaluate', { expression: evalExpr, returnByValue: true });
+      const raw = evalRes?.result?.value;
+      if (!raw) return null;
+      const parsed = JSON.parse(raw);
+      if (parsed && !parsed.error && parsed.series && parsed.series.length > 0) {
+        return parsed;
+      }
+      return null;
+    }
+
+    async function sendToVps(period, parsedData) {
+      const postUrl = `${VPS_URL}/api/heatmap-data/update`;
+      const response = await fetch(postUrl, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          period,
+          data: parsedData
+        })
+      });
+      const resJson = await response.json();
+      if (resJson.success) {
+        console.log(`\n[Bridge] Sukses mengirim data Heatmap (${period}) ke VPS.`);
+      } else {
+        console.error(`\n[Bridge] Gagal mengirim data Heatmap (${period}): ${resJson.error}`);
       }
     }
+
+    // Step 1: Scrape 24h
+    console.log('\n[Bridge] Mengaktifkan periode 24h...');
+    await selectPeriod('24 hour');
+    await waitForPeriod(false);
+    const data24h = await scrapeHeatmapData();
+    if (data24h) {
+      await sendToVps('24h', data24h);
+    } else {
+      console.warn('[Bridge] Gagal scrape data Heatmap 24h.');
+    }
+
+    // Step 2: Scrape 3d
+    console.log('[Bridge] Mengaktifkan periode 3d...');
+    await selectPeriod('3 day');
+    await waitForPeriod(true);
+    const data3d = await scrapeHeatmapData();
+    if (data3d) {
+      await sendToVps('3d', data3d);
+    } else {
+      console.warn('[Bridge] Gagal scrape data Heatmap 3d.');
+    }
+
+    // Step 3: Switch back to 24h (reset view)
+    console.log('[Bridge] Mengembalikan periode ke 24h...');
+    await selectPeriod('24 hour');
+    await waitForPeriod(false);
+
   } catch (e) {
-    console.error('\n[Bridge Heatmap Outer Error]:', e.message);
+    console.error('\n[Bridge Heatmap Error]:', e.message);
+  } finally {
+    if (ws) {
+      try { ws.close(); } catch (wsErr) {}
+    }
+    isBridgeScrapingBusy = false;
   }
 }
 
