@@ -455,34 +455,105 @@ async function scrapeHeatMap3D() {
       await cdp('Input.dispatchMouseEvent', { type: 'mouseReleased', x, y, button: 'left', buttons: 0, clickCount: 1 });
     }
 
-    // Find "3 day" as a visible BUTTON (CoinGlass shows unselected periods as buttons)
-    const btn3dCoords = await cdp('Runtime.evaluate', {
-      expression: `(function(){
-        var P3D = [/^3\\s*day$/i, /^3\\s*days$/i, /^3d$/i, /^72\\s*h/i];
-        var btns = Array.from(document.querySelectorAll('button'));
-        for (var i = 0; i < btns.length; i++) {
-          var txt = (btns[i].innerText || btns[i].textContent || '').trim();
-          if (P3D.some(function(p){ return p.test(txt); })) {
-            btns[i].scrollIntoView({ block: 'center' });
-            var r = btns[i].getBoundingClientRect();
-            return JSON.stringify({ x: r.left + r.width/2, y: r.top + r.height/2, w: r.width, h: r.height, text: txt.slice(0,20) });
+    // Switch to 3D period using robust JS event-based clicks (works on both mobile/collapsed dropdowns and wide layouts)
+    const triggerClickExpr = `
+      function triggerEvents(el) {
+        var names = ['mouseenter', 'mouseover', 'pointerdown', 'mousedown', 'focus', 'pointerup', 'mouseup', 'click'];
+        names.forEach(function(n) {
+          if (n === 'focus') el.focus();
+          else el.dispatchEvent(new MouseEvent(n, { bubbles: true, cancelable: true, view: window }));
+        });
+      }
+    `;
+
+    // 1. Try to click 3D directly in case it's visible (wide viewport)
+    const directResult = await cdp('Runtime.evaluate', {
+      expression: `(function() {
+        ${triggerClickExpr}
+        var P3D = [/^3\\s*day$/i, /^3\\s*days$/i, /^3d$/i, /^72\\s*h/i, /^3\\s*hari$/i];
+        var allElems = Array.from(document.querySelectorAll('button, li, div, span, a'));
+        for (var i = 0; i < allElems.length; i++) {
+          var txt = (allElems[i].innerText || allElems[i].textContent || '').trim();
+          if (P3D.some(p => p.test(txt))) {
+            var r = allElems[i].getBoundingClientRect();
+            if (r.width > 0 && r.height > 0 && r.left > 0 && r.top > 0) {
+              triggerEvents(allElems[i]);
+              return JSON.stringify({ success: true, text: txt });
+            }
           }
         }
-        // Log all buttons for diagnosis if not found
-        var allBtns = btns.map(function(b){ return (b.innerText||b.textContent||'').trim().slice(0,20); }).filter(Boolean);
-        return JSON.stringify({ notFound: true, buttons: allBtns });
+        return JSON.stringify({ success: false });
       })()`,
       returnByValue: true
     });
 
-    let btn3d = {};
-    try { btn3d = JSON.parse(btn3dCoords?.result?.value || '{}'); } catch(e) {}
-    console.log('[Heatmap3D] 3day button search:', JSON.stringify(btn3d));
-
     let clickResult = 'no-3day-button-found';
-    if (!btn3d.notFound && btn3d.x > 1 && btn3d.y > 1) {
-      await cdpClick(btn3d.x, btn3d.y);
-      clickResult = 'cdp-button-click "' + btn3d.text + '" @' + Math.round(btn3d.x) + ',' + Math.round(btn3d.y);
+    const directRes = JSON.parse(directResult?.result?.value || '{}');
+    if (directRes.success) {
+      console.log(`[Heatmap3D] Directly clicked 3D option: ${directRes.text}`);
+      clickResult = 'direct-js-click "' + directRes.text + '"';
+    } else {
+      console.log('[Heatmap3D] 3D option not visible. Clicking dropdown...');
+      
+      // 2. Click the dropdown button (e.g. showing "24 hour" or similar period)
+      const dropdownResult = await cdp('Runtime.evaluate', {
+        expression: `(function() {
+          ${triggerClickExpr}
+          var P_PERIOD = /^\\d+\\s*(hour|day|week|month|h|d|w|m)s?$/i;
+          var btns = Array.from(document.querySelectorAll('button'));
+          for (var i = 0; i < btns.length; i++) {
+            var txt = (btns[i].innerText || btns[i].textContent || '').trim();
+            if (P_PERIOD.test(txt)) {
+              var r = btns[i].getBoundingClientRect();
+              if (r.width > 0 && r.height > 0) {
+                triggerEvents(btns[i]);
+                return JSON.stringify({ success: true, text: txt });
+              }
+            }
+          }
+          return JSON.stringify({ success: false });
+        })()`,
+        returnByValue: true
+      });
+      
+      const dropdownRes = JSON.parse(dropdownResult?.result?.value || '{}');
+      if (dropdownRes.success) {
+        console.log(`[Heatmap3D] Dropdown button "${dropdownRes.text}" clicked. Waiting for dropdown menu...`);
+        
+        // Wait for dropdown to open (in Node)
+        await new Promise(r => setTimeout(r, 2000));
+        
+        // 3. Click the 3D menu item inside the opened dropdown
+        const dropdown3dResult = await cdp('Runtime.evaluate', {
+          expression: `(function() {
+            ${triggerClickExpr}
+            var P3D = [/^3\\s*day$/i, /^3\\s*days$/i, /^3d$/i, /^72\\s*h/i, /^3\\s*hari$/i];
+            var allElems = Array.from(document.querySelectorAll('li, button, div, span, a'));
+            for (var i = 0; i < allElems.length; i++) {
+              var txt = (allElems[i].innerText || allElems[i].textContent || '').trim();
+              if (P3D.some(p => p.test(txt))) {
+                var r = allElems[i].getBoundingClientRect();
+                if (r.width > 0 && r.height > 0 && r.left > 0 && r.top > 0) {
+                  triggerEvents(allElems[i]);
+                  return JSON.stringify({ success: true, text: txt });
+                }
+              }
+            }
+            return JSON.stringify({ success: false });
+          })()`,
+          returnByValue: true
+        });
+        
+        const dropdown3dRes = JSON.parse(dropdown3dResult?.result?.value || '{}');
+        if (dropdown3dRes.success) {
+          console.log(`[Heatmap3D] Clicked 3D option "${dropdown3dRes.text}" in dropdown.`);
+          clickResult = 'dropdown-js-click "' + dropdown3dRes.text + '"';
+        } else {
+          console.warn('[Heatmap3D] Could not find 3D menu item in dropdown menu.');
+        }
+      } else {
+        console.warn('[Heatmap3D] Could not find period dropdown button.');
+      }
     }
     console.log('[Heatmap3D] Period select result:', clickResult);
     
