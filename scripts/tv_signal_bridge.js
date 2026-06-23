@@ -262,35 +262,36 @@ async function bridgeHeatmaps() {
     `;
 
     async function selectPeriod(periodName) {
-      // 1. Try direct click
-      const directClick = await cdp('Runtime.evaluate', {
+      // 1. Check if the active period is already what we want
+      const checkCurrent = await cdp('Runtime.evaluate', {
         expression: `(function() {
-          ${triggerClickExpr}
-          var targetRegex = new RegExp('^' + '${periodName}'.replace(' ', '\\\\s*') + '$', 'i');
-          var allElems = Array.from(document.querySelectorAll('button, li, div, span, a'));
-          for (var i = 0; i < allElems.length; i++) {
-            var txt = (allElems[i].innerText || allElems[i].textContent || '').trim();
-            if (targetRegex.test(txt)) {
-              var r = allElems[i].getBoundingClientRect();
-              if (r.width > 0 && r.height > 0 && r.left > 0 && r.top > 0) {
-                triggerEvents(allElems[i]);
-                return JSON.stringify({ success: true, text: txt });
-              }
+          var P_PERIOD = /^\\d+\\s*(hour|day|week|month|h|d|w|m)s?$/i;
+          var btns = Array.from(document.querySelectorAll('button'));
+          for (var i = 0; i < btns.length; i++) {
+            var txt = (btns[i].innerText || btns[i].textContent || '').trim();
+            if (P_PERIOD.test(txt)) {
+              return txt;
             }
           }
-          return JSON.stringify({ success: false });
+          return null;
         })()`,
         returnByValue: true
       });
 
-      const directRes = JSON.parse(directClick?.result?.value || '{}');
-      if (directRes.success) return true;
+      const currentPeriodText = checkCurrent?.result?.value;
+      if (currentPeriodText) {
+        const targetRegex = new RegExp('^' + periodName.replace(' ', '\\\\s*') + '$', 'i');
+        if (targetRegex.test(currentPeriodText)) {
+          console.log(`[Bridge] Periode sudah sesuai: ${currentPeriodText}. Tidak perlu klik.`);
+          return true;
+        }
+      }
 
-      // 2. Try dropdown click
+      // 2. Open the dropdown by clicking the button showing the current period text
       const dropdownClick = await cdp('Runtime.evaluate', {
         expression: `(function() {
           ${triggerClickExpr}
-          var P_PERIOD = /^\\\\d+\\\\s*(hour|day|week|month|h|d|w|m)s?$/i;
+          var P_PERIOD = /^\\d+\\s*(hour|day|week|month|h|d|w|m)s?$/i;
           var btns = Array.from(document.querySelectorAll('button'));
           for (var i = 0; i < btns.length; i++) {
             var txt = (btns[i].innerText || btns[i].textContent || '').trim();
@@ -308,9 +309,12 @@ async function bridgeHeatmaps() {
       });
 
       const dropdownRes = JSON.parse(dropdownClick?.result?.value || '{}');
-      if (!dropdownRes.success) return false;
+      if (!dropdownRes.success) {
+        console.warn(`[Bridge] Gagal menemukan tombol dropdown period.`);
+        return false;
+      }
 
-      await new Promise(r => setTimeout(r, 1000));
+      await new Promise(r => setTimeout(r, 2000));
 
       // 3. Click option in dropdown menu
       const dropdownItemClick = await cdp('Runtime.evaluate', {
@@ -432,10 +436,17 @@ async function bridgeHeatmaps() {
 
     // Step 1: Scrape 24h
     console.log('\n[Bridge] Mengaktifkan periode 24h...');
-    await selectPeriod('24 hour');
-    await waitForPeriod(false);
+    const status24h = await selectPeriod('24 hour');
+    console.log(`[Bridge] 24h selectPeriod result: ${status24h}`);
+    const update24h = await waitForPeriod(false);
+    console.log(`[Bridge] 24h period update status: ${update24h}`);
     const data24h = await scrapeHeatmapData();
     if (data24h) {
+      const xa = data24h.xAxis || [];
+      const t0 = new Date(xa[0]).getTime();
+      const t1 = new Date(xa[xa.length-1]).getTime();
+      const span = Math.round((t1-t0)/3600000);
+      console.log(`[Bridge] Scraped 24h data. Bars: ${xa.length}, Span: ${span}h`);
       await sendToVps('24h', data24h);
     } else {
       console.warn('[Bridge] Gagal scrape data Heatmap 24h.');
@@ -443,10 +454,17 @@ async function bridgeHeatmaps() {
 
     // Step 2: Scrape 3d
     console.log('[Bridge] Mengaktifkan periode 3d...');
-    await selectPeriod('3 day');
-    await waitForPeriod(true);
+    const status3d = await selectPeriod('3 day');
+    console.log(`[Bridge] 3d selectPeriod result: ${status3d}`);
+    const update3d = await waitForPeriod(true);
+    console.log(`[Bridge] 3d period update status: ${update3d}`);
     const data3d = await scrapeHeatmapData();
     if (data3d) {
+      const xa = data3d.xAxis || [];
+      const t0 = new Date(xa[0]).getTime();
+      const t1 = new Date(xa[xa.length-1]).getTime();
+      const span = Math.round((t1-t0)/3600000);
+      console.log(`[Bridge] Scraped 3d data. Bars: ${xa.length}, Span: ${span}h`);
       await sendToVps('3d', data3d);
     } else {
       console.warn('[Bridge] Gagal scrape data Heatmap 3d.');
@@ -454,7 +472,8 @@ async function bridgeHeatmaps() {
 
     // Step 3: Switch back to 24h (reset view)
     console.log('[Bridge] Mengembalikan periode ke 24h...');
-    await selectPeriod('24 hour');
+    const statusReset = await selectPeriod('24 hour');
+    console.log(`[Bridge] Reset selectPeriod result: ${statusReset}`);
     await waitForPeriod(false);
 
   } catch (e) {
