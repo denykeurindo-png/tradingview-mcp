@@ -1056,6 +1056,7 @@ app.post('/api/trades/cut', (req, res) => {
     const diff = trade.direction === 'LONG' ? (closePrice - trade.entry) : (trade.entry - closePrice);
     trade.pnl = parseFloat((trade.positionSizeUsd * (diff / trade.entry)).toFixed(2));
     trade.closePrice = parseFloat(closePrice);
+    trade.closeTimestamp = Date.now();
     trade.note = trade.note ? `${trade.note} (Manual Cut)` : 'Manual Cut';
     saveTrades(trades);
     res.json({ success: true });
@@ -1282,6 +1283,7 @@ app.post('/api/tradingview/webhook', (req, res) => {
       const diff = trade.direction === 'LONG' ? (closePrice - trade.entry) : (trade.entry - closePrice);
       trade.pnl = parseFloat((trade.positionSizeUsd * (diff / trade.entry)).toFixed(2));
       trade.closePrice = closePrice || trade.entry;
+      trade.closeTimestamp = Date.now();
       trade.note = trade.note ? `${trade.note} (${data.note || 'TradingView Exit'})` : (data.note || 'TradingView Exit');
       saveTrades(trades);
       res.json({ success: true, data: trade });
@@ -1537,6 +1539,7 @@ function evaluateActiveTradesBackend(heatmapData) {
         trade.status = 'HIT_SL';
         trade.pnl = -trade.riskUsd;
         trade.closePrice = trade.sl;
+        trade.closeTimestamp = Date.now();
         trade.note = `Wick Hit SL ($${lastLow.toFixed(2)})`;
         updated = true;
         sendTelegramAlert(
@@ -1558,6 +1561,7 @@ function evaluateActiveTradesBackend(heatmapData) {
         const profit = trade.positionSizeUsd * (trade.tpDistance / 100);
         trade.pnl = profit;
         trade.closePrice = trade.tp;
+        trade.closeTimestamp = Date.now();
         trade.note = `Wick Hit TP ($${lastHigh.toFixed(2)})`;
         updated = true;
         sendTelegramAlert(
@@ -1579,6 +1583,7 @@ function evaluateActiveTradesBackend(heatmapData) {
         trade.status = 'HIT_SL';
         trade.pnl = -trade.riskUsd;
         trade.closePrice = trade.sl;
+        trade.closeTimestamp = Date.now();
         trade.note = `Wick Hit SL ($${lastHigh.toFixed(2)})`;
         updated = true;
         sendTelegramAlert(
@@ -1600,6 +1605,7 @@ function evaluateActiveTradesBackend(heatmapData) {
         const profit = trade.positionSizeUsd * (trade.tpDistance / 100);
         trade.pnl = profit;
         trade.closePrice = trade.tp;
+        trade.closeTimestamp = Date.now();
         trade.note = `Wick Hit TP ($${lastLow.toFixed(2)})`;
         updated = true;
         sendTelegramAlert(
@@ -1640,6 +1646,7 @@ function evaluateActiveTradesBackend(heatmapData) {
       const profit = trade.positionSizeUsd * (diff / trade.entry);
       trade.pnl = profit;
       trade.closePrice = lastClose;
+      trade.closeTimestamp = Date.now();
       trade.note = 'Auto (Pool -50%)';
       updated = true;
       sendTelegramAlert(

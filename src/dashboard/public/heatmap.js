@@ -723,12 +723,37 @@ function renderBacktestTable() {
       }
     }
 
+    // Close timestamp logic
+    let closeTimestamp = trade.closeTimestamp;
+    if (!closeTimestamp && trade.status !== 'ACTIVE') {
+      closeTimestamp = timestamp; // fallback to entry time
+    }
+
+    const formatTimeOnly = (ts) => {
+      if (!ts) return '';
+      try {
+        const d = new Date(ts);
+        return d.getHours().toString().padStart(2, '0') + '.' + d.getMinutes().toString().padStart(2, '0');
+      } catch (e) {
+        return '';
+      }
+    };
+
+    const entryTimeStr = formatTimeOnly(timestamp);
+    const entrySubtext = entryTimeStr ? `<br><span style="font-size:9px;color:var(--text-muted);font-weight:normal;">${entryTimeStr}</span>` : '';
+
+    const tpTimeStr = trade.status === 'HIT_TP' ? formatTimeOnly(closeTimestamp) : '';
+    const tpSubtext = tpTimeStr ? `<br><span style="font-size:9px;color:var(--text-muted);font-weight:normal;">${tpTimeStr}</span>` : '';
+
+    const slTimeStr = (trade.status === 'HIT_SL' || trade.status === 'CUT_LOSS') ? formatTimeOnly(closeTimestamp) : '';
+    const slSubtext = slTimeStr ? `<br><span style="font-size:9px;color:var(--text-muted);font-weight:normal;">${slTimeStr}</span>` : '';
+
     html += `<tr ${rowOpacity}>`;
     html += `<td>${displayTime}</td>`;
     html += `<td style="font-weight:700; color:${trade.direction === 'LONG' ? '#32D74B' : '#FF453A'};">${trade.direction}</td>`;
-    html += `<td class="mono">$${trade.entry.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>`;
-    html += `<td class="mono" style="color:#32D74B;">$${trade.tp.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>`;
-    html += `<td class="mono" style="color:#FF453A;">$${trade.sl.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>`;
+    html += `<td class="mono">$${trade.entry.toLocaleString(undefined, {minimumFractionDigits: 2})}${entrySubtext}</td>`;
+    html += `<td class="mono" style="color:#32D74B;">$${trade.tp.toLocaleString(undefined, {minimumFractionDigits: 2})}${tpSubtext}</td>`;
+    html += `<td class="mono" style="color:#FF453A;">$${trade.sl.toLocaleString(undefined, {minimumFractionDigits: 2})}${slSubtext}</td>`;
     html += `<td class="mono">$${trade.positionSizeUsd.toLocaleString(undefined, {maximumFractionDigits: 0})}</td>`;
     html += `<td class="mono">1:${rr}</td>`;
     html += `<td>${statusHtml[trade.status]}${trade.note ? `<br><span style="font-size:9px;color:var(--text-muted);">${trade.note}</span>` : ''}</td>`;
