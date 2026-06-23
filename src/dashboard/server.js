@@ -13,8 +13,8 @@ const PORT = process.env.PORT || 4000;
 
 const SETTINGS_FILE = path.join(__dirname, 'settings.json');
 
-app.use(express.json({ limit: '50mb' }));
-app.use(express.urlencoded({ limit: '50mb', extended: true }));
+app.use(express.json({ limit: '150mb' }));
+app.use(express.urlencoded({ limit: '150mb', extended: true }));
 
 // ─── Session-based Authentication ────────────────────────────────────────────
 const sessions = new Map(); // token → { username, expires }
@@ -615,7 +615,19 @@ async function scrapeHeatMap3D() {
                     resolve(JSON.stringify({
                       xAxis: xa,
                       yAxis: option.yAxis ? (Array.isArray(option.yAxis) ? option.yAxis[0].data : option.yAxis.data) : null,
-                      series: option.series.map(s => ({ name: s.name, type: s.type, data: s.data })),
+                      series: option.series.map(s => {
+                        if (s.type === 'heatmap' && Array.isArray(s.data)) {
+                          return {
+                            name: s.name,
+                            type: s.type,
+                            data: s.data.filter(item => {
+                              const val = Array.isArray(item) ? item[2] : (item && item.value ? item.value[2] : null);
+                              return val !== null && val !== undefined && val > 0;
+                            })
+                          };
+                        }
+                        return { name: s.name, type: s.type, data: s.data };
+                      }),
                       visualMap: option.visualMap ? { min: option.visualMap.min, max: option.visualMap.max } : null
                     }));
                     return;
@@ -754,11 +766,19 @@ async function scrapeHeatMap(forceRefresh = false) {
           return JSON.stringify({
             xAxis: option.xAxis ? (Array.isArray(option.xAxis) ? option.xAxis[0].data : option.xAxis.data) : null,
             yAxis: option.yAxis ? (Array.isArray(option.yAxis) ? option.yAxis[0].data : option.yAxis.data) : null,
-            series: option.series ? option.series.map(s => ({
-              name: s.name,
-              type: s.type,
-              data: s.data
-            })) : null,
+            series: option.series ? option.series.map(s => {
+              if (s.type === 'heatmap' && Array.isArray(s.data)) {
+                return {
+                  name: s.name,
+                  type: s.type,
+                  data: s.data.filter(item => {
+                    const val = Array.isArray(item) ? item[2] : (item && item.value ? item.value[2] : null);
+                    return val !== null && val !== undefined && val > 0;
+                  })
+                };
+              }
+              return { name: s.name, type: s.type, data: s.data };
+            }) : null,
             visualMap: option.visualMap ? { min: option.visualMap.min, max: option.visualMap.max } : null
           });
         } catch (e) {
@@ -818,11 +838,19 @@ async function scrapeHeatMap(forceRefresh = false) {
                   resolve(JSON.stringify({
                     xAxis: option.xAxis ? (Array.isArray(option.xAxis) ? option.xAxis[0].data : option.xAxis.data) : null,
                     yAxis: option.yAxis ? (Array.isArray(option.yAxis) ? option.yAxis[0].data : option.yAxis.data) : null,
-                    series: option.series.map(s => ({
-                      name: s.name,
-                      type: s.type,
-                      data: s.data
-                    })),
+                    series: option.series.map(s => {
+                      if (s.type === 'heatmap' && Array.isArray(s.data)) {
+                        return {
+                          name: s.name,
+                          type: s.type,
+                          data: s.data.filter(item => {
+                            const val = Array.isArray(item) ? item[2] : (item && item.value ? item.value[2] : null);
+                            return val !== null && val !== undefined && val > 0;
+                          })
+                        };
+                      }
+                      return { name: s.name, type: s.type, data: s.data };
+                    }),
                     visualMap: option.visualMap ? { min: option.visualMap.min, max: option.visualMap.max } : null
                   }));
                   return;

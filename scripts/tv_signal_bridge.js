@@ -260,7 +260,19 @@ async function bridgeHeatmaps() {
               return JSON.stringify({
                 xAxis: option.xAxis ? (Array.isArray(option.xAxis) ? option.xAxis[0].data : option.xAxis.data) : null,
                 yAxis: option.yAxis ? (Array.isArray(option.yAxis) ? option.yAxis[0].data : option.yAxis.data) : null,
-                series: option.series ? option.series.map(s => ({ name: s.name, type: s.type, data: s.data })) : null,
+                series: option.series ? option.series.map(s => {
+                  if (s.type === 'heatmap' && Array.isArray(s.data)) {
+                    return {
+                      name: s.name,
+                      type: s.type,
+                      data: s.data.filter(item => {
+                        const val = Array.isArray(item) ? item[2] : (item && item.value ? item.value[2] : null);
+                        return val !== null && val !== undefined && val > 0;
+                      })
+                    };
+                  }
+                  return { name: s.name, type: s.type, data: s.data };
+                }) : null,
                 visualMap: option.visualMap ? { min: option.visualMap.min, max: option.visualMap.max } : null
               });
             } catch (e) { return JSON.stringify({ error: e.message }); }
