@@ -13,7 +13,8 @@ const PORT = process.env.PORT || 4000;
 
 const SETTINGS_FILE = path.join(__dirname, 'settings.json');
 
-app.use(express.json());
+app.use(express.json({ limit: '50mb' }));
+app.use(express.urlencoded({ limit: '50mb', extended: true }));
 
 // ─── Session-based Authentication ────────────────────────────────────────────
 const sessions = new Map(); // token → { username, expires }
@@ -71,7 +72,7 @@ app.get('/auth/logout', (req, res) => {
 
 // Auth middleware — sessions for browser, Basic Auth for API/backward compat
 const basicAuth = (req, res, next) => {
-  const PUBLIC_PATHS = ['/login', '/auth/login', '/auth/logout', '/api/tradingview/webhook'];
+  const PUBLIC_PATHS = ['/login', '/auth/login', '/auth/logout', '/api/tradingview/webhook', '/api/heatmap-data/update'];
   if (PUBLIC_PATHS.some(p => req.path === p || req.path.startsWith(p + '?'))) {
     return next();
   }
@@ -882,10 +883,31 @@ app.get('/api/heatmap-data', async (req, res) => {
     res.json({ success: true, source: 'live', data: result });
   } catch (error) {
     console.error('Heatmap scrape error:', error.message);
+    if (heatmapDataCache) {
+      console.log('Falling back to cached heatmap data due to scrape failure');
+      return res.json({ success: true, source: 'cache-fallback', data: heatmapDataCache });
+    }
     res.status(500).json({ success: false, error: error.message });
   } finally {
     isHeatmapScrapingBusy = false;
   }
+});
+
+// POST endpoint for updating HeatMap data from bridge (local -> VPS)
+app.post('/api/heatmap-data/update', (req, res) => {
+  const { data, period } = req.body;
+  if (!data) return res.status(400).json({ success: false, error: 'No data provided' });
+
+  if (period === '3d') {
+    heatmap3DCache = { data, timestamp: new Date().toISOString(), period: '3d' };
+    lastHeatmap3DFetchTime = Date.now();
+    console.log('[Bridge API] Received 3D Heatmap update from local client.');
+  } else {
+    heatmapDataCache = { data, timestamp: new Date().toISOString() };
+    lastHeatmapFetchTime = Date.now();
+    console.log('[Bridge API] Received 24h Heatmap update from local client.');
+  }
+  res.json({ success: true });
 });
 
 // REST API for fetching ETF data (with cache)
@@ -3055,9 +3077,19 @@ async function runBotCycle() {
     botMetrics = { ...botMetrics
     };
 
-    const result = await runWithCdpLock(() => scrapeHeatMap(true)); // force refresh to get latest data from CoinGlass!
-    heatmapDataCache = result;
-    lastHeatmapFetchTime = Date.now();
+    let result;
+    try {
+      result = await runWithCdpLock(() => scrapeHeatMap(true)); // force refresh to get latest data from CoinGlass!
+      heatmapDataCache = result;
+      lastHeatmapFetchTime = Date.now();
+    } catch (scrapeErr) {
+      console.warn('[Background Bot] CoinGlass scrape failed, trying fallback to cached data:', scrapeErr.message);
+      if (heatmapDataCache) {
+        result = heatmapDataCache;
+      } else {
+        throw new Error('No heatmap data available (scrape failed and no cache exists)');
+      }
+    }
 
     // Run evaluations and strategy
     evaluateActiveTradesBackend(result.data, klines15m);

@@ -1,6 +1,6 @@
 import WebSocket from 'ws';
 
-const VPS_URL = 'http://103.55.37.239:4000';
+const VPS_URL = 'http://103.55.37.239';
 const POLL_INTERVAL_MS = 5000; // Periksa setiap 5 detik
 
 console.log('==========================================================');
@@ -196,6 +196,107 @@ function startMonitoring(ws) {
       console.error('\n[Bridge] Error pada tick monitor:', err.message);
     }
   }, POLL_INTERVAL_MS);
+
+  // Heatmap bridge: scrape local CoinGlass tab and push to VPS every 60s
+  setInterval(bridgeHeatmaps, 60000);
+  bridgeHeatmaps(); // run once immediately
+}
+
+async function bridgeHeatmaps() {
+  try {
+    const res = await fetch('http://localhost:9222/json');
+    const tabs = await res.json();
+    
+    // Find coinglass heatmap tabs
+    const cgTabs = tabs.filter(t => t.type === 'page' && t.url?.includes('LiquidationHeatMap'));
+    
+    if (cgTabs.length === 0) {
+      return;
+    }
+    
+    for (const tab of cgTabs) {
+      try {
+        const period = tab.url.includes('period=3d') ? '3d' : '24h';
+        const ws = new WebSocket(tab.webSocketDebuggerUrl);
+        await new Promise((resolve, reject) => {
+          const t = setTimeout(() => reject(new Error('WS timeout')), 3000);
+          ws.on('open', () => { clearTimeout(t); resolve(); });
+          ws.on('error', (err) => { clearTimeout(t); reject(err); });
+        });
+        
+        let msgId = 1;
+        const cdp = (method, params = {}) => new Promise((resOpt, rejOpt) => {
+          const id = msgId++;
+          ws.send(JSON.stringify({ id, method, params }));
+          const t = setTimeout(() => rejOpt(new Error(`CDP timeout: ${method}`)), 5000);
+          const handler = (data) => {
+            const m = JSON.parse(data.toString());
+            if (m.id === id) {
+              clearTimeout(t);
+              ws.off('message', handler);
+              if (m.error) rejOpt(new Error(m.error.message));
+              else resOpt(m.result);
+            }
+          };
+          ws.on('message', handler);
+        });
+        
+        await cdp('Runtime.enable');
+        const evalExpr = `
+          (() => {
+            try {
+              const el = document.querySelector('.echarts-for-react');
+              if (!el) return null;
+              const keys = Object.keys(el);
+              const fiberKey = keys.find(k => k.startsWith('__reactFiber$') || k.startsWith('__reactContainer$'));
+              if (!fiberKey) return null;
+              let fiber = el[fiberKey];
+              let option = null;
+              while (fiber) {
+                if (fiber.memoizedProps && fiber.memoizedProps.option) { option = fiber.memoizedProps.option; break; }
+                fiber = fiber.return;
+              }
+              if (!option) return null;
+              return JSON.stringify({
+                xAxis: option.xAxis ? (Array.isArray(option.xAxis) ? option.xAxis[0].data : option.xAxis.data) : null,
+                yAxis: option.yAxis ? (Array.isArray(option.yAxis) ? option.yAxis[0].data : option.yAxis.data) : null,
+                series: option.series ? option.series.map(s => ({ name: s.name, type: s.type, data: s.data })) : null,
+                visualMap: option.visualMap ? { min: option.visualMap.min, max: option.visualMap.max } : null
+              });
+            } catch (e) { return JSON.stringify({ error: e.message }); }
+          })()
+        `;
+        
+        const evalRes = await cdp('Runtime.evaluate', { expression: evalExpr, returnByValue: true });
+        ws.close();
+        
+        const raw = evalRes?.result?.value;
+        if (!raw) continue;
+        const parsed = JSON.parse(raw);
+        if (parsed && !parsed.error && parsed.series && parsed.series.length > 0) {
+          const postUrl = `${VPS_URL}/api/heatmap-data/update`;
+          const response = await fetch(postUrl, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              period,
+              data: parsed
+            })
+          });
+          const resJson = await response.json();
+          if (resJson.success) {
+            console.log(`\n[Bridge] Sukses mengirim data Heatmap (${period}) ke VPS.`);
+          } else {
+            console.error(`\n[Bridge] Gagal mengirim data Heatmap (${period}): ${resJson.error}`);
+          }
+        }
+      } catch (err) {
+        console.error(`\n[Bridge Heatmap Inner Error] ${tab.url}:`, err.message);
+      }
+    }
+  } catch (e) {
+    console.error('\n[Bridge Heatmap Outer Error]:', e.message);
+  }
 }
 
 runBridge();
