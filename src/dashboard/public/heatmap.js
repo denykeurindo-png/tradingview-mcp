@@ -26,6 +26,7 @@ const heatmapUpdateTime = document.getElementById('heatmap-update-time');
 
 let myChart = null;
 let currentBtcPriceGlobal = null;
+let currentCoinGlobal = 'BTC';
 let lastHeatmapDataGlobal = null;
 let tradeLog = [];
 let autoTradeEnabled = true;
@@ -101,6 +102,24 @@ async function loadHeatmapData(forceRefresh = false) {
     const resObj = await response.json();
     const result = resObj.data.data;
     const timestamp = resObj.data.timestamp;
+    const coin = resObj.data.coin || 'BTC';
+    const tvSymbol = resObj.data.tvSymbol || '';
+
+    currentCoinGlobal = coin;
+
+    // Update Pair Displays in DOM
+    const currentPairBadge = document.getElementById('current-pair-badge');
+    if (currentPairBadge) {
+      currentPairBadge.innerText = `${coin}/USDT` + (tvSymbol ? ` (TV: ${tvSymbol})` : '');
+    }
+    const kpiPairPriceLabel = document.getElementById('kpi-pair-price-label');
+    if (kpiPairPriceLabel) {
+      kpiPairPriceLabel.innerText = `${coin} Price (Binance)`;
+    }
+    const heatmapTitleHeading = document.getElementById('heatmap-title-heading');
+    if (heatmapTitleHeading) {
+      heatmapTitleHeading.innerText = `Binance ${coin}/USDT Liquidation HeatMap`;
+    }
 
     const isNewData = (timestamp !== lastHeatmapTimestamp);
     lastHeatmapTimestamp = timestamp;
@@ -532,9 +551,11 @@ async function addTradeFromForm() {
   }
 
   // Create trade object
+  const timestamp = Date.now();
   const newTrade = {
-    id: 'T' + Date.now(),
-    time: new Date().toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+    id: 'T' + timestamp,
+    timestamp,
+    time: new Date(timestamp).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
     direction, entry, tp, sl, capital, riskPercent, riskUsd,
     positionSizeUsd, tpDistance, slDistance,
     status: 'ACTIVE', pnl: 0, initialTpVolume
@@ -578,7 +599,7 @@ async function loadTradeLog() {
 // ─── Manual Trade Actions ───────────────────────────────────
 window.manualCutLoss = async (tradeId) => {
   if (!currentBtcPriceGlobal) {
-    alert('Harga BTC belum sinkron. Tunggu update data.');
+    alert(`Harga ${currentCoinGlobal} belum sinkron. Tunggu update data.`);
     return;
   }
   try {
@@ -680,8 +701,30 @@ function renderBacktestTable() {
     // Calculate current live or closed Mark Price
     const markPriceVal = trade.status === 'ACTIVE' ? (currentBtcPriceGlobal || trade.entry) : (trade.closePrice || trade.entry);
 
+    // Format trade time dynamically in browser timezone
+    let displayTime = trade.time;
+    let timestamp = trade.timestamp;
+    if (!timestamp && trade.id && trade.id.startsWith('T')) {
+      const ts = parseInt(trade.id.substring(1), 10);
+      if (!isNaN(ts)) {
+        timestamp = ts;
+      }
+    }
+    if (timestamp) {
+      try {
+        const date = new Date(timestamp);
+        const day = date.getDate().toString().padStart(2, '0');
+        const month = date.toLocaleString('id-ID', { month: 'short' });
+        const hour = date.getHours().toString().padStart(2, '0');
+        const minute = date.getMinutes().toString().padStart(2, '0');
+        displayTime = `${day} ${month}, ${hour}.${minute}`;
+      } catch (e) {
+        console.error('Error formatting trade local time:', e);
+      }
+    }
+
     html += `<tr ${rowOpacity}>`;
-    html += `<td>${trade.time}</td>`;
+    html += `<td>${displayTime}</td>`;
     html += `<td style="font-weight:700; color:${trade.direction === 'LONG' ? '#32D74B' : '#FF453A'};">${trade.direction}</td>`;
     html += `<td class="mono">$${trade.entry.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>`;
     html += `<td class="mono" style="color:#32D74B;">$${trade.tp.toLocaleString(undefined, {minimumFractionDigits: 2})}</td>`;

@@ -71,7 +71,7 @@
 
   
   <div class="top-bar">
-    <div class="top-bar-title">Liquidation Heatmap<span>BTC/USDT Binance</span></div>
+    <div class="top-bar-title">Liquidation Heatmap<span id="current-pair-badge">BTC/USDT Binance</span></div>
     <div class="top-bar-controls">
         <div id="connection-status" class="status-indicator normal">
           <span class="status-dot"></span>
@@ -124,7 +124,7 @@
           </svg>
         </div>
         <div class="kpi-info">
-          <span class="kpi-label">BTC Price (Binance)</span>
+          <span class="kpi-label" id="kpi-pair-price-label">BTC Price (Binance)</span>
           <div class="kpi-value-container">
             <h2 class="kpi-value select-mono text-positive" id="val-btc-price">$0.00</h2>
           </div>
@@ -194,7 +194,7 @@
         <div class="card table-card" style="padding: var(--spacing-sm);">
           <div class="card-header" style="flex-direction: row; justify-content: space-between; align-items: center; margin-bottom: var(--spacing-sm);">
             <div>
-              <h3>Binance BTC/USDT Liquidation HeatMap</h3>
+              <h3 id="heatmap-title-heading">Binance BTC/USDT Liquidation HeatMap</h3>
               <span class="card-subtitle" id="heatmap-update-time">Update Time: --</span>
             </div>
           </div>

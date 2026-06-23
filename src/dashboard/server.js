@@ -1000,10 +1000,18 @@ app.post('/api/trades/add', (req, res) => {
     return res.status(400).json({ success: false, error: 'Incomplete trade data' });
   }
 
+  const id = trade.id || 'T' + Date.now();
+  let timestamp = trade.timestamp;
+  if (!timestamp) {
+    const parsedTs = parseInt(id.replace('T', ''), 10);
+    timestamp = isNaN(parsedTs) ? Date.now() : parsedTs;
+  }
+
   const trades = loadTrades();
   trades.push({
-    id: trade.id || 'T' + Date.now(),
-    time: trade.time || new Date().toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+    id,
+    timestamp,
+    time: trade.time || new Date(timestamp).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
     direction: trade.direction,
     entry: parseFloat(trade.entry),
     tp: parseFloat(trade.tp),
@@ -1227,9 +1235,11 @@ app.post('/api/tradingview/webhook', (req, res) => {
     const riskUsd = settings.capital * (settings.riskPercent / 100);
     const positionSizeUsd = riskUsd / (slDistance / 100);
 
+    const timestamp = Date.now();
     const newTrade = {
-      id: 'T' + Date.now(),
-      time: new Date().toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+      id: 'T' + timestamp,
+      timestamp,
+      time: new Date(timestamp).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
       direction,
       entry,
       tp,
@@ -2225,9 +2235,11 @@ function autoTradeStrategyBackend(heatmapData) {
     initialTpVolume = volumeByY[closestTpYIdx] || 0;
   }
 
+  const timestamp = Date.now();
   const newTrade = {
-    id: 'T' + Date.now(),
-    time: new Date().toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+    id: 'T' + timestamp,
+    timestamp,
+    time: new Date(timestamp).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
     direction,
     entry: parseFloat(entry.toFixed(2)),
     tp: parseFloat(tp.toFixed(2)),

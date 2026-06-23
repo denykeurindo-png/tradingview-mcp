@@ -14,6 +14,7 @@
   "scripts": {
     "start": "node src/server.js",
     "dashboard": "node src/dashboard/server.js",
+    "chrome": "powershell -ExecutionPolicy Bypass -File scripts/launch_chrome_gui.ps1",
     "tv": "node src/cli/index.js",
     "test": "node --test tests/e2e.test.js tests/pine_analyze.test.js",
     "test:e2e": "node --test tests/e2e.test.js",

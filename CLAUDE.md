@@ -4,13 +4,29 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 # TradingView MCP — Claude Instructions
 
-MCP server + CLI bridge between Claude Code and TradingView Desktop via Chrome DevTools Protocol (CDP on port 9222).
+MCP server + CLI bridge between Claude Code and TradingView Desktop via Chrome DevTools Protocol (CDP on port 9222). Also includes a standalone web dashboard (`src/dashboard/`) for trade monitoring, signal automation, and CoinGlass data scraping.
 
 ## Commands
 
 ```bash
 # Run the MCP server (stdio transport — invoked by Claude Code, not manually)
 node src/server.js
+
+# Dashboard server — Express on port 4000
+npm run dashboard           # foreground
+pm2 start pm2.config.json   # background (recommended); process name: tv-monitor
+pm2 restart tv-monitor      # restart without creating duplicates
+
+# Chrome browser with CDP (port 9222) — required for both MCP and dashboard
+npm run chrome              # Windows GUI mode: launches Chrome with TradingView + CoinGlass tabs
+# Headless mode (VPS/server):
+# chromium-browser --headless=new --remote-debugging-port=9222 --disable-gpu --user-data-dir=/tmp/chromium-profile "https://www.tradingview.com/chart/"
+
+# Signal bridge — reads Pine signals from local TradingView, POSTs to VPS dashboard
+npm run bridge              # scripts/tv_signal_bridge.js
+
+# Deploy dashboard to VPS via SSH
+npm run deploy              # scripts/deploy_ssh.js
 
 # CLI — every MCP tool is also a `tv` command
 npm link          # install `tv` globally (one-time)
@@ -31,7 +47,7 @@ node scripts/pine_push.js   # push scripts/current.pine → TV editor + compile
 
 ## Code Architecture
 
-Three-layer stack:
+### MCP / CLI Layer (Three-layer stack)
 
 ```
 MCP Client / CLI
@@ -43,7 +59,7 @@ src/core/*.js           ← Business logic (CDP JS string injection)
       ↓
 src/connection.js       ← CDP singleton: evaluate(), evaluateAsync(), safeString()
       ↓
-CDP localhost:9222       ← TradingView Desktop (Electron)
+CDP localhost:9222       ← TradingView Desktop (Electron) or Chrome
 ```
 
 **`src/connection.js`** — shared CDP connection singleton. Key exports:
@@ -56,7 +72,46 @@ CDP localhost:9222       ← TradingView Desktop (Electron)
 
 **`src/wait.js`** — `waitForChartReady()` — polls DOM for loading spinner + bar count stability after chart changes.
 
-### Adding a New Tool
+### Dashboard Layer (`src/dashboard/`)
+
+```
+Browser / TradingView Alerts
+      ↓
+src/dashboard/server.js  ← Express on port 4000, all API routes + business logic
+      ↓
+CDP localhost:9222        ← Chrome tabs (TradingView chart, CoinGlass pages)
+Binance public REST API   ← OI, klines, funding rate, long/short ratio
+Telegram Bot API          ← alerts for all trade events
+      ↓
+src/dashboard/trades.json    ← trade log (flat JSON array, file-persisted)
+src/dashboard/settings.json  ← runtime settings (capital, risk%, Telegram creds)
+src/dashboard/public/        ← static frontend (index.html, heatmap.html, etc.)
+```
+
+**Authentication**: Session cookies (`jda_session`, 24h TTL) + HTTP Basic Auth fallback for API clients. Credentials stored in `settings.json` (`authUsername`/`authPassword`). Public paths: `/login`, `/auth/*`, `/api/tradingview/webhook`.
+
+**CDP mutex** (`runWithCdpLock`): All Chrome interactions are serialized through a promise-chain mutex with a 2s post-release delay to prevent tab race conditions.
+
+**CoinGlass scrapers** (in `server.js`): Three scrapers that navigate/reload Chrome tabs via CDP and poll the DOM until React-rendered data decrypts (up to 45s timeout each):
+- `scrapeCoinGlass('/etf/bitcoin')` → BTC ETF flows (serves `/api/etf-data`, cached 1h)
+- `scrapeHeatMap()` → Liquidation Heatmap 24h (serves `/api/heatmap-data`, cached 3min)
+- `scrapeHeatMap3D()` → Liquidation Heatmap 3 day (serves `/api/heatmap-3d-data`); validates by time span ≥48h not bar count, falls back to click dropdown if needed
+
+**Binance data** (polled periodically, stored in `botMetrics`):
+- `fetchBinanceOI()` — open interest + 1h OI change (5m history, 13 candles)
+- `fetchBinanceSpotCVD()` — cumulative delta of spot taker buy vs total (12 × 5m candles)
+- `fetchBinanceHTFTrend()` — EMA50 trend on 1h and 4h charts (200+ candles)
+- `fetchFundingRate()` / `fetchLongShortRatio()` — from Binance futures endpoints
+
+**Trade engine**: All trades in `trades.json`. Key REST endpoints:
+- `POST /api/tradingview/webhook` — public; accepts `action: buy|sell|cut` from Pine alerts; enforces `maxActive`, `minRR`, `minDist/maxDist` from settings
+- `POST /api/trades/add` — manual trade entry
+- `POST /api/trades/cut` — close active trade with PnL calculation
+- `GET /api/settings` / `POST /api/settings` — update risk parameters live
+
+**Signal bridge** (`scripts/tv_signal_bridge.js`): Runs locally, reads Pine Script signal values from TradingView via CDP every 5s, POSTs to the VPS dashboard at `http://103.55.37.239:4000`.
+
+### Adding a New MCP Tool
 
 1. Add business logic to `src/core/<module>.js`
 2. Register the MCP tool in `src/tools/<module>.js` using `server.tool(name, desc, schema, handler)` — wrap in try/catch returning `jsonResult(..., true)` on error

@@ -4,11 +4,10 @@
 
 Express server on **port 4000** (`src/dashboard/server.js`).
 
-### Step 1 — Start the server
-
-**Recommended (PM2):** Run in the background so you can close the terminal window:
+**Recommended (PM2):** Run in the background. Using the config file prevents duplicate entries:
 ```powershell
-pm2 start src/dashboard/server.js --name "trading-dashboard"
+# Start the service (uses pm2.config.json, prevents duplicates)
+pm2 start pm2.config.json
 ```
 
 To manage the background process under **PM2**:
@@ -17,10 +16,13 @@ To manage the background process under **PM2**:
 pm2 status
 
 # Check logs
-pm2 logs trading-dashboard
+pm2 logs tv-monitor
+
+# Restart it (safe, does not create duplicates)
+pm2 restart tv-monitor
 
 # Stop it
-pm2 stop trading-dashboard
+pm2 stop tv-monitor
 ```
 
 **Alternative (Foreground):** Run in the active terminal (will close if the terminal is shut down):
@@ -58,10 +60,61 @@ Invoke-WebRequest -Uri "http://localhost:4000/auth/login" -Method POST -Body $bo
 
 If using **PM2**:
 ```powershell
-pm2 stop trading-dashboard
+pm2 stop tv-monitor
 ```
 
 If running in the **foreground**, simply press `Ctrl + C` in the active terminal.
+
+---
+
+## Chrome Browser (CDP Target)
+
+The Dashboard and MCP server connect to Google Chrome via port `9222`. You can choose to run Chrome in either **GUI Mode (Visible)** or **Headless Mode (Hidden / Background)**.
+
+### Option 1 — GUI Mode (Visible)
+
+Use this when you want to see the browser window, monitor the pages in real-time, or perform logins manually.
+
+**Recommended (Shortcut):**
+Run this command from your terminal to launch Chrome automatically with all required tabs:
+```powershell
+npm run chrome
+```
+
+**Windows (PowerShell - Manual):**
+```powershell
+& "C:\Program Files\Google\Chrome\Application\chrome.exe" --remote-debugging-port=9222 --user-data-dir="C:\ChromeDebugProfile" "https://www.tradingview.com/chart/" "https://www.coinglass.com/pro/futures/LiquidationHeatMap?coin=BTC&period=24h" "https://www.coinglass.com/pro/futures/LiquidationHeatMap?coin=BTC&period=3d"
+```
+
+**Linux / VPS:**
+```bash
+chromium-browser --remote-debugging-port=9222 --disable-gpu --user-data-dir=/tmp/chromium-profile "https://www.tradingview.com/chart/" "https://www.coinglass.com/pro/futures/LiquidationHeatMap?coin=BTC"
+```
+
+### Option 2 — Headless Mode (Hidden / Background)
+
+Use this when running the application in the background (e.g. on a server or VPS) without showing any browser window on the screen.
+
+> [!NOTE]
+> Chrome's headless mode does not support launching multiple URLs directly from the command line (it throws a `Multiple targets are not supported` error). 
+> Therefore, we launch Chrome with **only the TradingView URL**, and the dashboard server will automatically open and navigate the CoinGlass tabs in the background.
+
+> [!IMPORTANT]
+> To use headless mode, first run in GUI mode (Option 1) to log in to TradingView and CoinGlass so your session/cookies are saved in the profile folder (`--user-data-dir`).
+
+**Windows (PowerShell - Runs hidden in background):**
+```powershell
+Start-Process -FilePath "C:\Program Files\Google\Chrome\Application\chrome.exe" -ArgumentList "--headless=new", "--remote-debugging-port=9222", "--user-data-dir=C:\ChromeDebugProfile", "https://www.tradingview.com/chart/" -WindowStyle Hidden
+```
+
+**Linux / VPS (CLI / PM2):**
+```bash
+# Run directly in background
+chromium-browser --headless=new --remote-debugging-port=9222 --disable-gpu --user-data-dir=/tmp/chromium-profile --window-size=1280,1024 "https://www.tradingview.com/chart/" &
+
+# Or manage it via PM2
+pm2 start "chromium-browser" --name "chrome-headless" -- --headless=new --remote-debugging-port=9222 --disable-gpu --user-data-dir=/tmp/chromium-profile --window-size=1280,1024 "https://www.tradingview.com/chart/"
+```
 
 ---
 
