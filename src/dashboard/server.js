@@ -120,6 +120,44 @@ app.use(express.static(path.join(__dirname, 'public')));
 let etfDataCache = null;
 let lastFetchTime = null;
 
+// ETF Alert state tracking (anti-spam: only send when state changes)
+let lastEtfAlertState = null; // 'stable' | 'outflow' | 'vampire' | 'outflow+vampire'
+
+// Build ETF alert messages from scraped data (mirrors frontend renderAlerts logic)
+function buildEtfAlerts(result, btcPrice) {
+  if (!result || !result.formatted || result.formatted.length === 0) return null;
+  const latest = result.formatted[0];
+  const total = latest.Total ?? 0;
+  const gbtc = latest.GBTC ?? 0;
+  const alerts = [];
+  let stateKey = 'stable';
+
+  // 1. Net outflow alert (same condition as frontend: total < 0)
+  if (total < 0) {
+    const totalUsd = total * btcPrice;
+    const totalBtcStr = Math.abs(total) >= 1000 ? (Math.abs(total)/1000).toFixed(2)+'K' : Math.abs(total).toFixed(2);
+    const totalUsdStr = Math.abs(totalUsd) >= 1e9 ? (Math.abs(totalUsd)/1e9).toFixed(2)+'B' : Math.abs(totalUsd) >= 1e6 ? (Math.abs(totalUsd)/1e6).toFixed(2)+'M' : Math.abs(totalUsd).toFixed(2);
+    alerts.push(`🔴 <b>Capital Outflow Detected</b>\nNet daily outflow: -${totalBtcStr} BTC\nEquiv: -$${totalUsdStr}`);
+    stateKey = 'outflow';
+  }
+
+  // 2. Grayscale massive outflow (same condition as frontend: gbtc < -200)
+  if (gbtc < -200) {
+    const gbtcUsd = gbtc * btcPrice;
+    const gbtcBtcStr = Math.abs(gbtc) >= 1000 ? (Math.abs(gbtc)/1000).toFixed(2)+'K' : Math.abs(gbtc).toFixed(2);
+    const gbtcUsdStr = Math.abs(gbtcUsd) >= 1e9 ? (Math.abs(gbtcUsd)/1e9).toFixed(2)+'B' : Math.abs(gbtcUsd) >= 1e6 ? (Math.abs(gbtcUsd)/1e6).toFixed(2)+'M' : Math.abs(gbtcUsd).toFixed(2);
+    alerts.push(`⚠️ <b>GBTC Vampire Drain</b>\nGrayscale outflow: -${gbtcBtcStr} BTC\nEquiv: -$${gbtcUsdStr}`);
+    stateKey = stateKey === 'outflow' ? 'outflow+vampire' : 'vampire';
+  }
+
+  // 3. Stable flows (no alerts)
+  if (alerts.length === 0) {
+    alerts.push(`✅ <b>ETF Stable Flows</b>\nNo active capital drain alerts.\nBTC Price: $${btcPrice.toLocaleString()}`);
+  }
+
+  return { alerts, stateKey, total, gbtc };
+}
+
 // Page-specific scraping locks
 let isEtfScrapingBusy = false;
 let isHeatmapScrapingBusy = false;
@@ -981,9 +1019,19 @@ app.get('/api/etf-data', async (req, res) => {
     const result = await runWithCdpLock(() => scrapeCoinGlass('/etf/bitcoin', forceRefresh));
     etfDataCache = result;
     lastFetchTime = Date.now();
+
+    // Send ETF alerts to Telegram (only when alert state changes)
+    const etfAlertInfo = buildEtfAlerts(result, btcPrice);
+    if (etfAlertInfo && etfAlertInfo.stateKey !== lastEtfAlertState) {
+      lastEtfAlertState = etfAlertInfo.stateKey;
+      const header = `📊 <b>ETF Monitor Update</b>\n${'─'.repeat(20)}\n`;
+      sendTelegramAlert(header + etfAlertInfo.alerts.join('\n\n'));
+      console.log(`[ETF Alert] State changed to: ${etfAlertInfo.stateKey}`);
+    }
+
     res.json({ success: true, source: 'live', data: result, btcPrice });
   } catch (error) {
-    console.error('Scrape error:', error.message);
+    sendTelegramAlert(`⚠️ <b>ETF Scrape Error</b>\n${error.message}`);
     res.status(500).json({ success: false, error: error.message });
   } finally {
     isEtfScrapingBusy = false;
@@ -3235,6 +3283,15 @@ app.listen(PORT, () => {
         etfDataCache = result;
         lastFetchTime = Date.now();
         console.log('[ETF] Cache warmed up successfully.');
+
+        // Send initial ETF alerts to Telegram on warm-up
+        const etfAlertInfo = buildEtfAlerts(result, btcPrice);
+        if (etfAlertInfo) {
+          lastEtfAlertState = etfAlertInfo.stateKey;
+          const header = `📊 <b>ETF Monitor Started</b>\n${'─'.repeat(20)}\n`;
+          sendTelegramAlert(header + etfAlertInfo.alerts.join('\n\n'));
+          console.log(`[ETF Alert] Initial state: ${etfAlertInfo.stateKey}`);
+        }
       } catch (e) { console.error('[ETF] Warm-up failed:', e.message); }
     }
   }, 90000);
