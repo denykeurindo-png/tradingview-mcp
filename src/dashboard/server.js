@@ -1610,6 +1610,7 @@ function evaluateActiveTradesBackend(heatmapData) {
         trade.closeTimestamp = Date.now();
         trade.note = `Wick Hit SL ($${lastLow.toFixed(2)})`;
         updated = true;
+        console.log(`[LSR Bot] 🚨 LONG Hit SL at $${trade.sl.toFixed(2)} (Last Low: $${lastLow.toFixed(2)}), PnL: -$${trade.riskUsd.toFixed(2)}`);
         sendTelegramAlert(
           `🚨 <b>Trade Closed (Hit SL)</b>\n` +
           `Type: <b>LONG</b>\n` +
@@ -1632,6 +1633,7 @@ function evaluateActiveTradesBackend(heatmapData) {
         trade.closeTimestamp = Date.now();
         trade.note = `Wick Hit TP ($${lastHigh.toFixed(2)})`;
         updated = true;
+        console.log(`[LSR Bot] 🎉 LONG Hit TP at $${trade.tp.toFixed(2)} (Last High: $${lastHigh.toFixed(2)}), PnL: +$${profit.toFixed(2)}`);
         sendTelegramAlert(
           `🎉 <b>Trade Closed (Hit TP)</b>\n` +
           `Type: <b>LONG</b>\n` +
@@ -1654,6 +1656,7 @@ function evaluateActiveTradesBackend(heatmapData) {
         trade.closeTimestamp = Date.now();
         trade.note = `Wick Hit SL ($${lastHigh.toFixed(2)})`;
         updated = true;
+        console.log(`[LSR Bot] 🚨 SHORT Hit SL at $${trade.sl.toFixed(2)} (Last High: $${lastHigh.toFixed(2)}), PnL: -$${trade.riskUsd.toFixed(2)}`);
         sendTelegramAlert(
           `🚨 <b>Trade Closed (Hit SL)</b>\n` +
           `Type: <b>SHORT</b>\n` +
@@ -1676,6 +1679,7 @@ function evaluateActiveTradesBackend(heatmapData) {
         trade.closeTimestamp = Date.now();
         trade.note = `Wick Hit TP ($${lastLow.toFixed(2)})`;
         updated = true;
+        console.log(`[LSR Bot] 🎉 SHORT Hit TP at $${trade.tp.toFixed(2)} (Last Low: $${lastLow.toFixed(2)}), PnL: +$${profit.toFixed(2)}`);
         sendTelegramAlert(
           `🎉 <b>Trade Closed (Hit TP)</b>\n` +
           `Type: <b>SHORT</b>\n` +
@@ -1717,6 +1721,7 @@ function evaluateActiveTradesBackend(heatmapData) {
       trade.closeTimestamp = Date.now();
       trade.note = 'Auto (Pool -50%)';
       updated = true;
+      console.log(`[LSR Bot] ⚠️ AUTO-CUT TRIGGERED — ${trade.direction} Closed at $${lastClose.toFixed(2)} (Initial Pool: $${(trade.initialTpVolume/1e9).toFixed(2)}B, Current Pool: $${(currentTpVolume/1e9).toFixed(2)}B), PnL: ${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}`);
       sendTelegramAlert(
         `⚠️ <b>Trade Closed (Auto-Cut: Pool -50%)</b>\n` +
         `Type: <b>${trade.direction}</b>\n` +
