@@ -835,11 +835,21 @@ async function scrapeHeatMap(forceRefresh = false) {
       if (immediateVal) {
         const parsed = JSON.parse(immediateVal);
         if (!parsed.error && parsed.series && parsed.series.length > 0) {
-          console.log('Instant heatmap scrape succeeded!');
-          return {
-            data: parsed,
-            timestamp: new Date().toISOString()
-          };
+          const xa = parsed.xAxis || [];
+          let spanHours = 0;
+          if (xa.length >= 2) {
+            const t0 = new Date(xa[0]).getTime(), t1 = new Date(xa[xa.length - 1]).getTime();
+            spanHours = isNaN(t0) || isNaN(t1) ? 0 : ((t1 - t0) / 3600000);
+          }
+          if (spanHours > 15 && spanHours <= 30) {
+            console.log('Instant heatmap scrape succeeded!');
+            return {
+              data: parsed,
+              timestamp: new Date().toISOString()
+            };
+          } else {
+            console.log(`Instant scrape got chart with span ${spanHours}h (not 24h). Proceeding to reload and switch period...`);
+          }
         }
       }
     }
@@ -847,10 +857,146 @@ async function scrapeHeatMap(forceRefresh = false) {
     if (navigated) {
       console.log('Navigating to LiquidationHeatMap...');
       await cdp('Page.navigate', { url: 'https://www.coinglass.com/pro/futures/LiquidationHeatMap' });
+      await new Promise(r => setTimeout(r, 15000)); // wait for full React render
     } else {
       console.log('Reloading LiquidationHeatMap page...');
       await cdp('Page.reload', {});
+      await new Promise(r => setTimeout(r, 10000)); // wait for reload
     }
+
+    // Switch to 24H period using robust JS event-based clicks
+    const triggerClickExpr = `
+      function triggerEvents(el) {
+        var names = ['mouseenter', 'mouseover', 'pointerdown', 'mousedown', 'focus', 'pointerup', 'mouseup', 'click'];
+        names.forEach(function(n) {
+          if (n === 'focus') el.focus();
+          else el.dispatchEvent(new MouseEvent(n, { bubbles: true, cancelable: true, view: window }));
+        });
+      }
+    `;
+
+    // 1. Try to click 24h directly in case it's visible (wide viewport)
+    const directResult = await cdp('Runtime.evaluate', {
+      expression: `(function() {
+        ${triggerClickExpr}
+        var P24H = [/^(24h|24\\s*hour|24\\s*hours|1\\s*day|1d|24\\s*hari)$/i];
+        var allElems = Array.from(document.querySelectorAll('button, li, div, span, a'));
+        for (var i = 0; i < allElems.length; i++) {
+          var txt = (allElems[i].innerText || allElems[i].textContent || '').trim();
+          if (P24H.some(p => p.test(txt))) {
+            var r = allElems[i].getBoundingClientRect();
+            if (r.width > 0 && r.height > 0 && r.left > 0 && r.top > 0) {
+              triggerEvents(allElems[i]);
+              return JSON.stringify({ success: true, text: txt });
+            }
+          }
+        }
+        return JSON.stringify({ success: false });
+      })()`,
+      returnByValue: true
+    });
+
+    let clickResult = 'no-24h-button-found';
+    const directRes = JSON.parse(directResult?.result?.value || '{}');
+    if (directRes.success) {
+      console.log(`[Heatmap] Directly clicked 24H option: ${directRes.text}`);
+      clickResult = 'direct-js-click "' + directRes.text + '"';
+    } else {
+      console.log('[Heatmap] 24H option not visible. Clicking dropdown...');
+      
+      // 2. Click the dropdown button (e.g. showing "3 day" or similar period)
+      const dropdownResult = await cdp('Runtime.evaluate', {
+        expression: `(function() {
+          ${triggerClickExpr}
+          var P_PERIOD = /^\\d+\\s*(hour|day|week|month|h|d|w|m)s?$/i;
+          var btns = Array.from(document.querySelectorAll('button'));
+          for (var i = 0; i < btns.length; i++) {
+            var txt = (btns[i].innerText || btns[i].textContent || '').trim();
+            if (P_PERIOD.test(txt)) {
+              var r = btns[i].getBoundingClientRect();
+              if (r.width > 0 && r.height > 0) {
+                triggerEvents(btns[i]);
+                return JSON.stringify({ success: true, text: txt });
+              }
+            }
+          }
+          return JSON.stringify({ success: false });
+        })()`,
+        returnByValue: true
+      });
+      
+      const dropdownRes = JSON.parse(dropdownResult?.result?.value || '{}');
+      if (dropdownRes.success) {
+        console.log(`[Heatmap] Dropdown button "${dropdownRes.text}" clicked. Waiting for dropdown menu...`);
+        
+        // Wait for dropdown to open (in Node)
+        await new Promise(r => setTimeout(r, 2000));
+        
+        // 3. Click the 24H menu item inside the opened dropdown
+        const dropdown24Result = await cdp('Runtime.evaluate', {
+          expression: `(function() {
+            ${triggerClickExpr}
+            var P24H = [/^(24h|24\\s*hour|24\\s*hours|1\\s*day|1d|24\\s*hari)$/i];
+            var allElems = Array.from(document.querySelectorAll('li, button, div, span, a'));
+            for (var i = 0; i < allElems.length; i++) {
+              var txt = (allElems[i].innerText || allElems[i].textContent || '').trim();
+              if (P24H.some(p => p.test(txt))) {
+                var r = allElems[i].getBoundingClientRect();
+                if (r.width > 0 && r.height > 0 && r.left > 0 && r.top > 0) {
+                  triggerEvents(allElems[i]);
+                  return JSON.stringify({ success: true, text: txt });
+                }
+              }
+            }
+            return JSON.stringify({ success: false });
+          })()`,
+          returnByValue: true
+        });
+        
+        const dropdown24Res = JSON.parse(dropdown24Result?.result?.value || '{}');
+        if (dropdown24Res.success) {
+          console.log(`[Heatmap] Clicked 24H option "${dropdown24Res.text}" in dropdown.`);
+          clickResult = 'dropdown-js-click "' + dropdown24Res.text + '"';
+        } else {
+          console.warn('[Heatmap] Could not find 24H menu item in dropdown menu.');
+        }
+      } else {
+        console.warn('[Heatmap] Could not find period dropdown button.');
+      }
+    }
+    console.log('[Heatmap] Period select result:', clickResult);
+
+    // Wait up to 45s for chart to update to 24H period.
+    let chartUpdated = false;
+    for (let attempt = 0; attempt < 15; attempt++) {
+      await new Promise(r => setTimeout(r, 3000));
+      const check = await cdp('Runtime.evaluate', {
+        expression: `(function(){
+          var el=document.querySelector('.echarts-for-react');
+          if(!el) return JSON.stringify({len:0,spanHours:0});
+          var keys=Object.keys(el),fk=keys.find(k=>k.startsWith('__reactFiber$')||k.startsWith('__reactContainer$'));
+          if(!fk) return JSON.stringify({len:0,spanHours:0});
+          var f=el[fk],opt=null;
+          while(f){if(f.memoizedProps&&f.memoizedProps.option){opt=f.memoizedProps.option;break;}f=f.return;}
+          if(!opt||!opt.xAxis) return JSON.stringify({len:0,spanHours:0});
+          var xa=Array.isArray(opt.xAxis)?opt.xAxis[0].data:opt.xAxis.data;
+          if(!xa||xa.length<2) return JSON.stringify({len:xa?xa.length:0,spanHours:0});
+          var t0=new Date(xa[0]).getTime(), t1=new Date(xa[xa.length-1]).getTime();
+          var spanHours=isNaN(t0)||isNaN(t1)?0:((t1-t0)/3600000);
+          return JSON.stringify({len:xa.length,spanHours:Math.round(spanHours)});
+        })()`,
+        returnByValue: true
+      });
+      let info = { len: 0, spanHours: 0 };
+      try { info = JSON.parse(check?.result?.value || '{}'); } catch(e) {}
+      if (info.spanHours > 15 && info.spanHours <= 30) {
+        console.log('[Heatmap] Chart confirmed 24H after', (attempt+1)*3, 's. bars:', info.len, 'span:', info.spanHours + 'h');
+        chartUpdated = true;
+        break;
+      }
+      console.log('[Heatmap] Waiting for 24H... attempt', attempt+1, 'bars:', info.len, 'span:', info.spanHours + 'h (need 15-30h)');
+    }
+    if (!chartUpdated) console.log('[Heatmap] Period did not switch to 24H (time span not 15-30h) — scraping with current span.');
 
     console.log('Polling for heatmap canvas container rendering...');
     const result = await cdp('Runtime.evaluate', {
