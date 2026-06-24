@@ -482,7 +482,9 @@ async function scrapeHeatMap3D() {
       await cdp('Page.navigate', { url: 'https://www.coinglass.com/pro/futures/LiquidationHeatMap' });
       await new Promise(r => setTimeout(r, 15000)); // full React render
     } else {
-      await new Promise(r => setTimeout(r, 2000));
+      console.log('[Heatmap3D] Reloading LiquidationHeatMap page...');
+      await cdp('Page.reload', {});
+      await new Promise(r => setTimeout(r, 10000)); // wait for reload
     }
 
     // Use CDP Input.dispatchMouseEvent for real OS-level events
