@@ -559,31 +559,34 @@ async function scrapeHeatMap3D() {
       if (dropdownRes.success) {
         console.log(`[Heatmap3D] Dropdown button "${dropdownRes.text}" clicked. Waiting for dropdown menu...`);
         
-        // Wait for dropdown to open (in Node)
-        await new Promise(r => setTimeout(r, 2000));
-        
-        // 3. Click the 3D menu item inside the opened dropdown
-        const dropdown3dResult = await cdp('Runtime.evaluate', {
-          expression: `(function() {
-            ${triggerClickExpr}
-            var P3D = [/^3\\s*day$/i, /^3\\s*days$/i, /^3d$/i, /^72\\s*h/i, /^3\\s*hari$/i];
-            var allElems = Array.from(document.querySelectorAll('li, button, div, span, a'));
-            for (var i = 0; i < allElems.length; i++) {
-              var txt = (allElems[i].innerText || allElems[i].textContent || '').trim();
-              if (P3D.some(p => p.test(txt))) {
-                var r = allElems[i].getBoundingClientRect();
-                if (r.width > 0 && r.height > 0 && r.left > 0 && r.top > 0) {
-                  triggerEvents(allElems[i]);
-                  return JSON.stringify({ success: true, text: txt });
+        // Wait and retry for dropdown to open/render
+        let dropdown3dRes = { success: false };
+        for (let dropdownAttempt = 0; dropdownAttempt < 5; dropdownAttempt++) {
+          await new Promise(r => setTimeout(r, 1000));
+          const dropdown3dResult = await cdp('Runtime.evaluate', {
+            expression: `(function() {
+              ${triggerClickExpr}
+              var P3D = [/^3\\s*day$/i, /^3\\s*days$/i, /^3d$/i, /^72\\s*h/i, /^3\\s*hari$/i];
+              var allElems = Array.from(document.querySelectorAll('li, button, div, span, a'));
+              for (var i = 0; i < allElems.length; i++) {
+                var txt = (allElems[i].innerText || allElems[i].textContent || '').trim();
+                if (P3D.some(p => p.test(txt))) {
+                  var r = allElems[i].getBoundingClientRect();
+                  if (r.width > 0 && r.height > 0 && r.left > 0 && r.top > 0) {
+                    triggerEvents(allElems[i]);
+                    return JSON.stringify({ success: true, text: txt });
+                  }
                 }
               }
-            }
-            return JSON.stringify({ success: false });
-          })()`,
-          returnByValue: true
-        });
-        
-        const dropdown3dRes = JSON.parse(dropdown3dResult?.result?.value || '{}');
+              return JSON.stringify({ success: false });
+            })()`,
+            returnByValue: true
+          });
+          dropdown3dRes = JSON.parse(dropdown3dResult?.result?.value || '{}');
+          if (dropdown3dRes.success) break;
+          console.log(`[Heatmap3D] Menu item '3 day' not found yet, retrying... (attempt ${dropdownAttempt+1}/5)`);
+        }
+
         if (dropdown3dRes.success) {
           console.log(`[Heatmap3D] Clicked 3D option "${dropdown3dRes.text}" in dropdown.`);
           clickResult = 'dropdown-js-click "' + dropdown3dRes.text + '"';
@@ -929,31 +932,34 @@ async function scrapeHeatMap(forceRefresh = false) {
       if (dropdownRes.success) {
         console.log(`[Heatmap] Dropdown button "${dropdownRes.text}" clicked. Waiting for dropdown menu...`);
         
-        // Wait for dropdown to open (in Node)
-        await new Promise(r => setTimeout(r, 2000));
-        
-        // 3. Click the 24H menu item inside the opened dropdown
-        const dropdown24Result = await cdp('Runtime.evaluate', {
-          expression: `(function() {
-            ${triggerClickExpr}
-            var P24H = [/^(24h|24\\s*hour|24\\s*hours|1\\s*day|1d|24\\s*hari)$/i];
-            var allElems = Array.from(document.querySelectorAll('li, button, div, span, a'));
-            for (var i = 0; i < allElems.length; i++) {
-              var txt = (allElems[i].innerText || allElems[i].textContent || '').trim();
-              if (P24H.some(p => p.test(txt))) {
-                var r = allElems[i].getBoundingClientRect();
-                if (r.width > 0 && r.height > 0 && r.left > 0 && r.top > 0) {
-                  triggerEvents(allElems[i]);
-                  return JSON.stringify({ success: true, text: txt });
+        // Wait and retry for dropdown to open/render
+        let dropdown24Res = { success: false };
+        for (let dropdownAttempt = 0; dropdownAttempt < 5; dropdownAttempt++) {
+          await new Promise(r => setTimeout(r, 1000));
+          const dropdown24Result = await cdp('Runtime.evaluate', {
+            expression: `(function() {
+              ${triggerClickExpr}
+              var P24H = [/^(24h|24\\s*hour|24\\s*hours|1\\s*day|1d|24\\s*hari)$/i];
+              var allElems = Array.from(document.querySelectorAll('li, button, div, span, a'));
+              for (var i = 0; i < allElems.length; i++) {
+                var txt = (allElems[i].innerText || allElems[i].textContent || '').trim();
+                if (P24H.some(p => p.test(txt))) {
+                  var r = allElems[i].getBoundingClientRect();
+                  if (r.width > 0 && r.height > 0 && r.left > 0 && r.top > 0) {
+                    triggerEvents(allElems[i]);
+                    return JSON.stringify({ success: true, text: txt });
+                  }
                 }
               }
-            }
-            return JSON.stringify({ success: false });
-          })()`,
-          returnByValue: true
-        });
-        
-        const dropdown24Res = JSON.parse(dropdown24Result?.result?.value || '{}');
+              return JSON.stringify({ success: false });
+            })()`,
+            returnByValue: true
+          });
+          dropdown24Res = JSON.parse(dropdown24Result?.result?.value || '{}');
+          if (dropdown24Res.success) break;
+          console.log(`[Heatmap] Menu item '24 hour' not found yet, retrying... (attempt ${dropdownAttempt+1}/5)`);
+        }
+
         if (dropdown24Res.success) {
           console.log(`[Heatmap] Clicked 24H option "${dropdown24Res.text}" in dropdown.`);
           clickResult = 'dropdown-js-click "' + dropdown24Res.text + '"';
