@@ -1038,17 +1038,15 @@ window.addEventListener('DOMContentLoaded', () => {
 
 
 // ── Sweep Prediction Panel ────────────────────────────────────────────────────
-async function loadSweepPrediction() {
+function renderSweepPanel(d) {
+  const panel = document.getElementById('sweep-prediction-panel');
+  if (!panel) return;
+  if (!d) {
+    panel.innerHTML = '<div style="color:#98989D; font-size:12px; text-align:center; padding:12px;">Loading sweep prediction...</div>';
+    return;
+  }
+
   try {
-    const res = await fetch('/api/sweep-prediction');
-    if (!res.ok) return;
-    const json = await res.json();
-    const d = json.data;
-    if (!d) return;
-
-    const panel = document.getElementById('sweep-prediction-panel');
-    if (!panel) return;
-
     const isUp = d.direction === 'UP';
     const dirColor = isUp ? '#13fed9' : '#f23744';
     const dirArrow = isUp ? '▲' : '▼';
@@ -1125,6 +1123,22 @@ async function loadSweepPrediction() {
   }
 }
 
+async function loadSweepPrediction() {
+  try {
+    const res = await fetch('/api/sweep-prediction');
+    if (!res.ok) return;
+    const json = await res.json();
+    
+    // Update 24H Panel
+    renderSweepPanel(json.data);
+
+    // Update 3D Panel
+    renderSweepPanel3D(json.data3d);
+  } catch (e) {
+    console.error('[SweepPredict] Fetch error:', e);
+  }
+}
+
 // Auto-refresh every 3 min
 loadSweepPrediction();
 setInterval(loadSweepPrediction, 3 * 60 * 1000);
@@ -1157,10 +1171,7 @@ function switchChartTab(tab) {
 // ── 3D Heatmap + Tables + Sweep Prediction ────────────────────────────────────
 async function load3DData() {
   try {
-    const [heatRes, sweepRes] = await Promise.all([
-      fetch('/api/heatmap-data-3d'),
-      fetch('/api/sweep-prediction')
-    ]);
+    const heatRes = await fetch('/api/heatmap-data-3d');
 
     if (heatRes.ok) {
       const heatJson = await heatRes.json();
@@ -1172,12 +1183,6 @@ async function load3DData() {
     } else if (heatRes.status === 503) {
       // 3D data not ready yet — silently wait
       console.log('[3D] Data not ready yet (503), will retry in 3 min');
-    }
-
-    if (sweepRes.ok) {
-      const sweepJson = await sweepRes.json();
-      const d3d = sweepJson.data3d;
-      renderSweepPanel3D(d3d);
     }
   } catch (e) {
     console.error('[3D] Load error:', e);

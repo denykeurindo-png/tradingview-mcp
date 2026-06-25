@@ -3181,6 +3181,7 @@ let botPhaseState = {
 // API endpoint for bot phase status
 
 app.get('/api/sweep-prediction', (req, res) => {
+  console.log('[DEBUG API] Get sweep-prediction. 24h:', sweepPredictionCache ? sweepPredictionCache.direction + ' ' + sweepPredictionCache.confidence + '%' : 'NULL', '3d:', sweepPrediction3DCache ? sweepPrediction3DCache.direction + ' ' + sweepPrediction3DCache.confidence + '%' : 'NULL');
   res.json({ success: true, data: sweepPredictionCache, data3d: sweepPrediction3DCache });
 });
 
