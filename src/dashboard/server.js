@@ -215,6 +215,41 @@ const basicAuth = (req, res, next) => {
 
 app.use(basicAuth);
 
+// Dynamic VPS route middleware to hide settings menu and block settings page access
+app.use((req, res, next) => {
+  const urlPath = req.path;
+  const isHtml = urlPath === '/' || urlPath === '/cockpit' || urlPath.endsWith('.html') || urlPath === '/settings';
+  
+  if (isHtml) {
+    const settings = loadSettings();
+    const isVps = settings.disableScraper || process.env.DISABLE_SCRAPER === 'true';
+    
+    if (isVps) {
+      if (urlPath.includes('settings')) {
+        return res.redirect('/index.html');
+      }
+      
+      let filename = urlPath;
+      if (filename === '/') filename = 'index.html';
+      if (filename === '/cockpit') filename = 'cockpit.html';
+      if (filename.startsWith('/')) filename = filename.substring(1);
+      
+      const filePath = path.join(__dirname, 'public', filename);
+      if (fs.existsSync(filePath)) {
+        res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
+        res.setHeader('Pragma', 'no-cache');
+        res.setHeader('Expires', '0');
+        
+        let html = fs.readFileSync(filePath, 'utf8');
+        const styleTag = '<style>li:has(a[href="settings.html"]), a[href="settings.html"] { display: none !important; }</style>';
+        html = html.replace('</head>', `${styleTag}</head>`);
+        return res.send(html);
+      }
+    }
+  }
+  next();
+});
+
 // Login page route
 app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
@@ -1957,6 +1992,12 @@ app.get('/api/orderbook-data', async (req, res) => {
     return res.json({ success: true, source: 'cache', data: orderBookDataCache });
   }
 
+  // Bypass if scraper is disabled
+  const settings = loadSettings();
+  if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true') {
+    return res.json({ success: true, source: 'cache', data: orderBookDataCache || null });
+  }
+
   if (isOrderBookScrapingBusy) {
     return res.status(409).json({ success: false, error: 'A scrape is already in progress, please wait.' });
   }
@@ -1992,6 +2033,12 @@ app.get('/api/depth-delta', async (req, res) => {
     return res.json({ success: true, source: 'cache', data: depthDeltaCache });
   }
 
+  // Bypass if scraper is disabled
+  const settings = loadSettings();
+  if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true') {
+    return res.json({ success: true, source: 'cache', data: depthDeltaCache || null });
+  }
+
   if (isDepthDeltaScrapingBusy) {
     return res.status(409).json({ success: false, error: 'A scrape is already in progress, please wait.' });
   }
@@ -2023,6 +2070,12 @@ app.get('/api/coinbase-premium', async (req, res) => {
 
   if (cbPremiumCache && !forceRefresh && lastCbPremiumFetchTime && (Date.now() - lastCbPremiumFetchTime < 300000)) {
     return res.json({ success: true, source: 'cache', data: cbPremiumCache });
+  }
+
+  // Bypass if scraper is disabled
+  const settings = loadSettings();
+  if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true') {
+    return res.json({ success: true, source: 'cache', data: cbPremiumCache || null });
   }
 
   if (isCbPremiumScrapingBusy) {
@@ -2067,6 +2120,12 @@ app.get('/api/whale-orders', async (req, res) => {
     return res.json({ success: true, source: 'cache', data: whaleOrdersCache, btcPrice });
   }
 
+  // Bypass if scraper is disabled
+  const settings = loadSettings();
+  if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true') {
+    return res.json({ success: true, source: 'cache', data: whaleOrdersCache || null, btcPrice });
+  }
+
   if (isWhaleOrdersScrapingBusy) {
     return res.status(409).json({ success: false, error: 'A scrape is already in progress, please wait.' });
   }
@@ -2098,6 +2157,12 @@ app.get('/api/heatmap-data', async (req, res) => {
 
   if (heatmapDataCache && !forceRefresh && lastHeatmapFetchTime && (Date.now() - lastHeatmapFetchTime < 180000)) {
     return res.json({ success: true, source: 'cache', data: heatmapDataCache });
+  }
+
+  // Bypass if scraper is disabled
+  const settings = loadSettings();
+  if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true') {
+    return res.json({ success: true, source: 'cache', data: heatmapDataCache || null });
   }
 
   if (isHeatmapScrapingBusy) {
@@ -2204,6 +2269,7 @@ app.post('/api/etf-data/update', (req, res) => {
   if (!data) return res.status(400).json({ success: false, error: 'No data provided' });
   etfDataCache = data;
   lastFetchTime = Date.now();
+  saveCacheToDisk('etf_cache.json', etfDataCache);
   console.log('[Push API] Received ETF Flow update from client.');
   res.json({ success: true });
 });
@@ -2241,6 +2307,12 @@ app.get('/api/etf-data', async (req, res) => {
     return res.json({ success: true, source: 'cache', data: etfDataCache, btcPrice });
   }
 
+  // Bypass if scraper is disabled
+  const settings = loadSettings();
+  if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true') {
+    return res.json({ success: true, source: 'cache', data: etfDataCache || null, btcPrice });
+  }
+
   if (isEtfScrapingBusy) {
     return res.status(409).json({ success: false, error: 'A scrape is already in progress, please wait.' });
   }
@@ -2251,6 +2323,7 @@ app.get('/api/etf-data', async (req, res) => {
     const result = await runWithCdpLock(() => scrapeCoinGlass('/etf/bitcoin', forceRefresh));
     etfDataCache = result;
     lastFetchTime = Date.now();
+    saveCacheToDisk('etf_cache.json', etfDataCache);
 
     // Send ETF alerts to Telegram (only when alert state changes)
     const etfAlertInfo = buildEtfAlerts(result, btcPrice);
@@ -2542,6 +2615,10 @@ app.get('/api/settings', (req, res) => {
 });
 
 app.post('/api/settings', (req, res) => {
+  const settings = loadSettings();
+  if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true') {
+    return res.status(403).json({ success: false, error: 'Settings are view-only/disabled on the VPS instance.' });
+  }
   const newSettings = req.body;
   if (!newSettings) {
     return res.status(400).json({ success: false, error: 'Invalid settings object' });
@@ -5259,6 +5336,11 @@ app.listen(PORT, () => {
 
   // Warm-up ETF cache 90s after start (after first heatmap scrape finishes)
   setTimeout(async () => {
+    const settings = loadSettings();
+    if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true') {
+      console.log('[ETF] Scraper is disabled, skipping ETF cache warm-up.');
+      return;
+    }
     if (!etfDataCache) {
       console.log('[ETF] Warming up cache...');
       try {
@@ -5268,6 +5350,7 @@ app.listen(PORT, () => {
         const result = await scrapeCoinGlass('/etf/bitcoin', false);
         etfDataCache = result;
         lastFetchTime = Date.now();
+        saveCacheToDisk('etf_cache.json', etfDataCache);
         console.log('[ETF] Cache warmed up successfully.');
 
         // Send initial ETF alerts to Telegram on warm-up
