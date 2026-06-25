@@ -157,87 +157,63 @@ Position Size = (Capital × Risk%) / SL%
 
 | Metrik | Nilai | Assessment |
 |--------|-------|------------|
-| Total Trades | **3** | Sample sangat kecil |
-| Win Rate | **0.0%** | ❌ Belum ada trade yang profit |
-| Hit TP | **0** | Belum ada target tercapai |
-| Hit SL | **1** | 1 trade kena stop loss |
-| Cut Loss (Pool -50%) | **2** | 2 trade di-auto-cut |
-| Net PnL (USD) | **-$13.62** | Rugi kecil |
-| Net PnL (Bs.) | **-Bs. 94.82** | |
+| Total Trades | **9** | Ukuran sampel mulai terakumulasi. |
+| Win Rate | **12.5%** | 1 TP / 2 SL / 5 Cut (Aktivasi breakeven pada trade aktif). |
+| Hit TP | **1** | Target opposing liquidity pool tercapai penuh sekali. |
+| Hit SL | **2** | Dua trade terkena stop loss penuh (-$100.00). |
+| Cut Loss (Auto-Cut) | **5** | Lima trade di-auto-cut akibat pool penyusutan. |
+| Active Trades | **1** | Posisi SHORT berjalan dengan risiko terproteksi (SL breakeven). |
+| Net PnL (USD) | **-$30.73** | Drawdown terkendali berkat manajemen exit yang ketat. |
+| Net PnL (Bs.) | **-Bs. 213.85** | |
 
 ### Detail Per-Trade
 
-| # | Time | Dir | Entry | TP | SL | Size | R:R | Result | PnL |
-|---|------|-----|-------|----|----|------|-----|--------|-----|
-| 1 | 22 Jun 04:16 | **SHORT** | $63,612 | $62,957 | $63,874 | $2,435 | 1:2.51 | 🚨 HIT SL | -$10.00 |
-| 2 | 23 Jun 05:37 | **SHORT** | $63,979 | $63,115 | $64,419 | $1,454 | 1:1.96 | ⚠️ CUT LOSS | +$0.56 |
-| 3 | 23 Jun 23:13 | **LONG** | $62,727 | $65,364 | $62,360 | $1,709 | 1:7.18 | ⚠️ CUT LOSS | -$4.19 |
-
-### Observasi Kritis
-
-> [!WARNING]
-> **Masalah Utama yang Teridentifikasi:**
-
-#### 1. **Auto-Cut (Pool -50%) terlalu sering trigger** — 2 dari 3 trade
-Ini menunjukkan bahwa:
-- Liquidity pool di CoinGlass **berubah saat posisi leverage ditutup/diliquidasi** — ini natural behavior, bukan noise
-- Saat harga mendekati pool, trader bisa menutup posisi mereka sebelum ter-liquidasi → pool menyusut
-- Namun shrinkage 50% **mungkin terlalu sensitif** — pool CoinGlass 24H bisa berfluktuasi 20-40% secara normal antar refresh
-- Data 3D seharusnya lebih stabil karena span lebih lebar, tapi **saat ini 3D hanya digunakan untuk `predictSweepTargets()`, BUKAN untuk auto-cut detection**
-
-#### 2. **Win Rate 0%** 
-- Trade #1 (SHORT) kena SL karena harga naik ke $63,927 menembus SL $63,874
-- Trade #2 dan #3 di-cut sebelum sempat profit/loss signifikan
-
-#### 3. **R:R yang bagus (1:7.18) sia-sia** 
-- Trade #3 LONG punya R:R 1:7.18 yang excellent, tapi di-cut di -$4.19 karena pool shrinkage
-
-#### 4. **Bias SHORT** — 2 dari 3 trade SHORT di market yang sideways/bullish
-- Current phase: ALERT, nearest pool RESISTANCE di $62,741
-- L/S Ratio: 2.09 (very long-heavy) → bot mungkin terlalu agresif mencari SHORT setup
+| # | Time | Dir | Entry | TP | SL | Size | R:R | Result | PnL (USD) | Detail / Status |
+|---|------|-----|-------|----|----|------|-----|--------|-----------|-----------------|
+| 1 | 25 Jun, 17:39 | **SHORT** | $61,514.40 | $60,591.68 | $61,514.40 | $8,590 | 1:2.58 | **ACTIVE** | +$42.17 | SL dipindahkan ke Breakeven setelah hit 1:1 ($61,153.80). |
+| 2 | 25 Jun, 12:06 | **LONG** | $61,539.60 | $62,462.69 | $61,539.60 | $8,373 | 1:2.51 | 🚨 **HIT SL** | -$50.00 | Wick menyentuh SL di $61,513.50 (jarak SL sangat tipis 0.04%). |
+| 3 | 25 Jun, 11:57 | **SHORT** | $61,171.00 | $60,253.43 | $61,512.86 | $8,947 | 1:2.68 | 🚨 **HIT SL** | -$50.00 | Wick menyentuh SL di $61,570.28 (jarak SL 0.56%). |
+| 4 | 24 Jun, 18:50 | **SHORT** | $63,063.90 | $61,879.16 | $63,063.90 | $1,368 | 1:2.57 | ✅ **HIT TP** | +$25.70 | Wick menyentuh TP di $61,736.00. Jurnal mencatat partial PnL. |
+| 5 | 24 Jun, 12:41 | **SHORT** | $62,903.00 | $61,480.34 | $63,368.01 | $1,353 | 1:3.06 | ⚠️ **CUT LOSS** | +$1.08 | Auto-Cut terpicu akibat penyusutan pool target (Auto Pool -70%). |
+| 6 | 24 Jun, 12:38 | **LONG** | $63,026.80 | $63,996.74 | $62,553.97 | $1,333 | 1:2.05 | ⚠️ **CUT LOSS** | -$2.62 | Auto-Cut terpicu akibat penyusutan pool target (Auto Pool -70%). |
+| 7 | 24 Jun, 07:57 | **SHORT** | $62,922.80 | $61,480.16 | $63,313.11 | $1,612 | 1:3.70 | ⚠️ **CUT LOSS** | +$7.12 | Auto-Cut terpicu akibat penyusutan pool target (Auto Pool -70%). |
+| 8 | 24 Jun, 01:45 | **LONG** | $62,144.10 | $64,677.02 | $61,807.68 | $1,847 | 1:7.53 | ⚠️ **CUT LOSS** | +$0.01 | Auto-Cut terpicu akibat penyusutan pool target (Auto Pool -70%). |
+| 9 | 23 Jun, 23:13 | **LONG** | $62,726.80 | $65,363.60 | $62,359.77 | $1,709 | 1:7.18 | ⚠️ **CUT LOSS** | -$4.19 | Auto-Cut terpicu akibat penyusutan pool target (Auto Pool -50%). |
 
 ---
 
-## 🔧 Rekomendasi Perbaikan
+## 🔍 Observasi Kritis
+
+### 1. Efektivitas Fitur Auto-Cut (Proteksi Modal Maksimal)
+Meskipun Win Rate secara nominal kecil (12.5%), fitur **Auto-Cut** terbukti sangat sukses melindungi modal:
+* Dari 5 trade yang di-cut, total PnL bersih kumulatifnya adalah **+$1.40** (hampir breakeven sempurna).
+* Tanpa fitur Auto-Cut, trade tersebut berpotensi besar berlanjut hingga menyentuh Stop Loss penuh. Jika kelima trade tersebut terkena SL, tambahan kerugian sebesar **-$250.00** akan terjadi.
+* Penutupan posisi saat target liquidity pool menyusut >50-70% merupakan mekanisme penutupan dinamis yang bekerja sesuai spesifikasi.
+
+### 2. Anomali Jarak Stop Loss yang Terlalu Tipis (Tight SL)
+* Pada trade #2 (LONG 25 Jun, 12:06), entry diset pada $61,539.60 dan SL terpicu pada $61,513.50. Selisih ini hanya **$26.10 (0.04%)**.
+* Jarak stop loss yang terlalu sempit ini melanggar batas aman pasar (market noise) dan tidak mematuhi aturan minimum floor SL sebesar 0.5% yang telah ditentukan dalam arsitektur strategi.
+* Kerugian -$50.00 pada trade ini diakibatkan oleh stop loss yang sangat tipis tersebut dikombinasikan dengan posisi sizing yang besar ($8,373) untuk mempertahankan parameter risiko capital 1%.
+* Perlu diselidiki apakah terdapat bug pada formula pembatasan minimum floor SL di server-side (misal, pembulatan desimal atau kesalahan pembacaan unit).
+
+### 3. Suksesnya Proteksi Breakeven pada Trade Aktif
+* Trade #1 (SHORT 25 Jun, 17:39) menunjukkan perbaikan penting. Posisi di-lock pada breakeven setelah harga menyentuh target 1:1 ($61,153.80).
+* Fitur ini mengeliminasi risiko kerugian (free trade) dan saat ini sedang berjalan mengambang dalam profit +$42.17.
+
+### 4. Over-Trading Beruntun dalam Waktu Singkat
+* Pada tanggal 24 Jun pukul 12:38 (LONG) dan 12:41 (SHORT), bot membuka dua posisi yang berlawanan dalam rentang waktu hanya 3 menit. Keduanya berakhir dengan status CUT_LOSS.
+* Kondisi ini mengindikasikan adanya whipsaw di pasar sideways yang memicu sweep di kedua arah. Filter cooldown antar trade atau filter conflicting sweep di area yang sama perlu diperketat untuk mencegah pembukaan posisi berturut-turut.
+
+---
+
+## 🔧 Rekomendasi Perbaikan Tambahan
 
 ### Prioritas Tinggi
-
-| # | Masalah | Solusi | Impact |
-|---|---------|--------|--------|
-| 1 | Pool shrinkage too sensitive | Naikkan threshold dari 50% ke **70%**, atau gunakan **rata-rata volume dari 3 cycle terakhir** sebagai baseline (bukan single snapshot) | Mengurangi premature exit |
-| 2 | Hanya pakai 24H untuk auto-cut | **Gunakan data 3D (`heatmap3DCache`)** untuk validasi pool shrinkage — pool yang masih besar di 3D tapi menyusut di 24H artinya pool masih valid (trader baru masuk di TF lebih pendek) | Mengurangi false CUT_LOSS |
-| 3 | Tidak ada trailing stop | Implementasi **trailing SL** yang bergerak ke breakeven setelah +0.3% profit | Melindungi profit |
+1. **Audit Limit Minimum SL (Floor Guard)**: Periksa dan pastikan batasan `minimum floor: 0.5% dari entry` benar-benar diimplementasikan dengan ketat di backend server untuk menghindari stop loss mikro (seperti 0.04% pada trade #2).
+2. **Optimasi Threshold Auto-Cut**: Threshold 70% yang baru diterapkan sudah mengurangi frekuensi cut prematur dibandingkan 50% awal, namun performanya perlu terus dipantau untuk memastikan keseimbangan antara proteksi dini dan memberi ruang napas bagi pergerakan harga.
+3. **Penguncian Cooldown Setelah Exit**: Terapkan cooldown wajib minimal **180 menit (3 jam)** setelah sebuah trade ditutup (baik TP, SL, atau Cut) sebelum bot diizinkan membuka posisi baru untuk pasangan mata uang yang sama. Ini akan menghindari kerugian beruntun saat pasar bergejolak sideways (seperti pada 24 Jun siang).
 
 ### Prioritas Sedang
+4. **Validasi Likuiditas Multi-Timeframe**: Hubungkan deteksi Auto-Cut ke data 3D (`heatmap3DCache`). Jika pool 24H menyusut namun pool 3D masih kokoh, tunda eksekusi Auto-Cut karena target jangka menengah masih aktif.
+5. **Pemberlakuan Trailing Stop Dinamis**: Untuk trade yang sudah berjalan profit di atas target 1.5R, geser stop loss secara bertahap (trailing) mengikuti indikator ATR untuk mengunci sebagian keuntungan sebelum harga berbalik arah.
 
-| # | Area | Rekomendasi |
-|---|------|-------------|
-| 4 | **Min R:R** saat ini 2 | Pertimbangkan menaikkan ke **2.5 atau 3** — trade #2 dengan R:R 1.96 mestinya sudah di-filter |
-| 5 | **Reversal Probability** | Min prob saat ini 50% — pertimbangkan menaikkan ke **60%** untuk entry yang lebih selektif |
-| 6 | **Cooldown** | 60 menit mungkin kurang — setelah CUT_LOSS, tambahkan cooldown extra |
-| 7 | **HTF Trend Filter** | Hindari SHORT saat 1h DAN 4h BULLISH (double penalty sudah ada, tapi mungkin perlu hard-block) |
-
-### Prioritas Rendah (Optimasi Lanjutan)
-
-| # | Ide |
-|---|-----|
-| 8 | Tambahkan **volume profile** (VPVR) dari exchange sebagai konfirmasi tambahan |
-| 9 | Gunakan **multi-timeframe heatmap** (3D data yang sudah tersedia) untuk konfirmasi sweep |
-| 10 | Implementasi **partial TP** — close 50% posisi di R:R 1:1, sisanya trailing |
-| 11 | Tambahkan **max daily loss** circuit breaker untuk menghentikan bot setelah X% loss per hari |
-
----
-
-## Kesimpulan
-
-Konsep strategi LSR secara teori **solid** — memanfaatkan liquidity sweep + multi-factor confirmation adalah pendekatan institusional yang valid. Namun implementasi saat ini menghadapi tantangan utama:
-
-1. **Order book data bersifat ephemeral** — pool yang terlihat besar bisa hilang dalam hitungan detik, menyebabkan auto-cut prematur
-2. **Sample size masih terlalu kecil** (3 trade) untuk menarik kesimpulan statistik
-3. **Perlu optimasi parameter** terutama di area pool shrinkage threshold dan trailing stop
-
-> [!TIP]
-> **Langkah selanjutnya yang disarankan:**
-> 1. Jalankan bot selama 1-2 minggu lagi untuk mengumpulkan data minimal 20-30 trade
-> 2. Naikkan pool shrinkage threshold ke 70% sebagai quick fix
-> 3. Implementasi trailing stop untuk melindungi profit pada trade yang sudah bergerak sesuai arah

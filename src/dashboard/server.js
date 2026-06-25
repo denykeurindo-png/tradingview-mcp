@@ -2234,21 +2234,28 @@ function evaluateActiveTradesBackend(heatmapData) {
       // 1. Check Stop Loss Hit
       if (lastLow <= trade.sl) {
         trade.status = 'HIT_SL';
-        trade.pnl = -trade.riskUsd;
+        const pnl = trade.isBreakeven ? 0 : -trade.riskUsd;
+        trade.pnl = pnl;
         trade.closePrice = trade.sl;
         trade.closeTimestamp = Date.now();
-        trade.note = `Wick Hit SL ($${lastLow.toFixed(2)})`;
+        trade.note = trade.isBreakeven ? `Wick Hit Breakeven ($${lastLow.toFixed(2)})` : `Wick Hit SL ($${lastLow.toFixed(2)})`;
         updated = true;
-        console.log(`[LSR Bot] 🚨 LONG Hit SL at $${trade.sl.toFixed(2)} (Last Low: $${lastLow.toFixed(2)}), PnL: -$${trade.riskUsd.toFixed(2)}`);
+
+        const pnlText = pnl === 0 ? `$0.00 (Breakeven)` : `-$${trade.riskUsd.toFixed(2)}`;
+        const pnlBsText = pnl === 0 ? `Bs. 0.00` : `-Bs. ${(trade.riskUsd * 6.96).toFixed(2)}`;
+        const alertIcon = trade.isBreakeven ? `🛡️` : `🚨`;
+        const alertTitle = trade.isBreakeven ? `Trade Closed (Hit Breakeven)` : `Trade Closed (Hit SL)`;
+
+        console.log(`[LSR Bot] ${alertIcon} LONG Hit ${trade.isBreakeven ? 'Breakeven' : 'SL'} at $${trade.sl.toFixed(2)} (Last Low: $${lastLow.toFixed(2)}), PnL: ${pnlText}`);
         sendTelegramAlert(
-          `🚨 <b>Trade Closed (Hit SL)</b>\n` +
+          `${alertIcon} <b>${alertTitle}</b>\n` +
           `Type: <b>LONG</b>\n` +
           `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
           `TP: <code>$${trade.tp.toFixed(2)}</code>\n` +
           `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
           `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
           `SL Hit: <code>$${trade.sl.toFixed(2)}</code>\n` +
-          `PnL: <code>-$${trade.riskUsd.toFixed(2)}</code> (-Bs. ${(trade.riskUsd * 6.96).toFixed(2)})\n` +
+          `PnL: <code>${pnlText}</code> (${pnlBsText})\n` +
           `Note: ${trade.note}`
         );
         return;
@@ -2280,21 +2287,28 @@ function evaluateActiveTradesBackend(heatmapData) {
       // 1. Check Stop Loss Hit
       if (lastHigh >= trade.sl) {
         trade.status = 'HIT_SL';
-        trade.pnl = -trade.riskUsd;
+        const pnl = trade.isBreakeven ? 0 : -trade.riskUsd;
+        trade.pnl = pnl;
         trade.closePrice = trade.sl;
         trade.closeTimestamp = Date.now();
-        trade.note = `Wick Hit SL ($${lastHigh.toFixed(2)})`;
+        trade.note = trade.isBreakeven ? `Wick Hit Breakeven ($${lastHigh.toFixed(2)})` : `Wick Hit SL ($${lastHigh.toFixed(2)})`;
         updated = true;
-        console.log(`[LSR Bot] 🚨 SHORT Hit SL at $${trade.sl.toFixed(2)} (Last High: $${lastHigh.toFixed(2)}), PnL: -$${trade.riskUsd.toFixed(2)}`);
+
+        const pnlText = pnl === 0 ? `$0.00 (Breakeven)` : `-$${trade.riskUsd.toFixed(2)}`;
+        const pnlBsText = pnl === 0 ? `Bs. 0.00` : `-Bs. ${(trade.riskUsd * 6.96).toFixed(2)}`;
+        const alertIcon = trade.isBreakeven ? `🛡️` : `🚨`;
+        const alertTitle = trade.isBreakeven ? `Trade Closed (Hit Breakeven)` : `Trade Closed (Hit SL)`;
+
+        console.log(`[LSR Bot] ${alertIcon} SHORT Hit ${trade.isBreakeven ? 'Breakeven' : 'SL'} at $${trade.sl.toFixed(2)} (Last High: $${lastHigh.toFixed(2)}), PnL: ${pnlText}`);
         sendTelegramAlert(
-          `🚨 <b>Trade Closed (Hit SL)</b>\n` +
+          `${alertIcon} <b>${alertTitle}</b>\n` +
           `Type: <b>SHORT</b>\n` +
           `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
           `TP: <code>$${trade.tp.toFixed(2)}</code>\n` +
           `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
           `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
           `SL Hit: <code>$${trade.sl.toFixed(2)}</code>\n` +
-          `PnL: <code>-$${trade.riskUsd.toFixed(2)}</code> (-Bs. ${(trade.riskUsd * 6.96).toFixed(2)})\n` +
+          `PnL: <code>${pnlText}</code> (${pnlBsText})\n` +
           `Note: ${trade.note}`
         );
         return;
