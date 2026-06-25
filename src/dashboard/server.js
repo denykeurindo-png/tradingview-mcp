@@ -361,15 +361,6 @@ const parseV = v => {
 
 // CDP CoinGlass scraper
 async function scrapeCoinGlass(path, forceRefresh = false) {
-  const settings = loadSettings();
-  if (settings.localAppUrl) {
-    if (path === '/etf/bitcoin') {
-      return await fetchFromLocalApp('/api/etf-data', { refresh: forceRefresh });
-    } else {
-      console.warn(`[Local App Fetch] scrapeCoinGlass called with unsupported path ${path}, falling back to local scraping`);
-    }
-  }
-
   // 1. Find the CoinGlass tab
   const tabsResponse = await fetch('http://127.0.0.1:9222/json', { signal: AbortSignal.timeout(5000) });
   const tabs = await tabsResponse.json();
@@ -684,11 +675,6 @@ if (whaleOrdersCache) {
 // Uses the existing CoinGlass tab; navigates to heatmap and selects "3 day" period.
 let heatmap3DTabId = null;
 async function scrapeHeatMap3D() {
-  const settings = loadSettings();
-  if (settings.localAppUrl) {
-    return await fetchFromLocalApp('/api/heatmap-data-3d');
-  }
-
   const listResp = await fetch('http://127.0.0.1:9222/json', { signal: AbortSignal.timeout(5000) });
   const tabs = await listResp.json();
 
@@ -950,11 +936,6 @@ async function scrapeHeatMap3D() {
 }
 
 async function scrapeDepthDelta() {
-  const settings = loadSettings();
-  if (settings.localAppUrl) {
-    return await fetchFromLocalApp('/api/depth-delta');
-  }
-
   let tabs = null;
   let retries = 3;
   while (retries > 0) {
@@ -1088,11 +1069,6 @@ async function scrapeDepthDelta() {
 }
 
 async function scrapeCoinbasePremium() {
-  const settings = loadSettings();
-  if (settings.localAppUrl) {
-    return await fetchFromLocalApp('/api/coinbase-premium');
-  }
-
   let tabs = null;
   let retries = 3;
   while (retries > 0) {
@@ -1226,11 +1202,6 @@ async function scrapeCoinbasePremium() {
 }
 
 async function scrapeWhaleOrders() {
-  const settings = loadSettings();
-  if (settings.localAppUrl) {
-    return await fetchFromLocalApp('/api/whale-orders');
-  }
-
   let tabs = null;
   let retries = 3;
   while (retries > 0) {
@@ -1398,11 +1369,6 @@ async function scrapeWhaleOrders() {
 const OB_BUCKET = 100; // USD per price bucket
 
 async function scrapeHeatMap(forceRefresh = false) {
-  const settings = loadSettings();
-  if (settings.localAppUrl) {
-    return await fetchFromLocalApp('/api/heatmap-data', { refresh: forceRefresh });
-  }
-
   let tabs = null;
   let retries = 3;
 
@@ -1767,11 +1733,6 @@ async function scrapeHeatMap(forceRefresh = false) {
 
 // ─── Combined Order Book Scraper (CDP) ───────────────────────────────────────
 async function scrapeOrderBookCombined(forceRefresh = false) {
-  const settings = loadSettings();
-  if (settings.localAppUrl) {
-    return await fetchFromLocalApp('/api/orderbook-data', { refresh: forceRefresh });
-  }
-
   let tabs = null;
   let retries = 3;
 
@@ -2396,9 +2357,6 @@ function loadSettings() {
     telegramChatId: '',
     authUsername: 'admin',
     authPassword: 'admin123',
-    localAppUrl: '',
-    localAppUsername: '',
-    localAppPassword: '',
     vpsUrl: '',
     vpsUsername: '',
     vpsPassword: '',
@@ -2424,45 +2382,6 @@ function saveSettings(settings) {
   } catch (e) {
     console.error('Error saving settings file:', e);
   }
-}
-
-async function fetchFromLocalApp(apiPath, queryParams = {}) {
-  const settings = loadSettings();
-  if (!settings.localAppUrl) {
-    throw new Error('localAppUrl is not configured');
-  }
-
-  // Construct URL
-  const urlObj = new URL(apiPath, settings.localAppUrl);
-  for (const [k, v] of Object.entries(queryParams)) {
-    if (v !== undefined && v !== null) {
-      urlObj.searchParams.set(k, String(v));
-    }
-  }
-
-  const username = settings.localAppUsername || settings.authUsername || 'admin';
-  const password = settings.localAppPassword || settings.authPassword || 'admin123';
-  const authHeader = 'Basic ' + Buffer.from(username + ':' + password).toString('base64');
-
-  console.log(`[Local App Fetch] Fetching from ${urlObj.toString()}...`);
-  const response = await globalThis.fetch(urlObj.toString(), {
-    headers: {
-      'Authorization': authHeader,
-      'Accept': 'application/json'
-    },
-    signal: AbortSignal.timeout(60000) // 60 seconds timeout
-  });
-
-  if (!response.ok) {
-    throw new Error(`Local app responded with status ${response.status}: ${response.statusText}`);
-  }
-
-  const json = await response.json();
-  if (!json.success) {
-    throw new Error(`Local app API error: ${json.error || JSON.stringify(json)}`);
-  }
-
-  return json.data;
 }
 
 async function pushToVps(apiPath, payload) {
