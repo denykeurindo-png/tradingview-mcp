@@ -3430,21 +3430,23 @@ app.get('/api/status', async (req, res) => {
   // 1. Dashboard server (self — always ok if we got here)
   checks.push({ name: 'Dashboard Server', key: 'server', status: 'ok', detail: `Running on port ${PORT}`, latency: 0 });
 
-  // 2. Chrome CDP
-  const cdpStart = Date.now();
-  try {
-    const r = await fetch('http://127.0.0.1:9222/json', { signal: AbortSignal.timeout(3000) });
-    const tabs = await r.json();
-    const cgTab = tabs.find(t => t.url?.includes('coinglass.com'));
-    checks.push({
-      name: 'Chrome DevTools (CDP)',
-      key: 'cdp',
-      status: 'ok',
-      detail: `${tabs.length} tab(s) open · ${cgTab ? 'CoinGlass tab found' : 'No CoinGlass tab (will navigate on sync)'}`,
-      latency: Date.now() - cdpStart
-    });
-  } catch (e) {
-    checks.push({ name: 'Chrome DevTools (CDP)', key: 'cdp', status: 'error', detail: 'Port 9222 unreachable — open Chrome with --remote-debugging-port=9222', latency: Date.now() - cdpStart });
+  // 2. Chrome CDP (only check if scraper is enabled)
+  if (!settings.disableScraper && process.env.DISABLE_SCRAPER !== 'true') {
+    const cdpStart = Date.now();
+    try {
+      const r = await fetch('http://127.0.0.1:9222/json', { signal: AbortSignal.timeout(3000) });
+      const tabs = await r.json();
+      const cgTab = tabs.find(t => t.url?.includes('coinglass.com'));
+      checks.push({
+        name: 'Chrome DevTools (CDP)',
+        key: 'cdp',
+        status: 'ok',
+        detail: `${tabs.length} tab(s) open · ${cgTab ? 'CoinGlass tab found' : 'No CoinGlass tab (will navigate on sync)'}`,
+        latency: Date.now() - cdpStart
+      });
+    } catch (e) {
+      checks.push({ name: 'Chrome DevTools (CDP)', key: 'cdp', status: 'error', detail: 'Port 9222 unreachable — open Chrome with --remote-debugging-port=9222', latency: Date.now() - cdpStart });
+    }
   }
 
   // 3. Binance Spot API
@@ -3465,30 +3467,32 @@ app.get('/api/status', async (req, res) => {
     checks.push({ name: 'Binance Futures API', key: 'binance_futures', status: 'error', detail: e.message, latency: Date.now() - bfStart });
   }
 
-  // 5. Telegram Bot API
-  const token = settings.telegramBotToken;
-  const chatId = settings.telegramChatId;
-  const tokenValid = token && token.length > 20 && token !== 'admin123';
-  if (!tokenValid) {
-    checks.push({ name: 'Telegram Bot', key: 'telegram', status: 'unconfigured', detail: 'Bot token not set — configure in Settings', latency: 0 });
-  } else {
-    const tgStart = Date.now();
-    try {
-      const r = await fetch(`https://api.telegram.org/bot${token}/getMe`, { signal: AbortSignal.timeout(5000) });
-      const data = await r.json();
-      if (data.ok) {
-        checks.push({
-          name: 'Telegram Bot',
-          key: 'telegram',
-          status: chatId ? 'ok' : 'warning',
-          detail: `@${data.result.username}${!chatId ? ' · Chat ID not configured' : ' · Chat ID set'}`,
-          latency: Date.now() - tgStart
-        });
-      } else {
-        checks.push({ name: 'Telegram Bot', key: 'telegram', status: 'error', detail: data.description || 'Invalid token', latency: Date.now() - tgStart });
+  // 5. Telegram Bot API (only check if alerts are enabled)
+  if (!settings.disableTelegram && process.env.DISABLE_TELEGRAM !== 'true') {
+    const token = settings.telegramBotToken;
+    const chatId = settings.telegramChatId;
+    const tokenValid = token && token.length > 20 && token !== 'admin123';
+    if (!tokenValid) {
+      checks.push({ name: 'Telegram Bot', key: 'telegram', status: 'unconfigured', detail: 'Bot token not set — configure in Settings', latency: 0 });
+    } else {
+      const tgStart = Date.now();
+      try {
+        const r = await fetch(`https://api.telegram.org/bot${token}/getMe`, { signal: AbortSignal.timeout(5000) });
+        const data = await r.json();
+        if (data.ok) {
+          checks.push({
+            name: 'Telegram Bot',
+            key: 'telegram',
+            status: chatId ? 'ok' : 'warning',
+            detail: `@${data.result.username}${!chatId ? ' · Chat ID not configured' : ' · Chat ID set'}`,
+            latency: Date.now() - tgStart
+          });
+        } else {
+          checks.push({ name: 'Telegram Bot', key: 'telegram', status: 'error', detail: data.description || 'Invalid token', latency: Date.now() - tgStart });
+        }
+      } catch (e) {
+        checks.push({ name: 'Telegram Bot', key: 'telegram', status: 'error', detail: e.message, latency: Date.now() - tgStart });
       }
-    } catch (e) {
-      checks.push({ name: 'Telegram Bot', key: 'telegram', status: 'error', detail: e.message, latency: Date.now() - tgStart });
     }
   }
 
