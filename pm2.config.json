@@ -1,0 +1,11 @@
+{
+  "apps": [
+    {
+      "name": "tv-monitor",
+      "script": "src/dashboard/server.js",
+      "env": {
+        "NODE_ENV": "production"
+      }
+    }
+  ]
+}

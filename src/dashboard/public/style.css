@@ -231,8 +231,30 @@ body {
 /* KPIs */
 .kpi-row {
   display: grid;
-  grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+  grid-template-columns: repeat(3, 1fr);
   gap: var(--spacing-sm);
+}
+
+.kpi-row.cols-4 {
+  grid-template-columns: repeat(4, 1fr);
+}
+
+@media (max-width: 1200px) {
+  .kpi-row {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  .kpi-row.cols-4 {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (max-width: 768px) {
+  .kpi-row {
+    grid-template-columns: 1fr;
+  }
+  .kpi-row.cols-4 {
+    grid-template-columns: 1fr;
+  }
 }
 
 .kpi-card {
@@ -1471,4 +1493,156 @@ body {
   .sidebar-logo-text, .sidebar-item a span, .sidebar-logout span { display: none; }
   .sidebar-item a { padding: 12px; justify-content: center; }
   body { padding-left: 60px; }
+}
+
+/* ── KPI Hover Tooltips (Glassmorphism & Sleek Animations) ───────────────── */
+
+.kpi-icon-wrapper {
+  position: relative;
+  cursor: help;
+}
+
+/* Tooltip Box Container */
+.kpi-tooltip {
+  position: absolute;
+  top: 64px; /* Posisi di bawah icon wrapper (52px + 12px offset) */
+  left: 0;
+  width: 290px;
+  padding: 14px;
+  background: rgba(20, 22, 26, 0.96); /* Latar belakang gelap khas Binance */
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  border: 1px solid rgba(255, 255, 255, 0.08);
+  border-radius: 10px;
+  color: var(--text-main);
+  font-family: var(--font-sans);
+  font-size: 11px;
+  line-height: 1.4;
+  text-align: left;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.6), 0 4px 12px rgba(0, 0, 0, 0.4);
+  opacity: 0;
+  visibility: hidden;
+  transform: translateY(-8px) scale(0.96);
+  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  z-index: 1000;
+  pointer-events: none; /* Mencegah kedipan mouse saat pointer mendekati tepi */
+}
+
+/* Panah Indikator Atas (Arrow) */
+.kpi-tooltip::after {
+  content: '';
+  position: absolute;
+  bottom: 100%; /* Posisi di tepi atas tooltip */
+  left: 26px; /* 52px / 2 = Tepat di tengah-tengah ikon */
+  transform: translateX(-50%);
+  border-width: 6px;
+  border-style: solid;
+  border-color: transparent transparent rgba(20, 22, 26, 0.96) transparent; /* Panah menunjuk ke atas */
+}
+
+.kpi-tooltip::before {
+  content: '';
+  position: absolute;
+  bottom: 100%; /* Posisi di tepi atas tooltip */
+  left: 26px;
+  transform: translateX(-50%);
+  border-width: 7px;
+  border-style: solid;
+  border-color: transparent transparent rgba(255, 255, 255, 0.08) transparent; /* Border panah menunjuk ke atas */
+  z-index: -1;
+}
+
+/* Efek Hover untuk Menampilkan Tooltip */
+.kpi-icon-wrapper:hover .kpi-tooltip {
+  opacity: 1;
+  visibility: visible;
+  transform: translateY(0) scale(1);
+}
+
+/* Tipografi & Layout dalam Tooltip */
+.tooltip-header {
+  margin-bottom: 8px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.06);
+  padding-bottom: 6px;
+}
+
+.tooltip-title {
+  font-size: 12px;
+  font-weight: 700;
+  color: var(--accent-primary);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tooltip-section {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-bottom: 8px;
+}
+
+.tooltip-section:last-child {
+  margin-bottom: 0;
+}
+
+.tooltip-sec-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.tooltip-sec-desc {
+  color: var(--text-main);
+  font-weight: 400;
+  line-height: 1.4;
+}
+
+.tooltip-divider {
+  height: 1px;
+  background: rgba(255, 255, 255, 0.06);
+  margin: 8px 0;
+  border: none;
+}
+
+.tooltip-impact-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  margin-top: 4px;
+}
+
+.impact-badge {
+  font-size: 9px;
+  font-weight: 700;
+  padding: 1px 5px;
+  border-radius: 4px;
+  text-transform: uppercase;
+  flex-shrink: 0;
+  margin-top: 2px;
+}
+
+.impact-badge.long {
+  background: rgba(14, 203, 129, 0.12);
+  color: var(--accent-success);
+  border: 1px solid rgba(14, 203, 129, 0.2);
+}
+
+.impact-badge.short {
+  background: rgba(246, 70, 93, 0.12);
+  color: var(--accent-alert);
+  border: 1px solid rgba(246, 70, 93, 0.2);
+}
+
+.impact-badge.neutral {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text-muted);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.impact-text {
+  color: #D1D4DC;
+  font-size: 11px;
+  line-height: 1.4;
 }

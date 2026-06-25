@@ -31,6 +31,7 @@ let lastHeatmapDataGlobal = null;
 let tradeLog = [];
 let autoTradeEnabled = true;
 let refreshIntervalId = null;
+let cacheCheckIntervalId = null;
 let lastHeatmapTimestamp = null;
 let retryTimeoutId = null;
 
@@ -143,9 +144,6 @@ async function loadHeatmapData(forceRefresh = false) {
     } else {
       console.log('[Heatmap] Data identical (cache unchanged). Bypassing charts/tables rendering for power efficiency.');
     }
-
-    // Fetch latest trade logs from server to show updated statuses (TP/SL/Cut loss/floating PnL)
-    await loadTradeLog();
 
     updateStatus('normal', 'Live');
   } catch (error) {
@@ -491,15 +489,12 @@ function renderHeatmap(data) {
   window.addEventListener('resize', () => { myChart && myChart.resize(); });
 }
 
-// ─── Quick Set Price from Table E / TP Buttons ──────────────
+// ─── Quick Set Price — opens trades.html with pre-filled params ──
 window.setPlannerPrice = (type, price) => {
-  const input = document.getElementById(`input-${type}`);
-  if (input) {
-    input.value = parseFloat(price).toFixed(2);
-  }
+  window.location.href = 'trades.html?' + type + '=' + parseFloat(price).toFixed(2);
 };
 
-// ─── Add Trade Directly from Inline Form ────────────────────
+// ─── Trade functions removed — see trades.js ────────────────
 async function addTradeFromForm() {
   const btnLong = document.getElementById('btn-toggle-long');
   const direction = btnLong && btnLong.classList.contains('active') ? 'LONG' : 'SHORT';
@@ -679,7 +674,10 @@ function renderBacktestTable() {
   }
 
   let html = '';
-  tradeLog.forEach(trade => {
+  const getTs = (t) => t.timestamp || (t.id && t.id.startsWith('T') ? parseInt(t.id.substring(1), 10) : 0);
+  const sortedTrades = [...tradeLog].sort((a, b) => getTs(b) - getTs(a));
+
+  sortedTrades.forEach(trade => {
     const statusHtml = {
       'ACTIVE': '<span class="status-badge active">Active</span>',
       'HIT_TP': '<span class="status-badge hit-tp">Hit TP</span>',
@@ -967,28 +965,30 @@ btnRefresh.addEventListener('click', () => loadHeatmapData(true));
 
 // ─── Adaptive Auto-Refresh (Power Saving) ───────────────────
 function setupAutoRefresh() {
-  if (refreshIntervalId) {
-    clearInterval(refreshIntervalId);
-    refreshIntervalId = null;
-  }
+  // Clear existing intervals
+  if (refreshIntervalId)    { clearInterval(refreshIntervalId);    refreshIntervalId    = null; }
+  if (cacheCheckIntervalId) { clearInterval(cacheCheckIntervalId); cacheCheckIntervalId = null; }
 
   const isHidden = document.hidden;
-  let intervalMs = 900000; // 15 minutes default
 
-  if (autoTradeEnabled) {
-    // If bot is active, refresh faster (3 minutes) to scan for setups
-    intervalMs = 180000;
-  } else if (isHidden) {
-    // If tab is hidden and bot is inactive, pause refresh completely
-    console.log('[Power Saving] Tab is hidden and bot is inactive. Auto-refresh paused.');
+  if (isHidden && !autoTradeEnabled) {
+    console.log('[Power Saving] Tab hidden and bot inactive. Auto-refresh paused.');
     return;
   }
 
-  console.log(`[AutoRefresh] Setting interval to ${intervalMs / 1000}s. (Bot: ${autoTradeEnabled ? 'ON' : 'OFF'}, Tab: ${isHidden ? 'Hidden' : 'Visible'})`);
+  // ① Cache-check every 30s: lightweight poll — detects when background bot updates cache
+  //    Uses forceRefresh=false so server returns immediately from memory cache (no new scrape)
+  //    Only re-renders if timestamp changed (isNewData = true)
+  cacheCheckIntervalId = setInterval(() => {
+    if (!document.hidden) loadHeatmapData(false);
+  }, 30000);
 
+  // ② Force-scrape interval: triggers a real CoinGlass scrape every 3 min (active) or 15 min (idle)
+  const scrapeMs = autoTradeEnabled ? 180000 : 900000;
+  console.log(`[AutoRefresh] Cache-check: 30s | Force-scrape: ${scrapeMs / 1000}s`);
   refreshIntervalId = setInterval(() => {
     loadHeatmapData(true);
-  }, intervalMs);
+  }, scrapeMs);
 }
 
 async function migrateLocalTrades() {
@@ -1017,119 +1017,15 @@ async function migrateLocalTrades() {
 
 // ─── Initialization ─────────────────────────────────────────
 window.addEventListener('DOMContentLoaded', () => {
-  // Load settings from server first, which will also set autoTradeEnabled and update the bot toggle button
-  loadSettingsFromServer();
-
-  // One-time automatic migration of old browser trade logs to server
-  migrateLocalTrades();
-
   loadHeatmapData(false);
-
-  // Setup initial adaptive refresh
   setupAutoRefresh();
 
-  // Listen for tab visibility changes
   document.addEventListener('visibilitychange', () => {
-    console.log(`[Visibility] Tab state changed to: ${document.hidden ? 'hidden' : 'visible'}`);
     if (!document.hidden) {
-      // Instantly load data on returning to tab, but delay by 2 seconds to allow system stability
-      setTimeout(() => {
-        if (!document.hidden) {
-          console.log('[Visibility] Tab active. Running debounced wakeup refresh...');
-          loadHeatmapData(true);
-        }
-      }, 2000);
+      setTimeout(() => { if (!document.hidden) loadHeatmapData(true); }, 2000);
     }
     setupAutoRefresh();
   });
-
-  // Listen for setting inputs change to save them to the server
-  ['input-capital', 'input-risk', 'auto-min-rr', 'auto-max-active', 'auto-sweep-candles', 'auto-cooldown', 'tele-bot-token', 'tele-chat-id'].forEach(id => {
-    const el = document.getElementById(id);
-    if (el) {
-      el.addEventListener('change', saveSettingsToServer);
-    }
-  });
-
-  // Telegram test button
-  const btnTestTelegram = document.getElementById('btn-test-telegram');
-  if (btnTestTelegram) {
-    btnTestTelegram.addEventListener('click', async () => {
-      const token = document.getElementById('tele-bot-token').value || '';
-      const chatId = document.getElementById('tele-chat-id').value || '';
-
-      if (!token || !chatId) {
-        alert('Lengkapi Bot Token dan Chat ID sebelum melakukan tes.');
-        return;
-      }
-
-      btnTestTelegram.disabled = true;
-      btnTestTelegram.innerText = '⏳ Sending...';
-
-      try {
-        const response = await fetch('/api/telegram/test', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ token, chatId })
-        });
-        const resObj = await response.json();
-        if (resObj.success) {
-          alert('Berhasil! Pesan tes telah dikirim ke Telegram.');
-        } else {
-          alert(`Gagal mengirim tes: ${resObj.error}`);
-        }
-      } catch (error) {
-        console.error('Telegram test error:', error);
-        alert('Gagal mengirim pesan tes (koneksi bermasalah).');
-      } finally {
-        btnTestTelegram.disabled = false;
-        btnTestTelegram.innerText = '⚡ Test Send';
-      }
-    });
-  }
-
-  // Direction toggle buttons
-  const btnLong = document.getElementById('btn-toggle-long');
-  const btnShort = document.getElementById('btn-toggle-short');
-  if (btnLong && btnShort) {
-    btnLong.addEventListener('click', () => {
-      btnLong.classList.add('active');
-      btnShort.classList.remove('active');
-    });
-    btnShort.addEventListener('click', () => {
-      btnShort.classList.add('active');
-      btnLong.classList.remove('active');
-    });
-  }
-
-  // Add Trade button
-  const btnAddTrade = document.getElementById('btn-add-trade');
-  if (btnAddTrade) {
-    btnAddTrade.addEventListener('click', addTradeFromForm);
-  }
-
-  // Clear log button
-  const btnClearLog = document.getElementById('btn-clear-backtest-log');
-  if (btnClearLog) {
-    btnClearLog.addEventListener('click', window.clearTradeLog);
-  }
-
-  // Auto-Trade Bot toggle
-  const btnAutoToggle = document.getElementById('btn-auto-trade-toggle');
-  if (btnAutoToggle) {
-    btnAutoToggle.addEventListener('click', async () => {
-      autoTradeEnabled = !autoTradeEnabled;
-      btnAutoToggle.className = `auto-toggle-btn ${autoTradeEnabled ? 'on' : 'off'}`;
-      btnAutoToggle.innerText = autoTradeEnabled ? 'ON' : 'OFF';
-      updateAutoStatus(autoTradeEnabled ? 'active' : '', autoTradeEnabled ? 'Bot active (Running on server)' : 'Bot inactive');
-      
-      // Save settings to server with updated autoTradeEnabled value
-      await saveSettingsToServer();
-      
-      // Reconfigure refresh interval when bot state changes
-      setupAutoRefresh();
-    });
-  }
 });
 
 
@@ -1241,6 +1137,7 @@ function switchChartTab(tab) {
     chart24.style.display = ''; chart3d.style.display = 'none';
     btn24.style.background = 'var(--accent-primary)'; btn24.style.color = '#0B0E11'; btn24.style.fontWeight = '700';
     btn3d.style.background = 'transparent'; btn3d.style.color = 'var(--text-muted)'; btn3d.style.fontWeight = '600';
+    if (myChart) myChart.resize();
   } else {
     chart24.style.display = 'none'; chart3d.style.display = '';
     btn3d.style.background = 'var(--accent-primary)'; btn3d.style.color = '#0B0E11'; btn3d.style.fontWeight = '700';

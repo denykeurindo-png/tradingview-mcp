@@ -8,6 +8,119 @@ import fs from 'fs';
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+// ─── Binance Endpoint Fallback Helper ─────────────────────────────────────────
+const BINANCE_SPOT_BASES = [
+  'https://api.binance.com',
+  'https://api1.binance.com',
+  'https://api2.binance.com',
+  'https://api3.binance.com',
+  'https://api-gcp.binance.com'
+];
+
+const BINANCE_FUTURES_BASES = [
+  'https://fapi.binance.com',
+  'https://fapi1.binance.com',
+  'https://fapi2.binance.com',
+  'https://fapi3.binance.com',
+  'https://fapi-gcp.binance.com'
+];
+
+async function fetchBinance(url, options = {}) {
+  if (typeof url === 'string' && url.includes('binance.com')) {
+    const isFutures = url.includes('fapi.binance.com');
+    const bases = isFutures ? BINANCE_FUTURES_BASES : BINANCE_SPOT_BASES;
+    const urlObj = new URL(url);
+    const pathAndQuery = urlObj.pathname + urlObj.search;
+    
+    let lastError = null;
+    for (const base of bases) {
+      try {
+        const targetUrl = `${base}${pathAndQuery}`;
+        let timeoutId;
+        const fetchOpts = { ...options };
+        
+        if (!fetchOpts.signal) {
+          const controller = new AbortController();
+          timeoutId = setTimeout(() => controller.abort(), 4000);
+          fetchOpts.signal = controller.signal;
+        }
+        
+        const res = await globalThis.fetch(targetUrl, fetchOpts);
+        if (timeoutId) clearTimeout(timeoutId);
+        
+        if (res.ok) {
+          return res;
+        }
+        throw new Error(`HTTP status ${res.status}`);
+      } catch (err) {
+        lastError = err;
+      }
+    }
+    throw lastError || new Error(`All Binance base endpoints failed for URL: ${url}`);
+  }
+  return globalThis.fetch(url, options);
+}
+
+// ─── Live Whale Trade Detector WebSocket Stream ──────────────────────────────
+let recentWhaleTrades = [];
+let totalWsMessagesReceived = 0;
+let wsConnected = false;
+
+function startWhaleWebSocket() {
+  const wsUrl = 'wss://stream.binance.com:9443/ws/btcusdt@aggTrade';
+  console.log(`[Whale WS] Connecting to ${wsUrl}...`);
+  
+  let ws = new WebSocket(wsUrl);
+  let pingInterval;
+  
+  ws.on('open', () => {
+    console.log('[Whale WS] Connected successfully.');
+    wsConnected = true;
+    pingInterval = setInterval(() => {
+      if (ws.readyState === WebSocket.OPEN) {
+        ws.ping();
+      }
+    }, 180000);
+  });
+  
+  ws.on('message', (data) => {
+    totalWsMessagesReceived++;
+    try {
+      const t = JSON.parse(data);
+      const price = parseFloat(t.p);
+      const qty = parseFloat(t.q);
+      const tradeUsd = price * qty;
+      
+      if (tradeUsd >= 500000) {
+        recentWhaleTrades.push({
+          time: parseInt(t.T, 10) || Date.now(),
+          usd: tradeUsd,
+          isBuyerMaker: t.m
+        });
+        
+        // Keep memory footprint small, prune instantly
+        const cutoff = Date.now() - 15 * 60 * 1000;
+        recentWhaleTrades = recentWhaleTrades.filter(trade => trade.time >= cutoff);
+      }
+    } catch (e) {
+      console.error('[Whale WS] Message parse error:', e.message);
+    }
+  });
+  
+  ws.on('error', (err) => {
+    console.error('[Whale WS] Error:', err.message);
+  });
+  
+  ws.on('close', (code, reason) => {
+    console.log(`[Whale WS] Connection closed (code: ${code}). Reconnecting in 5 seconds...`);
+    wsConnected = false;
+    clearInterval(pingInterval);
+    setTimeout(startWhaleWebSocket, 5000);
+  });
+}
+
+startWhaleWebSocket();
+
 const app = express();
 const PORT = process.env.PORT || 4000;
 
@@ -119,6 +232,44 @@ app.use(express.static(path.join(__dirname, 'public')));
 // In-memory cache for ETF data
 let etfDataCache = null;
 let lastFetchTime = null;
+
+// ETF Alert state tracking (anti-spam: only send when state changes)
+let lastEtfAlertState = null; // 'stable' | 'outflow' | 'vampire' | 'outflow+vampire'
+
+// Build ETF alert messages from scraped data (mirrors frontend renderAlerts logic)
+function buildEtfAlerts(result, btcPrice) {
+  if (!result || !result.formatted || result.formatted.length === 0) return null;
+  const latest = result.formatted[0];
+  const total = latest.Total ?? 0;
+  const gbtc = latest.GBTC ?? 0;
+  const alerts = [];
+  let stateKey = 'stable';
+
+  // 1. Net outflow alert (same condition as frontend: total < 0)
+  if (total < 0) {
+    const totalUsd = total * btcPrice;
+    const totalBtcStr = Math.abs(total) >= 1000 ? (Math.abs(total)/1000).toFixed(2)+'K' : Math.abs(total).toFixed(2);
+    const totalUsdStr = Math.abs(totalUsd) >= 1e9 ? (Math.abs(totalUsd)/1e9).toFixed(2)+'B' : Math.abs(totalUsd) >= 1e6 ? (Math.abs(totalUsd)/1e6).toFixed(2)+'M' : Math.abs(totalUsd).toFixed(2);
+    alerts.push(`🔴 <b>Capital Outflow Detected</b>\nNet daily outflow: -${totalBtcStr} BTC\nEquiv: -$${totalUsdStr}`);
+    stateKey = 'outflow';
+  }
+
+  // 2. Grayscale massive outflow (same condition as frontend: gbtc < -200)
+  if (gbtc < -200) {
+    const gbtcUsd = gbtc * btcPrice;
+    const gbtcBtcStr = Math.abs(gbtc) >= 1000 ? (Math.abs(gbtc)/1000).toFixed(2)+'K' : Math.abs(gbtc).toFixed(2);
+    const gbtcUsdStr = Math.abs(gbtcUsd) >= 1e9 ? (Math.abs(gbtcUsd)/1e9).toFixed(2)+'B' : Math.abs(gbtcUsd) >= 1e6 ? (Math.abs(gbtcUsd)/1e6).toFixed(2)+'M' : Math.abs(gbtcUsd).toFixed(2);
+    alerts.push(`⚠️ <b>GBTC Vampire Drain</b>\nGrayscale outflow: -${gbtcBtcStr} BTC\nEquiv: -$${gbtcUsdStr}`);
+    stateKey = stateKey === 'outflow' ? 'outflow+vampire' : 'vampire';
+  }
+
+  // 3. Stable flows (no alerts)
+  if (alerts.length === 0) {
+    alerts.push(`✅ <b>ETF Stable Flows</b>\nNo active capital drain alerts.\nBTC Price: $${btcPrice.toLocaleString()}`);
+  }
+
+  return { alerts, stateKey, total, gbtc };
+}
 
 // Page-specific scraping locks
 let isEtfScrapingBusy = false;
@@ -390,6 +541,59 @@ let heatmap3DCache = null;
 let lastHeatmap3DFetchTime = null;
 let sweepPrediction3DCache = null;
 
+// Cache variables for Combined Order Book
+let orderBookDataCache = null;
+let lastOrderBookFetchTime = null;
+let isOrderBookScrapingBusy = false;
+
+// ─── Cache Disk Persistence ──────────────────────────────────────────────────
+const CACHE_DIR = path.join(__dirname, 'cache');
+if (!fs.existsSync(CACHE_DIR)) {
+  fs.mkdirSync(CACHE_DIR, { recursive: true });
+}
+
+function saveCacheToDisk(filename, data) {
+  try {
+    const filePath = path.join(CACHE_DIR, filename);
+    fs.writeFileSync(filePath, JSON.stringify(data, null, 2), 'utf8');
+    console.log(`[Cache] Successfully persisted ${filename} to disk.`);
+  } catch (err) {
+    console.error(`[Cache Error] Failed to save ${filename} to disk:`, err.message);
+  }
+}
+
+function loadCacheFromDisk(filename) {
+  try {
+    const filePath = path.join(CACHE_DIR, filename);
+    if (fs.existsSync(filePath)) {
+      const raw = fs.readFileSync(filePath, 'utf8');
+      const parsed = JSON.parse(raw);
+      console.log(`[Cache] Successfully loaded ${filename} from disk.`);
+      return parsed;
+    }
+  } catch (err) {
+    console.error(`[Cache Error] Failed to load ${filename} from disk:`, err.message);
+  }
+  return null;
+}
+
+// Load caches on startup
+heatmapDataCache = loadCacheFromDisk('heatmap24h_cache.json');
+if (heatmapDataCache) {
+  lastHeatmapFetchTime = Date.now();
+}
+
+heatmap3DCache = loadCacheFromDisk('heatmap3d_cache.json');
+if (heatmap3DCache) {
+  lastHeatmap3DFetchTime = Date.now();
+}
+
+orderBookDataCache = loadCacheFromDisk('orderbook_cache.json');
+if (orderBookDataCache) {
+  lastOrderBookFetchTime = Date.now();
+}
+
+
 
 
 // ─── Heatmap 3D Scraper ──────────────────────────────────────────────────────
@@ -444,6 +648,7 @@ async function scrapeHeatMap3D() {
       await cdp('Page.navigate', { url: 'https://www.coinglass.com/pro/futures/LiquidationHeatMap' });
       await new Promise(r => setTimeout(r, 15000)); // full React render
     } else {
+      console.log('[Heatmap3D] Already on LiquidationHeatMap page. Bypassing reload.');
       await new Promise(r => setTimeout(r, 2000));
     }
 
@@ -467,94 +672,87 @@ async function scrapeHeatMap3D() {
       }
     `;
 
-    // 1. Try to click 3D directly in case it's visible (wide viewport)
-    const directResult = await cdp('Runtime.evaluate', {
-      expression: `(function() {
-        ${triggerClickExpr}
-        var P3D = [/^3\\s*day$/i, /^3\\s*days$/i, /^3d$/i, /^72\\s*h/i, /^3\\s*hari$/i];
-        var allElems = Array.from(document.querySelectorAll('button, li, div, span, a'));
-        for (var i = 0; i < allElems.length; i++) {
-          var txt = (allElems[i].innerText || allElems[i].textContent || '').trim();
-          if (P3D.some(p => p.test(txt))) {
-            var r = allElems[i].getBoundingClientRect();
-            if (r.width > 0 && r.height > 0 && r.left > 0 && r.top > 0) {
-              triggerEvents(allElems[i]);
-              return JSON.stringify({ success: true, text: txt });
+    // Switch to 3D period using robust JS event-based clicks and polling
+    console.log('[Heatmap3D] Attempting robust period selection to 3D...');
+    const clickResultVal = await cdp('Runtime.evaluate', {
+      expression: `
+        new Promise(function(resolve) {
+          var start = Date.now();
+          
+          function triggerEvents(el) {
+            var names = ['mouseenter', 'mouseover', 'pointerdown', 'mousedown', 'focus', 'pointerup', 'mouseup', 'click'];
+            names.forEach(function(n) {
+              if (n === 'focus') el.focus();
+              else el.dispatchEvent(new MouseEvent(n, { bubbles: true, cancelable: true, view: window }));
+            });
+          }
+
+          function poll() {
+            var dropdownBtn = document.querySelector('button.MuiSelect-button, button[role="combobox"]');
+            if (dropdownBtn) {
+              var txt = (dropdownBtn.innerText || dropdownBtn.textContent || '').trim();
+              if (txt.includes('3 day')) {
+                resolve(JSON.stringify({ success: true, text: txt, note: 'already-selected' }));
+                return;
+              }
+            }
+
+            if (dropdownBtn) {
+              triggerEvents(dropdownBtn);
+              
+              var menuStart = Date.now();
+              function pollMenu() {
+                if (Date.now() - start > 15000) {
+                  resolve(JSON.stringify({ success: false, error: 'timeout waiting for 3d menu item' }));
+                  return;
+                }
+                
+                var options = Array.from(document.querySelectorAll('li.MuiOption-root'));
+                for (var i = 0; i < options.length; i++) {
+                  var optTxt = (options[i].innerText || options[i].textContent || '').trim();
+                  if (optTxt.includes('3 day')) {
+                    triggerEvents(options[i]);
+                    resolve(JSON.stringify({ success: true, text: optTxt, note: 'dropdown-clicked' }));
+                    return;
+                  }
+                }
+                
+                if (Date.now() - menuStart < 8000) {
+                  setTimeout(pollMenu, 200);
+                } else {
+                  triggerEvents(dropdownBtn);
+                  setTimeout(pollMenu, 1000);
+                }
+              }
+              setTimeout(pollMenu, 100);
+              return;
+            }
+
+            if (Date.now() - start < 15000) {
+              setTimeout(poll, 500);
+            } else {
+              resolve(JSON.stringify({ success: false, error: 'timeout waiting for dropdown button' }));
             }
           }
-        }
-        return JSON.stringify({ success: false });
-      })()`,
+          
+          poll();
+        })
+      `,
+      awaitPromise: true,
       returnByValue: true
     });
 
     let clickResult = 'no-3day-button-found';
-    const directRes = JSON.parse(directResult?.result?.value || '{}');
-    if (directRes.success) {
-      console.log(`[Heatmap3D] Directly clicked 3D option: ${directRes.text}`);
-      clickResult = 'direct-js-click "' + directRes.text + '"';
-    } else {
-      console.log('[Heatmap3D] 3D option not visible. Clicking dropdown...');
-      
-      // 2. Click the dropdown button (e.g. showing "24 hour" or similar period)
-      const dropdownResult = await cdp('Runtime.evaluate', {
-        expression: `(function() {
-          ${triggerClickExpr}
-          var P_PERIOD = /^\\d+\\s*(hour|day|week|month|h|d|w|m)s?$/i;
-          var btns = Array.from(document.querySelectorAll('button'));
-          for (var i = 0; i < btns.length; i++) {
-            var txt = (btns[i].innerText || btns[i].textContent || '').trim();
-            if (P_PERIOD.test(txt)) {
-              var r = btns[i].getBoundingClientRect();
-              if (r.width > 0 && r.height > 0) {
-                triggerEvents(btns[i]);
-                return JSON.stringify({ success: true, text: txt });
-              }
-            }
-          }
-          return JSON.stringify({ success: false });
-        })()`,
-        returnByValue: true
-      });
-      
-      const dropdownRes = JSON.parse(dropdownResult?.result?.value || '{}');
-      if (dropdownRes.success) {
-        console.log(`[Heatmap3D] Dropdown button "${dropdownRes.text}" clicked. Waiting for dropdown menu...`);
-        
-        // Wait for dropdown to open (in Node)
-        await new Promise(r => setTimeout(r, 2000));
-        
-        // 3. Click the 3D menu item inside the opened dropdown
-        const dropdown3dResult = await cdp('Runtime.evaluate', {
-          expression: `(function() {
-            ${triggerClickExpr}
-            var P3D = [/^3\\s*day$/i, /^3\\s*days$/i, /^3d$/i, /^72\\s*h/i, /^3\\s*hari$/i];
-            var allElems = Array.from(document.querySelectorAll('li, button, div, span, a'));
-            for (var i = 0; i < allElems.length; i++) {
-              var txt = (allElems[i].innerText || allElems[i].textContent || '').trim();
-              if (P3D.some(p => p.test(txt))) {
-                var r = allElems[i].getBoundingClientRect();
-                if (r.width > 0 && r.height > 0 && r.left > 0 && r.top > 0) {
-                  triggerEvents(allElems[i]);
-                  return JSON.stringify({ success: true, text: txt });
-                }
-              }
-            }
-            return JSON.stringify({ success: false });
-          })()`,
-          returnByValue: true
-        });
-        
-        const dropdown3dRes = JSON.parse(dropdown3dResult?.result?.value || '{}');
-        if (dropdown3dRes.success) {
-          console.log(`[Heatmap3D] Clicked 3D option "${dropdown3dRes.text}" in dropdown.`);
-          clickResult = 'dropdown-js-click "' + dropdown3dRes.text + '"';
-        } else {
-          console.warn('[Heatmap3D] Could not find 3D menu item in dropdown menu.');
-        }
+    try {
+      const resVal = JSON.parse(clickResultVal?.result?.value || '{}');
+      if (resVal.success) {
+        clickResult = (resVal.note === 'already-selected' ? 'already-selected-3d' : 'dropdown-js-click') + ' "' + resVal.text + '"';
+        console.log(`[Heatmap3D] Period select succeeded (${resVal.note}): ${resVal.text}`);
       } else {
-        console.warn('[Heatmap3D] Could not find period dropdown button.');
+        console.warn('[Heatmap3D] Robust selection failed:', resVal.error);
       }
+    } catch(e) {
+      console.error('[Heatmap3D] Error parsing select result:', e.message);
     }
     console.log('[Heatmap3D] Period select result:', clickResult);
     
@@ -797,11 +995,21 @@ async function scrapeHeatMap(forceRefresh = false) {
       if (immediateVal) {
         const parsed = JSON.parse(immediateVal);
         if (!parsed.error && parsed.series && parsed.series.length > 0) {
-          console.log('Instant heatmap scrape succeeded!');
-          return {
-            data: parsed,
-            timestamp: new Date().toISOString()
-          };
+          const xa = parsed.xAxis || [];
+          let spanHours = 0;
+          if (xa.length >= 2) {
+            const t0 = new Date(xa[0]).getTime(), t1 = new Date(xa[xa.length - 1]).getTime();
+            spanHours = isNaN(t0) || isNaN(t1) ? 0 : ((t1 - t0) / 3600000);
+          }
+          if (spanHours > 15 && spanHours <= 30) {
+            console.log('Instant heatmap scrape succeeded!');
+            return {
+              data: parsed,
+              timestamp: new Date().toISOString()
+            };
+          } else {
+            console.log(`Instant scrape got chart with span ${spanHours}h (not 24h). Proceeding to reload and switch period...`);
+          }
         }
       }
     }
@@ -809,10 +1017,138 @@ async function scrapeHeatMap(forceRefresh = false) {
     if (navigated) {
       console.log('Navigating to LiquidationHeatMap...');
       await cdp('Page.navigate', { url: 'https://www.coinglass.com/pro/futures/LiquidationHeatMap' });
+      await new Promise(r => setTimeout(r, 15000)); // wait for full React render
     } else {
-      console.log('Reloading LiquidationHeatMap page...');
-      await cdp('Page.reload', {});
+      console.log('Already on LiquidationHeatMap page. Bypassing reload.');
+      await new Promise(r => setTimeout(r, 2000));
     }
+
+    // Switch to 24H period using robust JS event-based clicks
+    const triggerClickExpr = `
+      function triggerEvents(el) {
+        var names = ['mouseenter', 'mouseover', 'pointerdown', 'mousedown', 'focus', 'pointerup', 'mouseup', 'click'];
+        names.forEach(function(n) {
+          if (n === 'focus') el.focus();
+          else el.dispatchEvent(new MouseEvent(n, { bubbles: true, cancelable: true, view: window }));
+        });
+      }
+    `;
+
+    // Switch to 24H period using robust JS event-based clicks and polling
+    console.log('[Heatmap] Attempting robust period selection to 24H...');
+    const clickResultVal = await cdp('Runtime.evaluate', {
+      expression: `
+        new Promise(function(resolve) {
+          var start = Date.now();
+          
+          function triggerEvents(el) {
+            var names = ['mouseenter', 'mouseover', 'pointerdown', 'mousedown', 'focus', 'pointerup', 'mouseup', 'click'];
+            names.forEach(function(n) {
+              if (n === 'focus') el.focus();
+              else el.dispatchEvent(new MouseEvent(n, { bubbles: true, cancelable: true, view: window }));
+            });
+          }
+
+          function poll() {
+            var dropdownBtn = document.querySelector('button.MuiSelect-button, button[role="combobox"]');
+            if (dropdownBtn) {
+              var txt = (dropdownBtn.innerText || dropdownBtn.textContent || '').trim();
+              if (txt.includes('24 hour')) {
+                resolve(JSON.stringify({ success: true, text: txt, note: 'already-selected' }));
+                return;
+              }
+            }
+
+            if (dropdownBtn) {
+              triggerEvents(dropdownBtn);
+              
+              var menuStart = Date.now();
+              function pollMenu() {
+                if (Date.now() - start > 15000) {
+                  resolve(JSON.stringify({ success: false, error: 'timeout waiting for 24h menu item' }));
+                  return;
+                }
+                
+                var options = Array.from(document.querySelectorAll('li.MuiOption-root'));
+                for (var i = 0; i < options.length; i++) {
+                  var optTxt = (options[i].innerText || options[i].textContent || '').trim();
+                  if (optTxt.includes('24 hour')) {
+                    triggerEvents(options[i]);
+                    resolve(JSON.stringify({ success: true, text: optTxt, note: 'dropdown-clicked' }));
+                    return;
+                  }
+                }
+                
+                if (Date.now() - menuStart < 8000) {
+                  setTimeout(pollMenu, 200);
+                } else {
+                  triggerEvents(dropdownBtn);
+                  setTimeout(pollMenu, 1000);
+                }
+              }
+              setTimeout(pollMenu, 100);
+              return;
+            }
+
+            if (Date.now() - start < 15000) {
+              setTimeout(poll, 500);
+            } else {
+              resolve(JSON.stringify({ success: false, error: 'timeout waiting for dropdown button' }));
+            }
+          }
+          
+          poll();
+        })
+      `,
+      awaitPromise: true,
+      returnByValue: true
+    });
+
+    let clickResult = 'no-24h-button-found';
+    try {
+      const resVal = JSON.parse(clickResultVal?.result?.value || '{}');
+      if (resVal.success) {
+        clickResult = (resVal.note === 'already-selected' ? 'already-selected-24h' : 'dropdown-js-click') + ' "' + resVal.text + '"';
+        console.log(`[Heatmap] Period select succeeded (${resVal.note}): ${resVal.text}`);
+      } else {
+        console.warn('[Heatmap] Robust selection failed:', resVal.error);
+      }
+    } catch(e) {
+      console.error('[Heatmap] Error parsing select result:', e.message);
+    }
+    console.log('[Heatmap] Period select result:', clickResult);
+
+    // Wait up to 45s for chart to update to 24H period.
+    let chartUpdated = false;
+    for (let attempt = 0; attempt < 15; attempt++) {
+      await new Promise(r => setTimeout(r, 3000));
+      const check = await cdp('Runtime.evaluate', {
+        expression: `(function(){
+          var el=document.querySelector('.echarts-for-react');
+          if(!el) return JSON.stringify({len:0,spanHours:0});
+          var keys=Object.keys(el),fk=keys.find(k=>k.startsWith('__reactFiber$')||k.startsWith('__reactContainer$'));
+          if(!fk) return JSON.stringify({len:0,spanHours:0});
+          var f=el[fk],opt=null;
+          while(f){if(f.memoizedProps&&f.memoizedProps.option){opt=f.memoizedProps.option;break;}f=f.return;}
+          if(!opt||!opt.xAxis) return JSON.stringify({len:0,spanHours:0});
+          var xa=Array.isArray(opt.xAxis)?opt.xAxis[0].data:opt.xAxis.data;
+          if(!xa||xa.length<2) return JSON.stringify({len:xa?xa.length:0,spanHours:0});
+          var t0=new Date(xa[0]).getTime(), t1=new Date(xa[xa.length-1]).getTime();
+          var spanHours=isNaN(t0)||isNaN(t1)?0:((t1-t0)/3600000);
+          return JSON.stringify({len:xa.length,spanHours:Math.round(spanHours)});
+        })()`,
+        returnByValue: true
+      });
+      let info = { len: 0, spanHours: 0 };
+      try { info = JSON.parse(check?.result?.value || '{}'); } catch(e) {}
+      if (info.spanHours > 15 && info.spanHours <= 30) {
+        console.log('[Heatmap] Chart confirmed 24H after', (attempt+1)*3, 's. bars:', info.len, 'span:', info.spanHours + 'h');
+        chartUpdated = true;
+        break;
+      }
+      console.log('[Heatmap] Waiting for 24H... attempt', attempt+1, 'bars:', info.len, 'span:', info.spanHours + 'h (need 15-30h)');
+    }
+    if (!chartUpdated) console.log('[Heatmap] Period did not switch to 24H (time span not 15-30h) — scraping with current span.');
 
     console.log('Polling for heatmap canvas container rendering...');
     const result = await cdp('Runtime.evaluate', {
@@ -889,6 +1225,250 @@ async function scrapeHeatMap(forceRefresh = false) {
   }
 }
 
+// ─── Combined Order Book Scraper (CDP) ───────────────────────────────────────
+async function scrapeOrderBookCombined(forceRefresh = false) {
+  let tabs = null;
+  let retries = 3;
+
+  while (retries > 0) {
+    try {
+      const tabsResponse = await fetch('http://127.0.0.1:9222/json', { signal: AbortSignal.timeout(4000) });
+      tabs = await tabsResponse.json();
+      break;
+    } catch (e) {
+      retries--;
+      if (retries === 0) throw new Error('Failed to fetch Chrome tab list from port 9222. Is the browser debug port responsive?');
+      console.log(`[OrderBook DevTools Retry] Port 9222 unresponsive. Retrying list fetch in 2s... (${retries} retries left)`);
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+
+  let tab = tabs.find(t => t.type === 'page' && t.url?.includes('coinglass.com/mergev2/BTC-USDT'));
+  let navigated = false;
+
+  if (!tab) {
+    // Fallback 1: Coba tab coinglass apa saja
+    tab = tabs.find(t => t.type === 'page' && t.url?.includes('coinglass.com'));
+    if (!tab) {
+      // Fallback 2: Coba tab web apa saja yang aktif
+      tab = tabs.find(t => t.type === 'page' && t.url?.startsWith('http') && !t.url?.includes('devtools'));
+    }
+    if (!tab) throw new Error('No suitable Chrome tab found for order book scrape. Please open Chrome.');
+    navigated = true;
+  }
+  const savedUrl = navigated ? tab.url : null;
+
+  let ws = null;
+  retries = 3;
+  while (retries > 0) {
+    try {
+      ws = new WebSocket(tab.webSocketDebuggerUrl);
+      await new Promise((res, rej) => {
+        const connTimeout = setTimeout(() => rej(new Error('WebSocket connection timeout')), 4000);
+        ws.on('open', () => { clearTimeout(connTimeout); res(); });
+        ws.on('error', (err) => { clearTimeout(connTimeout); rej(err); });
+      });
+      break;
+    } catch (e) {
+      retries--;
+      if (ws) {
+        try { ws.close(); } catch (err) {}
+        ws = null;
+      }
+      if (retries === 0) throw new Error(`Failed to connect to Chrome DevTools WebSocket after 3 retries: ${e.message}`);
+      console.log(`[OrderBook DevTools Retry] WebSocket connection failed. Retrying in 2s... (${retries} retries left). Error: ${e.message}`);
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+
+  let _mid = 1;
+  const cdp = (method, params = {}) => new Promise((res, rej) => {
+    const id = _mid++;
+    ws.send(JSON.stringify({ id, method, params }));
+    const t = setTimeout(() => rej(new Error(`CDP timeout: ${method}`)), 40000);
+    const handler = (data) => {
+      const m = JSON.parse(data.toString());
+      if (m.id === id) {
+        clearTimeout(t);
+        ws.off('message', handler);
+        if (m.error) rej(new Error(m.error.message || JSON.stringify(m.error)));
+        else res(m.result);
+      }
+    };
+    ws.on('message', handler);
+  });
+
+  try {
+    await cdp('Page.enable');
+
+    // Ekspresi untuk memeriksa dan mengekstrak data dari DOM (dengan polling)
+    const evaluateExpression = `
+      new Promise(function(resolve) {
+        var start = Date.now();
+        function check() {
+          var orderbooks = document.querySelectorAll('.orderbook');
+          if (orderbooks.length >= 2) {
+            var parseBook = function(el) {
+              var rows = [];
+              
+              var parseVal = function(str) {
+                if (!str) return 0;
+                var clean = str.replace(/,/g, '').toUpperCase().trim();
+                var mult = 1;
+                if (clean.endsWith('K')) { mult = 1000; clean = clean.slice(0, -1); }
+                else if (clean.endsWith('M')) { mult = 1000000; clean = clean.slice(0, -1); }
+                else if (clean.endsWith('B')) { mult = 1000000000; clean = clean.slice(0, -1); }
+                return parseFloat(clean) * mult;
+              };
+
+              // Method 1: Parse via child elements directly (no specific class name required)
+              var rowEls = Array.from(el.children);
+              if (rowEls.length === 1 && rowEls[0].children.length > 5) {
+                rowEls = Array.from(rowEls[0].children);
+              }
+
+              rowEls.forEach(function(row) {
+                var txt = (row.innerText || row.textContent || '').trim();
+                var tokens = txt.split(/\\s+/).filter(function(t){ return t.length > 0; });
+                if (tokens.length >= 3) {
+                  var price = parseVal(tokens[0]);
+                  var quantity = parseVal(tokens[1]);
+                  var total = parseVal(tokens[2]);
+                  if (!isNaN(price) && !isNaN(quantity) && !isNaN(total) && price > 0) {
+                    rows.push({ price: price, quantity: quantity, total: total });
+                  }
+                }
+              });
+
+              // Method 2: Fallback to splitting container innerText by whitespace
+              if (rows.length === 0) {
+                var allTxt = (el.innerText || el.textContent || '').trim();
+                var tokens = allTxt.split(/\\s+/).filter(function(t){ return t.length > 0; });
+                for (var i = 0; i < tokens.length; i += 3) {
+                  if (i + 2 < tokens.length) {
+                    var price = parseVal(tokens[i]);
+                    var quantity = parseVal(tokens[i+1]);
+                    var total = parseVal(tokens[i+2]);
+                    if (!isNaN(price) && !isNaN(quantity) && !isNaN(total) && price > 0) {
+                      rows.push({ price: price, quantity: quantity, total: total });
+                    }
+                  }
+                }
+              }
+              return rows;
+            };
+
+            var asks = parseBook(orderbooks[0]);
+            var bids = parseBook(orderbooks[1]);
+            if (asks.length > 0 && bids.length > 0) {
+              resolve(JSON.stringify({ asks: asks, bids: bids }));
+              return;
+            }
+          }
+          if (Date.now() - start < 35000) {
+            setTimeout(check, 1500);
+          } else {
+            resolve(JSON.stringify({ error: 'timeout waiting for orderbook data' }));
+          }
+        }
+        setTimeout(check, 1000);
+      })
+    `;
+
+    // Coba kikis instan jika tab sudah berada di URL yang benar
+    if (!navigated && !forceRefresh) {
+      console.log('[OrderBook Scraper] Checking if existing tab already has orderbook data...');
+      const immediateResult = await cdp('Runtime.evaluate', {
+        expression: evaluateExpression,
+        awaitPromise: true,
+        returnByValue: true
+      });
+      const raw = immediateResult?.result?.value;
+      if (raw) {
+        const parsed = JSON.parse(raw);
+        if (!parsed.error && parsed.asks && parsed.asks.length > 0) {
+          console.log('[OrderBook Scraper] Instant scrape succeeded!');
+          return {
+            asks: parsed.asks,
+            bids: parsed.bids,
+            timestamp: new Date().toISOString()
+          };
+        }
+      }
+    }
+
+    if (navigated || forceRefresh) {
+      console.log('[OrderBook Scraper] Navigating to https://www.coinglass.com/mergev2/BTC-USDT...');
+      await cdp('Page.navigate', { url: 'https://www.coinglass.com/mergev2/BTC-USDT' });
+      await new Promise(r => setTimeout(r, 10000)); // Wait 10s for React load
+    } else {
+      console.log('[OrderBook Scraper] Reloading page...');
+      await cdp('Page.reload', {});
+      await new Promise(r => setTimeout(r, 8000)); // Wait 8s for reload
+    }
+
+    console.log('[OrderBook Scraper] Polling DOM for orderbook data...');
+    const result = await cdp('Runtime.evaluate', {
+      expression: evaluateExpression,
+      awaitPromise: true,
+      returnByValue: true
+    });
+
+    const raw = result?.result?.value;
+    if (!raw) throw new Error('Evaluation returned empty result.');
+    const parsed = JSON.parse(raw);
+    if (parsed.error) throw new Error(parsed.error);
+
+    console.log(`[OrderBook Scraper] Successfully scraped. Asks: ${parsed.asks.length}, Bids: ${parsed.bids.length}`);
+    return {
+      asks: parsed.asks,
+      bids: parsed.bids,
+      timestamp: new Date().toISOString()
+    };
+  } finally {
+    if (navigated && savedUrl) {
+      console.log(`[OrderBook Scraper] Restoring original URL: ${savedUrl}`);
+      await cdp('Page.navigate', { url: savedUrl }).catch(e => console.error('[OrderBook Scraper] Failed to restore URL:', e.message));
+    }
+    ws.close();
+  }
+}
+
+// REST API for fetching Combined Order Book data (with cache)
+app.get('/api/orderbook-data', async (req, res) => {
+  const forceRefresh = req.query.refresh === 'true';
+
+  // Cache berlaku selama 3 menit (180.000 ms), sama seperti heatmap
+  if (orderBookDataCache && !forceRefresh && lastOrderBookFetchTime && (Date.now() - lastOrderBookFetchTime < 180000)) {
+    return res.json({ success: true, source: 'cache', data: orderBookDataCache });
+  }
+
+  if (isOrderBookScrapingBusy) {
+    return res.status(409).json({ success: false, error: 'A scrape is already in progress, please wait.' });
+  }
+
+  isOrderBookScrapingBusy = true;
+  try {
+    console.log('[API] Starting CoinGlass Combined Order Book scrape...');
+    const result = await runWithCdpLock(() => scrapeOrderBookCombined(forceRefresh));
+    orderBookDataCache = result;
+    lastOrderBookFetchTime = Date.now();
+    saveCacheToDisk('orderbook_cache.json', orderBookDataCache);
+
+    res.json({ success: true, source: 'live', data: result });
+  } catch (err) {
+    console.error('[API] Combined Order Book scrape failed:', err.message);
+    if (orderBookDataCache) {
+      console.log('[API] Falling back to cached orderbook data.');
+      res.json({ success: true, source: 'fallback-cache', data: orderBookDataCache, warning: err.message });
+    } else {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  } finally {
+    isOrderBookScrapingBusy = false;
+  }
+});
+
 // REST API for fetching HeatMap data (with cache)
 app.get('/api/heatmap-data', async (req, res) => {
   const forceRefresh = req.query.refresh === 'true';
@@ -908,6 +1488,7 @@ app.get('/api/heatmap-data', async (req, res) => {
     const result = await runWithCdpLock(() => scrapeHeatMap(forceRefresh));
     heatmapDataCache = result;
     lastHeatmapFetchTime = Date.now();
+    saveCacheToDisk('heatmap24h_cache.json', heatmapDataCache);
     res.json({ success: true, source: 'live', data: result });
   } catch (error) {
     console.error('Heatmap scrape error:', error.message);
@@ -945,10 +1526,12 @@ app.post('/api/heatmap-data/update', (req, res) => {
     } catch (err) {
       console.error('[Bridge API] Failed to compute 3D Sweep Prediction:', err.message);
     }
+    saveCacheToDisk('heatmap3d_cache.json', heatmap3DCache);
   } else {
     heatmapDataCache = { data, timestamp: new Date().toISOString() };
     lastHeatmapFetchTime = Date.now();
     console.log('[Bridge API] Received 24h Heatmap update from local client.');
+    saveCacheToDisk('heatmap24h_cache.json', heatmapDataCache);
   }
   res.json({ success: true });
 });
@@ -959,7 +1542,7 @@ app.get('/api/etf-data', async (req, res) => {
 
   let btcPrice = 65000; // default fallback
   try {
-    const tickerResp = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
+    const tickerResp = await fetchBinance('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
     const tickerData = await tickerResp.json();
     btcPrice = parseFloat(tickerData.price) || 65000;
   } catch (e) {
@@ -981,9 +1564,19 @@ app.get('/api/etf-data', async (req, res) => {
     const result = await runWithCdpLock(() => scrapeCoinGlass('/etf/bitcoin', forceRefresh));
     etfDataCache = result;
     lastFetchTime = Date.now();
+
+    // Send ETF alerts to Telegram (only when alert state changes)
+    const etfAlertInfo = buildEtfAlerts(result, btcPrice);
+    if (etfAlertInfo && etfAlertInfo.stateKey !== lastEtfAlertState) {
+      lastEtfAlertState = etfAlertInfo.stateKey;
+      const header = `📊 <b>ETF Monitor Update</b>\n${'─'.repeat(20)}\n`;
+      sendTelegramAlert(header + etfAlertInfo.alerts.join('\n\n'));
+      console.log(`[ETF Alert] State changed to: ${etfAlertInfo.stateKey}`);
+    }
+
     res.json({ success: true, source: 'live', data: result, btcPrice });
   } catch (error) {
-    console.error('Scrape error:', error.message);
+    sendTelegramAlert(`⚠️ <b>ETF Scrape Error</b>\n${error.message}`);
     res.status(500).json({ success: false, error: error.message });
   } finally {
     isEtfScrapingBusy = false;
@@ -1031,6 +1624,9 @@ function loadSettings() {
     sweepConfirmCandles: 5,
     minPoolVolumeRatio: 0.25,
     cooldownMinutes: 60,
+    maxTPPercent: 1.5,
+    autoCutDistanceThreshold: 1.0,
+    breakevenEnabled: true,
     telegramBotToken: '',
     telegramChatId: '',
     authUsername: 'admin',
@@ -1203,6 +1799,9 @@ app.post('/api/settings', (req, res) => {
     sweepConfirmCandles: parseIntNum(newSettings.sweepConfirmCandles, current.sweepConfirmCandles),
     minPoolVolumeRatio: parseNum(newSettings.minPoolVolumeRatio, current.minPoolVolumeRatio),
     cooldownMinutes: parseIntNum(newSettings.cooldownMinutes, current.cooldownMinutes),
+    maxTPPercent: parseNum(newSettings.maxTPPercent, current.maxTPPercent),
+    autoCutDistanceThreshold: parseNum(newSettings.autoCutDistanceThreshold, current.autoCutDistanceThreshold),
+    breakevenEnabled: newSettings.breakevenEnabled !== undefined ? !!newSettings.breakevenEnabled : current.breakevenEnabled,
     telegramBotToken: newSettings.telegramBotToken !== undefined ? String(newSettings.telegramBotToken).trim() : current.telegramBotToken,
     telegramChatId: newSettings.telegramChatId !== undefined ? String(newSettings.telegramChatId).trim() : current.telegramChatId
   };
@@ -1382,6 +1981,7 @@ app.post('/api/tradingview/webhook', (req, res) => {
 // ─── Binance Metric State & Fetchers ──────────────────────────
 let botMetrics = {
   openInterest: 0,
+  openInterestBtc: 0,
   oiChange1h: 0,
   spotCvd1h: 0,
   trend1h: 'UNKNOWN',
@@ -1404,7 +2004,7 @@ function calculateEMA(prices, period) {
 
 async function fetchBinanceOI() {
   try {
-    const res = await fetch('https://fapi.binance.com/futures/data/openInterestHist?symbol=BTCUSDT&period=5m&limit=13');
+    const res = await fetchBinance('https://fapi.binance.com/futures/data/openInterestHist?symbol=BTCUSDT&period=5m&limit=13');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (Array.isArray(data) && data.length > 0) {
@@ -1426,7 +2026,7 @@ async function fetchBinanceOI() {
 
 async function fetchBinanceSpotCVD() {
   try {
-    const res = await fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=5m&limit=12');
+    const res = await fetchBinance('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=5m&limit=12');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (Array.isArray(data)) {
@@ -1450,7 +2050,7 @@ async function fetchBinanceSpotCVD() {
 async function fetchBinanceHTFTrend() {
   try {
     // 1h Klines
-    const res1h = await fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=210');
+    const res1h = await fetchBinance('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=1h&limit=210');
     let trend1h = 'UNKNOWN';
     let currentPrice = 0;
     if (res1h.ok) {
@@ -1464,7 +2064,7 @@ async function fetchBinanceHTFTrend() {
     }
 
     // 4h Klines
-    const res4h = await fetch('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=4h&limit=210');
+    const res4h = await fetchBinance('https://api.binance.com/api/v3/klines?symbol=BTCUSDT&interval=4h&limit=210');
     let trend4h = 'UNKNOWN';
     if (res4h.ok) {
       const data4h = await res4h.json();
@@ -1484,7 +2084,7 @@ async function fetchBinanceHTFTrend() {
 
 async function fetchBinanceFundingRate() {
   try {
-    const res = await fetch('https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT');
+    const res = await fetchBinance('https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (data && data.lastFundingRate !== undefined) {
@@ -1498,7 +2098,7 @@ async function fetchBinanceFundingRate() {
 
 async function fetchBinanceLongShortRatio() {
   try {
-    const res = await fetch('https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=5m&limit=1');
+    const res = await fetchBinance('https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=5m&limit=1');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
     if (Array.isArray(data) && data.length > 0) {
@@ -1515,76 +2115,105 @@ async function fetchBinanceLongShortRatio() {
 }
 
 function calculateReversalProbability(sweepDetail, oiChange, spotCVD, trend1h, trend4h, fundingRate, longShortRatio) {
-  let score = 40; // Base probability start at 40%
+  const baseScore = 40;
+  let score = baseScore; // Base probability start at 40%
 
   // 1. Liquidation Pool Volume (Up to 15 points)
   const volBillions = sweepDetail.volume / 1e9;
-  score += Math.min(15, volBillions * 15); // Scale so that $1B pool volume yields the full +15 points
+  const poolVolumePoints = Math.min(15, volBillions * 15); // Scale so that $1B pool volume yields the full +15 points
+  score += poolVolumePoints;
 
   // 2. Rejection Strength / Wick Depth (Up to 15 points)
-  score += Math.min(15, sweepDetail.rejectionStrength * 15);
+  const rejectionPoints = Math.min(15, (sweepDetail.rejectionStrength || 0) * 15);
+  score += rejectionPoints;
 
   // 3. Open Interest change (Up to 10 points)
+  let oiChangePoints = 0;
   if (oiChange < 0) {
-    score += Math.min(10, Math.abs(oiChange) * 3);
+    oiChangePoints = Math.min(10, Math.abs(oiChange) * 3);
+    score += oiChangePoints;
   } else {
-    score -= Math.min(10, oiChange * 2);
+    oiChangePoints = -Math.min(10, oiChange * 2);
+    score += oiChangePoints;
   }
 
   // 4. Spot CVD Divergence (Up to 10 points)
+  let spotCvdPoints = 0;
   if (sweepDetail.direction === 'LONG' && spotCVD > 0) {
+    spotCvdPoints = 10;
     score += 10;
   } else if (sweepDetail.direction === 'SHORT' && spotCVD < 0) {
+    spotCvdPoints = 10;
     score += 10;
   }
 
   // 5. HTF Trend Alignment (Up to 10 points)
+  let trendPoints = 0;
   if (sweepDetail.direction === 'LONG') {
-    if (trend1h === 'BULLISH') score += 5;
-    if (trend4h === 'BULLISH') score += 5;
+    if (trend1h === 'BULLISH') trendPoints += 5;
+    if (trend4h === 'BULLISH') trendPoints += 5;
   } else if (sweepDetail.direction === 'SHORT') {
-    if (trend1h === 'BEARISH') score += 5;
-    if (trend4h === 'BEARISH') score += 5;
+    if (trend1h === 'BEARISH') trendPoints += 5;
+    if (trend4h === 'BEARISH') trendPoints += 5;
   }
+  score += trendPoints;
 
   // 6. Funding Rate (Up to 10 points)
+  let fundingPoints = 0;
   const fundingNum = parseFloat(fundingRate) || 0;
   if (sweepDetail.direction === 'LONG') {
     if (fundingNum < 0) {
-      score += Math.min(10, Math.abs(fundingNum) * 20000);
+      fundingPoints = Math.min(10, Math.abs(fundingNum) * 20000);
     } else if (fundingNum > 0.0005) {
-      score -= Math.min(10, (fundingNum - 0.0005) * 10000);
+      fundingPoints = -Math.min(10, (fundingNum - 0.0005) * 10000);
     }
   } else if (sweepDetail.direction === 'SHORT') {
     if (fundingNum > 0) {
-      score += Math.min(10, fundingNum * 20000);
+      fundingPoints = Math.min(10, fundingNum * 20000);
     } else if (fundingNum < -0.0005) {
-      score -= Math.min(10, Math.abs(fundingNum + 0.0005) * 10000);
+      fundingPoints = -Math.min(10, Math.abs(fundingNum + 0.0005) * 10000);
     }
   }
+  score += fundingPoints;
 
   // 7. Long/Short Ratio (Up to 10 points)
+  let lsRatioPoints = 0;
   const lsRatio = parseFloat(longShortRatio) || 1.0;
   if (sweepDetail.direction === 'LONG') {
     if (lsRatio < 1.3) {
-      score += Math.min(10, (1.3 - lsRatio) * 25);
+      lsRatioPoints = Math.min(10, (1.3 - lsRatio) * 25);
     } else if (lsRatio > 1.8) {
-      score -= Math.min(10, (lsRatio - 1.8) * 10);
+      lsRatioPoints = -Math.min(10, (lsRatio - 1.8) * 10);
     }
   } else if (sweepDetail.direction === 'SHORT') {
     if (lsRatio > 1.6) {
-      score += Math.min(10, (lsRatio - 1.6) * 12.5);
+      lsRatioPoints = Math.min(10, (lsRatio - 1.6) * 12.5);
     } else if (lsRatio < 1.1) {
-      score -= Math.min(10, (1.1 - lsRatio) * 20);
+      lsRatioPoints = -Math.min(10, (1.1 - lsRatio) * 20);
     }
   }
+  score += lsRatioPoints;
 
-  // Bound the score between 10% and 99%
-  return Math.max(10, Math.min(99, Math.round(score)));
+  const finalScore = Math.max(10, Math.min(99, Math.round(score)));
+
+  return {
+    score: finalScore,
+    breakdown: {
+      baseScore,
+      poolVolume: Math.round(poolVolumePoints * 10) / 10,
+      rejection: Math.round(rejectionPoints * 10) / 10,
+      oiChange: Math.round(oiChangePoints * 10) / 10,
+      spotCvd: Math.round(spotCvdPoints * 10) / 10,
+      trend: Math.round(trendPoints * 10) / 10,
+      funding: Math.round(fundingPoints * 10) / 10,
+      lsRatio: Math.round(lsRatioPoints * 10) / 10
+    }
+  };
 }
 
 // ─── Server-Side Bot Logic ──────────────────────────────────
 function evaluateActiveTradesBackend(heatmapData) {
+  const settings = loadSettings();
   const cs = heatmapData.series.find(s => s.type === 'candlestick');
   if (!cs || !cs.data || cs.data.length === 0) return;
 
@@ -1695,45 +2324,90 @@ function evaluateActiveTradesBackend(heatmapData) {
       }
     }
 
-    // 3. Check Pool Shrinkage
-    const yAxisData = heatmapData.yAxis || [];
-    let closestYIdx = -1, minDiff = Infinity;
-    yAxisData.forEach((priceStr, idx) => {
-      const diff = Math.abs(parseFloat(priceStr) - trade.tp);
-      if (diff < minDiff) { minDiff = diff; closestYIdx = idx; }
-    });
-
-    let currentTpVolume = 0;
-    const hs = heatmapData.series.find(s => s.type === 'heatmap');
-    if (hs && hs.data && closestYIdx !== -1) {
-      hs.data.forEach(item => {
-        const v = Array.isArray(item) ? item : (item.value || []);
-        if (parseInt(v[1], 10) === closestYIdx) currentTpVolume += parseFloat(v[2] || 0);
-      });
+    // 2.5. Check Breakeven Trigger (1:1 R:R target hit)
+    if (settings.breakevenEnabled !== false && !trade.isBreakeven && trade.sl !== trade.entry) {
+      const slDist = trade.slDistance || (Math.abs(trade.entry - trade.sl) / trade.entry * 100);
+      if (trade.direction === 'LONG') {
+        const targetPrice = trade.entry * (1 + slDist / 100);
+        if (lastHigh >= targetPrice) {
+          trade.sl = trade.entry;
+          trade.isBreakeven = true;
+          trade.note = `SL moved to Breakeven (1:1 hit at $${lastHigh.toFixed(2)})`;
+          updated = true;
+          console.log(`[LSR Bot] 🛡️ LONG SL moved to Breakeven for trade ${trade.id} (Entry: $${trade.entry.toFixed(2)}, Target: $${targetPrice.toFixed(2)})`);
+          sendTelegramAlert(
+            `🛡️ <b>Trade Protected (Moved to BE)</b>\n` +
+            `Type: <b>LONG</b>\n` +
+            `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
+            `New SL: <code>$${trade.sl.toFixed(2)}</code> (Breakeven)\n` +
+            `R:R 1:1 Target Hit: <code>$${targetPrice.toFixed(2)}</code>\n` +
+            `Note: ${trade.note}`
+          );
+        }
+      } else { // SHORT
+        const targetPrice = trade.entry * (1 - slDist / 100);
+        if (lastLow <= targetPrice) {
+          trade.sl = trade.entry;
+          trade.isBreakeven = true;
+          trade.note = `SL moved to Breakeven (1:1 hit at $${lastLow.toFixed(2)})`;
+          updated = true;
+          console.log(`[LSR Bot] 🛡️ SHORT SL moved to Breakeven for trade ${trade.id} (Entry: $${trade.entry.toFixed(2)}, Target: $${targetPrice.toFixed(2)})`);
+          sendTelegramAlert(
+            `🛡️ <b>Trade Protected (Moved to BE)</b>\n` +
+            `Type: <b>SHORT</b>\n` +
+            `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
+            `New SL: <code>$${trade.sl.toFixed(2)}</code> (Breakeven)\n` +
+            `R:R 1:1 Target Hit: <code>$${targetPrice.toFixed(2)}</code>\n` +
+            `Note: ${trade.note}`
+          );
+        }
+      }
     }
 
-    if (trade.initialTpVolume && currentTpVolume < trade.initialTpVolume * 0.5) {
-      trade.status = 'CUT_LOSS';
-      const diff = trade.direction === 'LONG' ? (lastClose - trade.entry) : (trade.entry - lastClose);
-      const profit = trade.positionSizeUsd * (diff / trade.entry);
-      trade.pnl = profit;
-      trade.closePrice = lastClose;
-      trade.closeTimestamp = Date.now();
-      trade.note = 'Auto (Pool -50%)';
-      updated = true;
-      console.log(`[LSR Bot] ⚠️ AUTO-CUT TRIGGERED — ${trade.direction} Closed at $${lastClose.toFixed(2)} (Initial Pool: $${(trade.initialTpVolume/1e9).toFixed(2)}B, Current Pool: $${(currentTpVolume/1e9).toFixed(2)}B), PnL: ${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}`);
-      sendTelegramAlert(
-        `⚠️ <b>Trade Closed (Auto-Cut: Pool -50%)</b>\n` +
-        `Type: <b>${trade.direction}</b>\n` +
-        `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
-        `TP: <code>$${trade.tp.toFixed(2)}</code>\n` +
-        `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
-        `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
-        `Close: <code>$${lastClose.toFixed(2)}</code>\n` +
-        `PnL: <code>${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}</code> (${profit >= 0 ? '+' : ''}Bs. ${(profit * 6.96).toFixed(2)})\n` +
-        `Note: ${trade.note}`
-      );
-      return;
+    // 3. Check Pool Shrinkage (only if price is close to TP)
+    const currentTpDistPercent = (Math.abs(lastClose - trade.tp) / trade.tp) * 100;
+    const autoCutDistanceThreshold = settings.autoCutDistanceThreshold !== undefined ? settings.autoCutDistanceThreshold : 1.0;
+
+    if (currentTpDistPercent <= autoCutDistanceThreshold) {
+      const yAxisData = heatmapData.yAxis || [];
+      let closestYIdx = -1, minDiff = Infinity;
+      yAxisData.forEach((priceStr, idx) => {
+        const diff = Math.abs(parseFloat(priceStr) - trade.tp);
+        if (diff < minDiff) { minDiff = diff; closestYIdx = idx; }
+      });
+
+      let currentTpVolume = 0;
+      const hs = heatmapData.series.find(s => s.type === 'heatmap');
+      if (hs && hs.data && closestYIdx !== -1) {
+        hs.data.forEach(item => {
+          const v = Array.isArray(item) ? item : (item.value || []);
+          if (parseInt(v[1], 10) === closestYIdx) currentTpVolume += parseFloat(v[2] || 0);
+        });
+      }
+
+      if (trade.initialTpVolume && currentTpVolume < trade.initialTpVolume * 0.7) {
+        trade.status = 'CUT_LOSS';
+        const diff = trade.direction === 'LONG' ? (lastClose - trade.entry) : (trade.entry - lastClose);
+        const profit = trade.positionSizeUsd * (diff / trade.entry);
+        trade.pnl = profit;
+        trade.closePrice = lastClose;
+        trade.closeTimestamp = Date.now();
+        trade.note = 'Auto (Pool -70%)';
+        updated = true;
+        console.log(`[LSR Bot] ⚠️ AUTO-CUT TRIGGERED — ${trade.direction} Closed at $${lastClose.toFixed(2)} (Initial Pool: $${(trade.initialTpVolume/1e9).toFixed(2)}B, Current Pool: $${(currentTpVolume/1e9).toFixed(2)}B), PnL: ${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}`);
+        sendTelegramAlert(
+          `⚠️ <b>Trade Closed (Auto-Cut: Pool -70%)</b>\n` +
+          `Type: <b>${trade.direction}</b>\n` +
+          `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
+          `TP: <code>$${trade.tp.toFixed(2)}</code>\n` +
+          `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
+          `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
+          `Close: <code>$${lastClose.toFixed(2)}</code>\n` +
+          `PnL: <code>${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}</code> (${profit >= 0 ? '+' : ''}Bs. ${(profit * 6.96).toFixed(2)})\n` +
+          `Note: ${trade.note}`
+        );
+        return;
+      }
     }
 
     // 4. Update current floating PnL
@@ -1817,7 +2491,7 @@ app.get('/api/status', async (req, res) => {
   // 3. Binance Spot API
   const bsStart = Date.now();
   try {
-    const r = await fetch('https://api.binance.com/api/v3/ping', { signal: AbortSignal.timeout(5000) });
+    const r = await fetchBinance('https://api.binance.com/api/v3/ping', { signal: AbortSignal.timeout(5000) });
     checks.push({ name: 'Binance Spot API', key: 'binance_spot', status: r.ok ? 'ok' : 'error', detail: r.ok ? 'Reachable' : `HTTP ${r.status}`, latency: Date.now() - bsStart });
   } catch (e) {
     checks.push({ name: 'Binance Spot API', key: 'binance_spot', status: 'error', detail: e.message, latency: Date.now() - bsStart });
@@ -1826,7 +2500,7 @@ app.get('/api/status', async (req, res) => {
   // 4. Binance Futures API
   const bfStart = Date.now();
   try {
-    const r = await fetch('https://fapi.binance.com/fapi/v1/ping', { signal: AbortSignal.timeout(5000) });
+    const r = await fetchBinance('https://fapi.binance.com/fapi/v1/ping', { signal: AbortSignal.timeout(5000) });
     checks.push({ name: 'Binance Futures API', key: 'binance_futures', status: r.ok ? 'ok' : 'error', detail: r.ok ? 'Reachable' : `HTTP ${r.status}`, latency: Date.now() - bfStart });
   } catch (e) {
     checks.push({ name: 'Binance Futures API', key: 'binance_futures', status: 'error', detail: e.message, latency: Date.now() - bfStart });
@@ -1873,16 +2547,81 @@ app.get('/api/bot-status', async (req, res) => {
   
   let btcPrice = 65000; // default fallback
   try {
-    const tickerResp = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
+    const tickerResp = await fetchBinance('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
     const tickerData = await tickerResp.json();
     btcPrice = parseFloat(tickerData.price) || 65000;
   } catch (e) {
     console.error('Failed to fetch BTC price from Binance for bot-status, using default fallback:', e.message);
   }
 
+  // Whale Trade Detector — fetch recent aggTrades and find large ones (>$500K)
+  let whaleData = { 
+    buyCount: 0, 
+    sellCount: 0, 
+    buyVol: 0, 
+    sellVol: 0, 
+    signal: 'NEUTRAL', 
+    threshold: 500000, 
+    netFlow: 0,
+    wsConnected,
+    wsProcessedCount: totalWsMessagesReceived,
+    inMemoryTradesCount: recentWhaleTrades.length
+  };
+  const cutoffTime = Date.now() - 15 * 60 * 1000; // last 15 minutes
+  
+  // Clean up old trades
+  recentWhaleTrades = recentWhaleTrades.filter(t => t.time >= cutoffTime);
+  
+  if (recentWhaleTrades.length > 0) {
+    recentWhaleTrades.forEach(t => {
+      if (t.isBuyerMaker) { // buyer was maker -> taker was seller (sell)
+        whaleData.sellCount++;
+        whaleData.sellVol += t.usd;
+      } else { // buyer was taker (buy)
+        whaleData.buyCount++;
+        whaleData.buyVol += t.usd;
+      }
+    });
+    const netFlow = whaleData.buyVol - whaleData.sellVol;
+    whaleData.netFlow = netFlow;
+    const whaleThreshold = 500000;
+    if (netFlow > whaleThreshold * 2) whaleData.signal = 'ACCUMULATION';
+    else if (netFlow < -whaleThreshold * 2) whaleData.signal = 'DISTRIBUTION';
+    else whaleData.signal = 'NEUTRAL';
+  } else {
+    // FALLBACK: If WS is warming up or disconnected, query REST API
+    try {
+      const whaleThreshold = 500000; // $500K per trade
+      const aggRes = await fetchBinance('https://api.binance.com/api/v3/aggTrades?symbol=BTCUSDT&limit=1000', { signal: AbortSignal.timeout(4000) });
+      if (aggRes.ok) {
+        const aggTrades = await aggRes.json();
+        aggTrades.forEach(t => {
+          if (t.T < cutoffTime) return;
+          const tradeUsd = parseFloat(t.p) * parseFloat(t.q);
+          if (tradeUsd < whaleThreshold) return;
+          if (t.m) { // buyer is maker -> taker is seller (sell)
+            whaleData.sellCount++;
+            whaleData.sellVol += tradeUsd;
+          } else { // buyer is taker (buy)
+            whaleData.buyCount++;
+            whaleData.buyVol += tradeUsd;
+          }
+        });
+        const netFlow = whaleData.buyVol - whaleData.sellVol;
+        whaleData.netFlow = netFlow;
+        if (netFlow > whaleThreshold * 2) whaleData.signal = 'ACCUMULATION';
+        else if (netFlow < -whaleThreshold * 2) whaleData.signal = 'DISTRIBUTION';
+        else whaleData.signal = 'NEUTRAL';
+      }
+    } catch (e) {
+      console.error('[Whale Detector Fallback] Error:', e.message);
+    }
+  }
+
   res.json({
     success: true,
     btcPrice,
+    whaleData,
     data: {
       ...botPhaseState,
       metrics: botMetrics,
@@ -1898,6 +2637,77 @@ app.get('/api/bot-status', async (req, res) => {
       }
     }
   });
+});
+
+// ─── Market Extras: Fear & Greed + ETF Flow ──────────────────────────────────
+let fngCache = null;
+let fngCacheTime = 0;
+
+app.get('/api/market-extras', async (req, res) => {
+  // 1. Fear & Greed Index (cache 1 hour — updates once/day)
+  let fng = fngCache;
+  if (!fng || Date.now() - fngCacheTime > 3600000) {
+    try {
+      const fngRes = await fetch('https://api.alternative.me/fng/?limit=1', { signal: AbortSignal.timeout(5000) });
+      if (fngRes.ok) {
+        const fngData = await fngRes.json();
+        if (fngData.data && fngData.data.length > 0) {
+          fng = {
+            value: parseInt(fngData.data[0].value),
+            label: fngData.data[0].value_classification,
+            timestamp: fngData.data[0].timestamp
+          };
+          fngCache = fng;
+          fngCacheTime = Date.now();
+        }
+      }
+    } catch (e) {
+      console.error('[Fear&Greed] Fetch error:', e.message);
+    }
+  }
+
+  // 2. ETF Flow Summary — read from existing etfDataCache (zero cost)
+  let etfSummary = null;
+  try {
+    const etfRaw = etfDataCache;
+    if (etfRaw) {
+      const kpis = etfRaw.kpis || {};
+      const parseUSD = (str) => {
+        if (!str) return 0;
+        const clean = str.replace(/[\$\+,]/g, '').trim();
+        const m = clean.match(/^([+-]?[\d.]+)([KMB])?$/i);
+        if (!m) return 0;
+        const num = parseFloat(m[1]);
+        const s = (m[2] || '').toUpperCase();
+        if (s === 'K') return num * 1000;
+        if (s === 'M') return num * 1000000;
+        if (s === 'B') return num * 1000000000;
+        return num;
+      };
+      const dailyUsd = kpis.dailyTotalNetInflow ? parseUSD(kpis.dailyTotalNetInflow.usd) : 0;
+      const totalUsd = kpis.totalNetInflow ? parseUSD(kpis.totalNetInflow.usd) : 0;
+      const gbtcBtc = etfRaw.formatted && etfRaw.formatted[0] ? (etfRaw.formatted[0].GBTC || 0) : 0;
+
+      let etfSignal = 'NEUTRAL';
+      if (dailyUsd > 50000000) etfSignal = 'BULLISH';       // > $50M daily inflow
+      else if (dailyUsd < -100000000) etfSignal = 'BEARISH'; // < -$100M daily outflow
+      if (gbtcBtc < -200) etfSignal = etfSignal === 'BULLISH' ? 'MIXED' : 'BEARISH'; // GBTC vampire
+
+      etfSummary = {
+        dailyUsd,
+        totalUsd,
+        gbtcBtc,
+        signal: etfSignal,
+        dailyLabel: kpis.dailyTotalNetInflow ? kpis.dailyTotalNetInflow.usd : 'N/A',
+        totalLabel: kpis.totalNetInflow ? kpis.totalNetInflow.usd : 'N/A',
+        lastUpdate: etfRaw.timestamp || null
+      };
+    }
+  } catch (e) {
+    console.error('[ETF Summary] Error:', e.message);
+  }
+
+  res.json({ success: true, fng, etfSummary });
 });
 
 function autoTradeStrategyBackend(heatmapData) {
@@ -1925,15 +2735,6 @@ function autoTradeStrategyBackend(heatmapData) {
 
   const trades = loadTrades();
   const activeTrades = trades.filter(t => t.status === 'ACTIVE');
-  if (activeTrades.length >= settings.maxActive) {
-    botPhaseState = {
-      ...botPhaseState,
-      phase: 'MAX_ACTIVE',
-      message: `Max active trades reached (${activeTrades.length}/${settings.maxActive}). Monitoring only.`,
-      lastUpdate: new Date().toISOString()
-    };
-    return;
-  }
 
   const heatmapSeries = heatmapData.series.find(s => s.type === 'heatmap');
   if (!heatmapSeries || !heatmapSeries.data || heatmapSeries.data.length === 0) return;
@@ -1996,13 +2797,15 @@ function autoTradeStrategyBackend(heatmapData) {
 
   if (!closestPool) {
     botPhaseState = {
-      phase: 'STANDBY',
+      phase: activeTrades.length >= settings.maxActive ? 'MAX_ACTIVE' : 'STANDBY',
       nearestPool: null,
       nearestPoolDistance: null,
       nearestPoolVolume: null,
       nearestPoolSide: null,
       sweepCandidate: null,
-      message: `No qualifying HIGH pools found near $${currentPrice.toFixed(0)}. Waiting...`,
+      message: activeTrades.length >= settings.maxActive 
+        ? `Max active trades reached (${activeTrades.length}/${settings.maxActive}). Monitoring only. No qualifying pools found.`
+        : `No qualifying HIGH pools found near $${currentPrice.toFixed(0)}. Waiting...`,
       lastUpdate: new Date().toISOString()
     };
     console.log(`[LSR Bot] STANDBY — No qualifying pools near price $${currentPrice.toFixed(0)}`);
@@ -2010,6 +2813,42 @@ function autoTradeStrategyBackend(heatmapData) {
   }
 
   const poolSide = closestPool.distance > 0 ? 'RESISTANCE' : 'SUPPORT';
+
+  // Calculate preview probability using closest pool as proxy sweep candidate
+  const previewSweep = {
+    volume: closestPool.volume,
+    rejectionStrength: 0.1, // minimal
+    direction: closestPool.distance > 0 ? 'SHORT' : 'LONG'
+  };
+  const previewResult = calculateReversalProbability(
+    previewSweep,
+    botMetrics.oiChange1h,
+    botMetrics.spotCvd1h,
+    botMetrics.trend1h,
+    botMetrics.trend4h,
+    botMetrics.fundingRate,
+    botMetrics.longShortRatio
+  );
+  const previewProb = previewResult.score;
+  botMetrics.reversalProbability = previewProb;
+  botMetrics.probabilityBreakdown = previewResult.breakdown;
+
+  // If max active trades reached, update status and return early
+  if (activeTrades.length >= settings.maxActive) {
+    botPhaseState = {
+      phase: 'MAX_ACTIVE',
+      nearestPool: closestPool.price,
+      nearestPoolDistance: closestPool.distance.toFixed(2) + '%',
+      nearestPoolVolume: closestPool.volume,
+      nearestPoolSide: poolSide,
+      sweepCandidate: null,
+      reversalProbabilityPreview: previewProb,
+      probabilityBreakdown: previewResult.breakdown,
+      message: `Max active trades reached (${activeTrades.length}/${settings.maxActive}). Monitoring only. Nearest ${poolSide} pool: $${closestPool.price.toFixed(0)} (${Math.abs(closestPool.distance).toFixed(2)}% away). Preview prob: ${previewProb}%.`,
+      lastUpdate: new Date().toISOString()
+    };
+    return;
+  }
   
   // ─── Step 5: Sweep Detection across recent candles ────────
   const sweepCandidates = [];
@@ -2104,7 +2943,7 @@ function autoTradeStrategyBackend(heatmapData) {
   // ─── Step 6: No sweep detected → Report phase ────────────
   if (sweepCandidates.length === 0) {
     const nearDist = Math.abs(closestPool.distance);
-    
+
     if (nearDist <= 0.5) {
       // ALERT phase: price is close to a major pool
       botPhaseState = {
@@ -2114,10 +2953,12 @@ function autoTradeStrategyBackend(heatmapData) {
         nearestPoolVolume: closestPool.volume,
         nearestPoolSide: poolSide,
         sweepCandidate: null,
-        message: `⚠️ Price $${currentPrice.toFixed(0)} approaching ${poolSide} pool at $${closestPool.price.toFixed(0)} (${nearDist.toFixed(2)}% away). Watching for sweep...`,
+        reversalProbabilityPreview: previewProb,
+        probabilityBreakdown: previewResult.breakdown,
+        message: `⚠️ Price $${currentPrice.toFixed(0)} approaching ${poolSide} pool at $${closestPool.price.toFixed(0)} (${nearDist.toFixed(2)}% away). Preview prob: ${previewProb}%. Watching for sweep...`,
         lastUpdate: new Date().toISOString()
       };
-      console.log(`[LSR Bot] ALERT — Price approaching ${poolSide} pool $${closestPool.price.toFixed(0)} (${nearDist.toFixed(2)}%)`);
+      console.log(`[LSR Bot] ALERT — Price approaching ${poolSide} pool $${closestPool.price.toFixed(0)} (${nearDist.toFixed(2)}%) Preview prob: ${previewProb}%`);
     } else {
       // STANDBY phase: price in mid-range, no qualifying sweep
       botPhaseState = {
@@ -2127,10 +2968,12 @@ function autoTradeStrategyBackend(heatmapData) {
         nearestPoolVolume: closestPool.volume,
         nearestPoolSide: poolSide,
         sweepCandidate: null,
-        message: `Waiting in mid-range. Nearest ${poolSide} pool: $${closestPool.price.toFixed(0)} (${nearDist.toFixed(2)}%). No sweep yet.`,
+        reversalProbabilityPreview: previewProb,
+        probabilityBreakdown: previewResult.breakdown,
+        message: `Waiting in mid-range. Nearest ${poolSide} pool: $${closestPool.price.toFixed(0)} (${nearDist.toFixed(2)}%). No sweep yet. Preview prob: ${previewProb}%.`,
         lastUpdate: new Date().toISOString()
       };
-      console.log(`[LSR Bot] STANDBY — Mid-range at $${currentPrice.toFixed(0)}, nearest pool $${closestPool.price.toFixed(0)} (${nearDist.toFixed(2)}%)`);
+      console.log(`[LSR Bot] STANDBY — Mid-range at $${currentPrice.toFixed(0)}, nearest pool $${closestPool.price.toFixed(0)} (${nearDist.toFixed(2)}%) Preview prob: ${previewProb}%`);
     }
     return;
   }
@@ -2164,16 +3007,23 @@ function autoTradeStrategyBackend(heatmapData) {
     sl = direction === 'LONG' ? (entry * (1 - slFloorFraction)) : (entry * (1 + slFloorFraction));
   }
 
-  // ─── Step 9: Calculate TP (largest opposing unswept pool) ──
+  // ─── Step 9: Calculate TP (largest opposing unswept pool, capped by maxTPPercent) ──
+  const maxTPPercent = settings.maxTPPercent !== undefined ? settings.maxTPPercent : 1.5;
+  const maxTPDistance = entry * (maxTPPercent / 100);
+
   let tp = 0;
   let maxOpposingVolume = 0;
 
+  // 1. Search for the largest opposing unswept pool WITHIN the maxTPPercent distance
   yAxisData.forEach((priceStr, idx) => {
     const p = parseFloat(priceStr);
     if (isNaN(p)) return;
 
     const isOpposing = direction === 'LONG' ? (p > currentPrice) : (p < currentPrice);
     if (!isOpposing) return;
+
+    const dist = Math.abs(p - currentPrice);
+    if (dist > maxTPDistance) return; // Exceeds max distance cap
 
     // Pastikan pool target belum tersapu oleh semua candle
     const swept = cs.data.some(c => p >= parseFloat(c[2]) && p <= parseFloat(c[3]));
@@ -2186,10 +3036,40 @@ function autoTradeStrategyBackend(heatmapData) {
     }
   });
 
+  // 2. Fallback if no pool found within the cap:
   if (tp === 0) {
-    // Fallback: 2x SL distance
-    const fallbackDist = slDistance * 2;
-    tp = direction === 'LONG' ? (entry * (1 + fallbackDist / 100)) : (entry * (1 - fallbackDist / 100));
+    let uncappedTp = 0;
+    let uncappedMaxVol = 0;
+    yAxisData.forEach((priceStr, idx) => {
+      const p = parseFloat(priceStr);
+      if (isNaN(p)) return;
+
+      const isOpposing = direction === 'LONG' ? (p > currentPrice) : (p < currentPrice);
+      if (!isOpposing) return;
+
+      const swept = cs.data.some(c => p >= parseFloat(c[2]) && p <= parseFloat(c[3]));
+      if (swept) return;
+
+      const volume = volumeByY[idx] || 0;
+      if (volume > uncappedMaxVol) {
+        uncappedMaxVol = volume;
+        uncappedTp = p;
+      }
+    });
+
+    if (uncappedTp !== 0) {
+      // We found a pool but it was too far. Cap it to maxTPPercent distance.
+      tp = direction === 'LONG' 
+        ? (entry + maxTPDistance) 
+        : (entry - maxTPDistance);
+    } else {
+      // Hard fallback: minRR * slDistance or maxTPPercent (whichever is larger)
+      const minRR = settings.minRR || 2.0;
+      const fallbackDist = Math.max(slDistance * minRR, maxTPPercent);
+      tp = direction === 'LONG' 
+        ? (entry * (1 + fallbackDist / 100)) 
+        : (entry * (1 - fallbackDist / 100));
+    }
   }
 
   const tpDistance = Math.abs(((tp - entry) / entry) * 100);
@@ -2213,8 +3093,10 @@ function autoTradeStrategyBackend(heatmapData) {
   }
 
   // ─── Step 10b: Reversal Probability Filter ────────────────
-  const prob = calculateReversalProbability(bestSweep, botMetrics.oiChange1h, botMetrics.spotCvd1h, botMetrics.trend1h, botMetrics.trend4h, botMetrics.fundingRate, botMetrics.longShortRatio);
+  const probResult = calculateReversalProbability(bestSweep, botMetrics.oiChange1h, botMetrics.spotCvd1h, botMetrics.trend1h, botMetrics.trend4h, botMetrics.fundingRate, botMetrics.longShortRatio);
+  const prob = probResult.score;
   botMetrics.reversalProbability = prob; // cache the latest calculated probability for reporting
+  botMetrics.probabilityBreakdown = probResult.breakdown;
 
   const minProb = settings.minReversalProbability || 65;
   if (prob < minProb) {
@@ -2224,7 +3106,18 @@ function autoTradeStrategyBackend(heatmapData) {
       nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
       nearestPoolVolume: bestSweep.volume,
       nearestPoolSide: direction === 'LONG' ? 'SUPPORT' : 'RESISTANCE',
-      sweepCandidate: { direction, entry, tp, sl, rr, prob },
+      sweepCandidate: { 
+        direction, 
+        entry, 
+        tp, 
+        sl, 
+        rr, 
+        prob,
+        rejectionStrength: bestSweep.rejectionStrength,
+        wickDepth: bestSweep.wickDepth,
+        confirmCount: bestSweep.confirmCount
+      },
+      probabilityBreakdown: probResult.breakdown,
       message: `Sweep detected at $${bestSweep.price.toFixed(0)} but Reversal Prob ${prob}% < min ${minProb}%. Skipping.`,
       lastUpdate: new Date().toISOString()
     };
@@ -2252,7 +3145,18 @@ function autoTradeStrategyBackend(heatmapData) {
       nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
       nearestPoolVolume: bestSweep.volume,
       nearestPoolSide: direction === 'LONG' ? 'SUPPORT' : 'RESISTANCE',
-      sweepCandidate: { direction, entry, tp, sl, rr, prob },
+      sweepCandidate: { 
+        direction, 
+        entry, 
+        tp, 
+        sl, 
+        rr, 
+        prob,
+        rejectionStrength: bestSweep.rejectionStrength,
+        wickDepth: bestSweep.wickDepth,
+        confirmCount: bestSweep.confirmCount
+      },
+      probabilityBreakdown: probResult.breakdown,
       message: `Sweep ${direction} at $${bestSweep.price.toFixed(0)} detected but in cooldown. Waiting...`,
       lastUpdate: new Date().toISOString()
     };
@@ -2293,7 +3197,16 @@ function autoTradeStrategyBackend(heatmapData) {
       nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
       nearestPoolVolume: bestSweep.volume,
       nearestPoolSide: direction === 'LONG' ? 'SUPPORT' : 'RESISTANCE',
-      sweepCandidate: { direction, entry, tp, sl, rr },
+      sweepCandidate: { 
+        direction, 
+        entry, 
+        tp, 
+        sl, 
+        rr,
+        rejectionStrength: bestSweep.rejectionStrength,
+        wickDepth: bestSweep.wickDepth,
+        confirmCount: bestSweep.confirmCount
+      },
       message: `${direction} setup valid but conflicting ${direction === 'SHORT' ? 'SUPPORT' : 'RESISTANCE'} sweep found in same window — both-sides trap. Waiting for clean setup.`,
       lastUpdate: new Date().toISOString()
     };
@@ -2350,7 +3263,18 @@ function autoTradeStrategyBackend(heatmapData) {
     nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
     nearestPoolVolume: bestSweep.volume,
     nearestPoolSide: direction === 'LONG' ? 'SUPPORT' : 'RESISTANCE',
-    sweepCandidate: { direction, entry: newTrade.entry, tp: newTrade.tp, sl: newTrade.sl, rr, prob },
+    sweepCandidate: { 
+      direction, 
+      entry: newTrade.entry, 
+      tp: newTrade.tp, 
+      sl: newTrade.sl, 
+      rr, 
+      prob,
+      rejectionStrength: bestSweep.rejectionStrength,
+      wickDepth: bestSweep.wickDepth,
+      confirmCount: bestSweep.confirmCount
+    },
+    probabilityBreakdown: probResult.breakdown,
     message: `🎯 ${direction} entry at $${entry.toFixed(0)} after sweep of $${bestSweep.price.toFixed(0)} pool. R:R 1:${rr} (Prob: ${prob}%)`,
     lastUpdate: new Date().toISOString()
   };
@@ -2381,7 +3305,7 @@ async function fetchOrderBookLevels() {
   const now = Date.now();
 
   // 1. Recent 5m candles (25 bars = ~2h price context)
-  const klinesRes = await fetch('https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=5m&limit=25');
+  const klinesRes = await fetchBinance('https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=5m&limit=25');
   const klinesRaw = await klinesRes.json();
 
   // xAxis labels (time strings for ECharts category axis)
@@ -2415,7 +3339,7 @@ async function fetchOrderBookLevels() {
   const currentPrice = parseFloat(klinesRaw[klinesRaw.length - 1][4]);
 
   // 2. Futures order book — 500 levels each side
-  const depthRes = await fetch('https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=500');
+  const depthRes = await fetchBinance('https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=500');
   const depth = await depthRes.json();
 
   // 3. Bucket bids + asks into OB_BUCKET price increments (volume in USD)
@@ -2484,7 +3408,7 @@ let sweepPredictionCache = null;
 
 async function fetchBinance15mKlines() {
   try {
-    const res = await fetch('https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=15m&limit=20');
+    const res = await fetchBinance('https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=15m&limit=20');
     const raw = await res.json();
     return {
       type: 'candlestick_15m',
@@ -2752,7 +3676,7 @@ async function fetchJDASignal() {
     const intervals = ['15m', '1h', '4h', '1d', '1w'];
     const fetchKlines = async (interval) => {
       const url = `https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=${interval}&limit=200`;
-      const res = await fetch(url);
+      const res = await fetchBinance(url);
       if (!res.ok) throw new Error(`HTTP error ${res.status} for ${interval}`);
       return await res.json();
     };
@@ -3085,11 +4009,12 @@ async function runBotCycle() {
     
     botMetrics = {
       ...botMetrics,
-      openInterest: oiData.currentOI,
+      openInterest: oiData.currentOIVal,
+      openInterestBtc: oiData.currentOI,
       oiChange1h: oiData.oiChange1h,
-      spotCvd1h: (cvdVal && cvdVal.futures) || cvdVal || 0,
-      spotCvdFutures: (cvdVal && cvdVal.futures) || 0,
-      spotCvdSpot: (cvdVal && cvdVal.spot) || 0,
+      spotCvd1h: cvdVal || 0,
+      spotCvdFutures: 0,
+      spotCvdSpot: cvdVal || 0,
       // JDA MTF engine replaces EMA20/50 — VZO + ZLEMA based trend
       trend1h: (jdaSig.timeframes['1h']?.state || '').includes('BULL') ? 'BULLISH' : (jdaSig.timeframes['1h']?.state || '').includes('BEAR') ? 'BEARISH' : 'RANGING',
       trend4h: (jdaSig.timeframes['4h']?.state || '').includes('BULL') ? 'BULLISH' : (jdaSig.timeframes['4h']?.state || '').includes('BEAR') ? 'BEARISH' : 'RANGING',
@@ -3134,6 +4059,7 @@ async function runBotCycle() {
       result = await runWithCdpLock(() => scrapeHeatMap(true)); // force refresh to get latest data from CoinGlass!
       heatmapDataCache = result;
       lastHeatmapFetchTime = Date.now();
+      saveCacheToDisk('heatmap24h_cache.json', heatmapDataCache);
     } catch (scrapeErr) {
       console.warn('[Background Bot] CoinGlass scrape failed, trying fallback to cached data:', scrapeErr.message);
       if (heatmapDataCache) {
@@ -3168,6 +4094,7 @@ async function runBotCycle() {
         }
         sweepPrediction3DCache = predictSweepTargets(hd3, botMetrics);
         console.log('[Heatmap3D] OK. Sweep3D:', sweepPrediction3DCache ? sweepPrediction3DCache.direction + ' ' + sweepPrediction3DCache.confidence + '%' : 'NULL');
+        saveCacheToDisk('heatmap3d_cache.json', heatmap3DCache);
       } else {
         console.warn('[Heatmap3D] Period switch to 3D failed (got 24h-fallback), skipping cache update to avoid polluting 3D data.');
       }
@@ -3228,13 +4155,22 @@ app.listen(PORT, () => {
     if (!etfDataCache) {
       console.log('[ETF] Warming up cache...');
       try {
-        const tickerResp = await fetch('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
+        const tickerResp = await fetchBinance('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
         const tickerData = await tickerResp.json();
         const btcPrice = parseFloat(tickerData.price) || 65000;
         const result = await scrapeCoinGlass('/etf/bitcoin', false);
         etfDataCache = result;
         lastFetchTime = Date.now();
         console.log('[ETF] Cache warmed up successfully.');
+
+        // Send initial ETF alerts to Telegram on warm-up
+        const etfAlertInfo = buildEtfAlerts(result, btcPrice);
+        if (etfAlertInfo) {
+          lastEtfAlertState = etfAlertInfo.stateKey;
+          const header = `📊 <b>ETF Monitor Started</b>\n${'─'.repeat(20)}\n`;
+          sendTelegramAlert(header + etfAlertInfo.alerts.join('\n\n'));
+          console.log(`[ETF Alert] Initial state: ${etfAlertInfo.stateKey}`);
+        }
       } catch (e) { console.error('[ETF] Warm-up failed:', e.message); }
     }
   }, 90000);

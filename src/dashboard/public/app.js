@@ -229,7 +229,10 @@ function renderChart(data, btcPrice) {
 
   // Reverse data to display chronologically from left to right (excluding Total row)
   const timeline = [...data].filter(d => d.date !== 'Total').reverse();
-  const labels = timeline.map(d => d.date);
+  const labels = timeline.map(d => {
+    const raw = (d.date || '').trim().replace(/\s+/g, ' ');
+    return raw.split(' ')[0]; // Ambil bagian tanggal utama saja (menghindari duplikasi tanggal inception)
+  });
   const totalFlowsUsd = timeline.map(d => d.Total * btcPrice);
 
   if (chartInstance) {

@@ -44,6 +44,18 @@
       </a>
     </li>
     <li class="sidebar-item">
+      <a href="orderbook.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+        <span>Combined Depth</span>
+      </a>
+    </li>
+    <li class="sidebar-item">
+      <a href="trades.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+        <span>Live Trade Journal</span>
+      </a>
+    </li>
+    <li class="sidebar-item">
       <a href="raw-data.html">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
         <span>Raw Data</span>
@@ -53,6 +65,15 @@
       <a href="status.html">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
         <span>Connection Status</span>
+      </a>
+    </li>
+    <li class="sidebar-item">
+      <a href="settings.html">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <circle cx="12" cy="12" r="3"></circle>
+          <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+        </svg>
+        <span>Settings</span>
       </a>
     </li>
     </ul>
@@ -86,35 +107,9 @@
   </div>
 
   <div class="app-container">
-    <!-- Header -->
-    <header class="app-header">
-      <div class="header-logo">
-        <svg class="icon icon-bolt" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <path d="M13 10V3L4 14H11V21L20 10H13Z" stroke="#00E5FF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
-        </svg>
-        <h1>JDA Trade Monitor <span class="logo-subtitle">ETF Monitor</span></h1>
-      </div>
-      <nav class="header-nav">
-        <a href="index.html" class="nav-item">ETF Monitor</a>
-        <a href="heatmap.html" class="nav-item active">Liquidation Heatmap</a>
-        <a href="raw-data.html" class="nav-item">Raw Data</a>
-      </nav>
-      <div class="header-controls">
-        <div id="connection-status" class="status-indicator normal">
-          <span class="status-dot"></span>
-          <span class="status-text">Loading...</span>
-        </div>
-        <button id="btn-refresh" class="btn btn-primary">
-          <svg class="icon icon-refresh" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-            <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-          </svg>
-          Sync Heatmap Now
-        </button>
-      </div>
-    </header>
 
     <!-- Top KPI Row -->
-    <section class="kpi-row">
+    <section class="kpi-row cols-4">
       <!-- BTC Price Card -->
       <div class="card kpi-card" id="kpi-btc-price">
         <div class="kpi-icon-wrapper cyan">
@@ -241,12 +236,11 @@
         </div>
       </section>
 
-      <!-- Backtesting Log Section -->
-      <section class="grid-col-12" id="backtest-section-card">
+      <!-- Trade Journal moved to trades.html -->
+      <section class="grid-col-12" id="backtest-section-card" style="display:none;">
         <div class="card">
           <div class="backtest-header">
-            <h3>Strategy Backtest Log</h3>
-            <button id="btn-clear-backtest-log" class="btn-action-sm danger">Clear All</button>
+            <h3>Live Trade Journal</h3>
           </div>
 
           <!-- Auto-Trade Bot Panel (LSR Strategy) -->
@@ -427,31 +421,6 @@
         </div>
       </section>
 
-      <!-- Description / Explanation Section -->
-      <section class="grid-col-12">
-        <div class="card">
-          <h3 style="margin-bottom: var(--spacing-xs); color: var(--accent-primary);">Understanding Liquidation HeatMaps</h3>
-          <p style="color: var(--text-muted); font-size: 13px; line-height: 1.6; margin-bottom: var(--spacing-sm);">
-            The Liquidation HeatMap displays potential liquidation levels based on order book depth, leverage parameters, and current funding rates. 
-            Bright colors (yellow/red) represent large clusters of leverage orders (potential liquidation pools) that act as magnets for price action. 
-            Market makers and large institutional players often drive the price toward these areas to trigger cascade liquidations and capture liquidity.
-          </p>
-          <div style="display: flex; gap: var(--spacing-sm); flex-wrap: wrap;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="display: inline-block; width: 12px; height: 12px; border-radius: 3px; background-color: #bfdc21;"></span>
-              <span style="font-size: 12px; font-weight: 500;">High Intensity (Massive Liquidation Risk)</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="display: inline-block; width: 12px; height: 12px; border-radius: 3px; background-color: #3ab56e;"></span>
-              <span style="font-size: 12px; font-weight: 500;">Medium Intensity</span>
-            </div>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="display: inline-block; width: 12px; height: 12px; border-radius: 3px; background-color: #28738f;"></span>
-              <span style="font-size: 12px; font-weight: 500;">Low Intensity</span>
-            </div>
-          </div>
-        </div>
-      </section>
     </main>
 
     <!-- Footer -->

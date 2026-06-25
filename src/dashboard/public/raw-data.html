@@ -90,6 +90,132 @@
       font-weight: 600;
       border-color: var(--accent-primary);
     }
+
+    /* Modern Sentiment and Bot Phase Badges */
+    .phase-badge {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .phase-STANDBY    { background: rgba(132,142,156,0.15); color: #848E9C; }
+    .phase-ALERT      { background: rgba(240,185,11,0.2);   color: #F0B90B; }
+    .phase-SWEEP_DETECTED { background: rgba(14,203,129,0.2); color: #0ECB81; }
+    .phase-TRADE_EXECUTED { background: rgba(0,229,255,0.25); color: #00E5FF; }
+    .phase-COOLDOWN   { background: rgba(191,90,242,0.2);   color: #BF5AF2; }
+    .phase-SWEEP_REJECTED { background: rgba(246,70,93,0.15); color: #F6465D; }
+    .phase-CONFLICTING_SWEEP { background: rgba(246,70,93,0.1); color: #F6465D; }
+    .phase-MAX_ACTIVE { background: rgba(255,214,10,0.15);  color: #FFD60A; }
+    .phase-DISABLED   { background: rgba(132,142,156,0.1);  color: #636366; }
+    .phase-default    { background: rgba(132,142,156,0.1);  color: #636366; }
+
+    .signal-pill {
+      display: inline-block;
+      padding: 4px 10px;
+      border-radius: 4px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .sig-NEUTRAL      { background: rgba(132,142,156,0.15); color: #848E9C; }
+    .sig-ACCUMULATION { background: rgba(14,203,129,0.2); color: #0ECB81; }
+    .sig-DISTRIBUTION { background: rgba(246,70,93,0.15); color: #F6465D; }
+    .sig-BULLISH      { background: rgba(14,203,129,0.2); color: #0ECB81; }
+    .sig-BEARISH      { background: rgba(246,70,93,0.15); color: #F6465D; }
+    .sig-MIXED        { background: rgba(240,185,11,0.2);   color: #F0B90B; }
+
+    .metrics-panel-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 15px;
+      margin-top: 15px;
+      margin-bottom: 15px;
+    }
+    @media (max-width: 1024px) {
+      .metrics-panel-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+    @media (max-width: 480px) {
+      .metrics-panel-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    .breakdown-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+    @media (max-width: 1024px) {
+      .breakdown-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+    }
+    @media (max-width: 480px) {
+      .breakdown-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+    
+    .wick-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+      font-size: 11px;
+    }
+    @media (max-width: 480px) {
+      .wick-grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    .whale-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 15px;
+      margin-top: 15px;
+      margin-bottom: 15px;
+    }
+    @media (max-width: 1024px) {
+      .whale-grid {
+        grid-template-columns: repeat(2, 1fr);
+      }
+      .whale-grid > div:nth-child(3) {
+        grid-column: span 2;
+      }
+    }
+    @media (max-width: 480px) {
+      .whale-grid {
+        grid-template-columns: 1fr;
+      }
+      .whale-grid > div:nth-child(3) {
+        grid-column: span 1;
+      }
+    }
+
+    .metric-panel-item {
+      background: rgba(0, 0, 0, 0.2);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 10px 14px;
+    }
+    .metric-panel-label {
+      font-size: 10px;
+      color: var(--text-muted);
+      margin-bottom: 4px;
+      text-transform: uppercase;
+      letter-spacing: .5px;
+    }
+    .metric-panel-value {
+      font-size: 16px;
+      font-weight: 700;
+      font-family: var(--font-mono);
+    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
 </head>
@@ -103,30 +229,51 @@
       <div class="sidebar-logo-text">JDA <span>Monitor</span></div>
     </div>
     <ul class="sidebar-nav">
-    <li class="sidebar-item">
-      <a href="index.html">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
-        <span>ETF Monitor</span>
-      </a>
-    </li>
-    <li class="sidebar-item">
-      <a href="heatmap.html">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 22 22 22"></polygon><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
-        <span>Liquidation Heatmap</span>
-      </a>
-    </li>
-    <li class="sidebar-item active">
-      <a href="raw-data.html">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
-        <span>Raw Data</span>
-      </a>
-    </li>
-    <li class="sidebar-item">
-      <a href="status.html">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
-        <span>Connection Status</span>
-      </a>
-    </li>
+      <li class="sidebar-item">
+        <a href="index.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+          <span>ETF Monitor</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a href="heatmap.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 22 22 22"></polygon><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          <span>Liquidation Heatmap</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a href="orderbook.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          <span>Combined Depth</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a href="trades.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+          <span>Live Trade Journal</span>
+        </a>
+      </li>
+      <li class="sidebar-item active">
+        <a href="raw-data.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+          <span>Raw Data</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a href="status.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          <span>Connection Status</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a href="settings.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          <span>Settings</span>
+        </a>
+      </li>
     </ul>
     <div class="sidebar-footer">
       <a href="/auth/logout" class="sidebar-logout">
@@ -194,6 +341,27 @@
             <circle cx="12" cy="12" r="10"></circle>
             <path d="M12 8v8M9 12h6"/>
           </svg>
+          <div class="kpi-tooltip">
+            <div class="tooltip-header">
+              <span class="tooltip-title">BTC Price (Binance)</span>
+            </div>
+            <div class="tooltip-section">
+              <span class="tooltip-sec-label">Definisi:</span>
+              <span class="tooltip-sec-desc">Harga real-time kontrak berjangka (Futures) Bitcoin langsung dari bursa Binance.</span>
+            </div>
+            <div class="tooltip-divider"></div>
+            <div class="tooltip-section">
+              <span class="tooltip-sec-label">Pengaruh Strategi LSR:</span>
+              <div class="tooltip-impact-row">
+                <span class="impact-badge long">LONG</span>
+                <span class="impact-text">Sangat menguntungkan jika harga menyapu (sweep) pool support/likuiditas bawah dan terjadi rejection kuat (reversal).</span>
+              </div>
+              <div class="tooltip-impact-row">
+                <span class="impact-badge short">SHORT</span>
+                <span class="impact-text">Sangat menguntungkan jika harga menyapu pool resistance/likuiditas atas dan terjadi rejection kuat (reversal).</span>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="kpi-info">
           <span class="kpi-label">BTC Price (Binance)</span>
@@ -212,6 +380,27 @@
             <line x1="12" y1="20" x2="12" y2="4"></line>
             <line x1="6" y1="20" x2="6" y2="14"></line>
           </svg>
+          <div class="kpi-tooltip">
+            <div class="tooltip-header">
+              <span class="tooltip-title">Binance Open Interest</span>
+            </div>
+            <div class="tooltip-section">
+              <span class="tooltip-sec-label">Definisi:</span>
+              <span class="tooltip-sec-desc">Jumlah total posisi/kontrak Futures Bitcoin yang sedang aktif dan belum diselesaikan di Binance.</span>
+            </div>
+            <div class="tooltip-divider"></div>
+            <div class="tooltip-section">
+              <span class="tooltip-sec-label">Pengaruh Strategi LSR:</span>
+              <div class="tooltip-impact-row">
+                <span class="impact-badge long">LONG</span>
+                <span class="impact-text">Kombinasi harga naik + OI naik menandakan akumulasi LONG baru yang kuat. OI yang sangat tinggi rawan memicu Short Squeeze jika terjadi sweep bawah.</span>
+              </div>
+              <div class="tooltip-impact-row">
+                <span class="impact-badge short">SHORT</span>
+                <span class="impact-text">Kombinasi harga turun + OI naik menandakan akumulasi SHORT baru yang kuat. Penurunan OI tajam mengindikasikan likuidasi posisi massal.</span>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="kpi-info">
           <span class="kpi-label">Binance Open Interest</span>
@@ -229,6 +418,27 @@
             <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline>
             <polyline points="17 6 23 6 23 12"></polyline>
           </svg>
+          <div class="kpi-tooltip">
+            <div class="tooltip-header">
+              <span class="tooltip-title">Binance Futures CVD (1H)</span>
+            </div>
+            <div class="tooltip-section">
+              <span class="tooltip-sec-label">Definisi:</span>
+              <span class="tooltip-sec-desc">Cumulative Volume Delta (1 Jam) mengukur selisih kumulatif antara volume market buy agresif dan market sell agresif.</span>
+            </div>
+            <div class="tooltip-divider"></div>
+            <div class="tooltip-section">
+              <span class="tooltip-sec-label">Pengaruh Strategi LSR:</span>
+              <div class="tooltip-impact-row">
+                <span class="impact-badge long">LONG</span>
+                <span class="impact-text">CVD positif/meningkat menunjukkan akumulasi agresif. Divergensi bullish (harga turun tapi CVD naik/datar) memicu sinyal LONG kuat.</span>
+              </div>
+              <div class="tooltip-impact-row">
+                <span class="impact-badge short">SHORT</span>
+                <span class="impact-text">CVD negatif/menurun menunjukkan distribusi agresif. Divergensi bearish (harga naik tapi CVD turun/datar) memicu sinyal SHORT kuat.</span>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="kpi-info">
           <span class="kpi-label">Binance Futures CVD (1h)</span>
@@ -248,6 +458,27 @@
             <rect x="14" y="12" width="7" height="9"></rect>
             <rect x="3" y="16" width="7" height="5"></rect>
           </svg>
+          <div class="kpi-tooltip">
+            <div class="tooltip-header">
+              <span class="tooltip-title">HTF Trend Bias Matrix</span>
+            </div>
+            <div class="tooltip-section">
+              <span class="tooltip-sec-label">Definisi:</span>
+              <span class="tooltip-sec-desc">Arah tren jangka panjang (High Time Frame) hasil kalkulasi VZO + ZLEMA (JDA Engine) pada chart 1H & 4H.</span>
+            </div>
+            <div class="tooltip-divider"></div>
+            <div class="tooltip-section">
+              <span class="tooltip-sec-label">Pengaruh Strategi LSR:</span>
+              <div class="tooltip-impact-row">
+                <span class="impact-badge long">LONG</span>
+                <span class="impact-text">Tren HTF Bullish/Strong Bullish memprioritaskan arah dan meningkatkan probabilitas keberhasilan setup sweep reversal LONG.</span>
+              </div>
+              <div class="tooltip-impact-row">
+                <span class="impact-badge short">SHORT</span>
+                <span class="impact-text">Tren HTF Bearish/Strong Bearish memprioritaskan arah dan meningkatkan probabilitas keberhasilan setup sweep reversal SHORT.</span>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="kpi-info">
           <span class="kpi-label">HTF Trend Bias Matrix</span>
@@ -266,6 +497,27 @@
             <line x1="12" y1="16" x2="12" y2="12"></line>
             <line x1="12" y1="8" x2="12.01" y2="8"></line>
           </svg>
+          <div class="kpi-tooltip">
+            <div class="tooltip-header">
+              <span class="tooltip-title">Binance Funding Rate</span>
+            </div>
+            <div class="tooltip-section">
+              <span class="tooltip-sec-label">Definisi:</span>
+              <span class="tooltip-sec-desc">Biaya berkala antara trader Long dan Short. Nilai positif berarti Long membayar Short; nilai negatif sebaliknya.</span>
+            </div>
+            <div class="tooltip-divider"></div>
+            <div class="tooltip-section">
+              <span class="tooltip-sec-label">Pengaruh Strategi LSR:</span>
+              <div class="tooltip-impact-row">
+                <span class="impact-badge long">LONG</span>
+                <span class="impact-text">Funding rate negatif tinggi menunjukkan pasar crowded short, meningkatkan probabilitas terjadinya SHORT SQUEEZE (reversal naik / LONG).</span>
+              </div>
+              <div class="tooltip-impact-row">
+                <span class="impact-badge short">SHORT</span>
+                <span class="impact-text">Funding rate positif tinggi menunjukkan pasar crowded long, meningkatkan probabilitas terjadinya LONG SQUEEZE (reversal turun / SHORT).</span>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="kpi-info">
           <span class="kpi-label">Binance Funding Rate</span>
@@ -284,6 +536,27 @@
             <circle cx="8.5" cy="7" r="4"></circle>
             <polyline points="17 11 19 13 23 9"></polyline>
           </svg>
+          <div class="kpi-tooltip">
+            <div class="tooltip-header">
+              <span class="tooltip-title">Long/Short Ratio</span>
+            </div>
+            <div class="tooltip-section">
+              <span class="tooltip-sec-label">Definisi:</span>
+              <span class="tooltip-sec-desc">Rasio total akun trader posisi LONG dibanding SHORT di kalangan Top Traders Binance.</span>
+            </div>
+            <div class="tooltip-divider"></div>
+            <div class="tooltip-section">
+              <span class="tooltip-sec-label">Pengaruh Strategi LSR:</span>
+              <div class="tooltip-impact-row">
+                <span class="impact-badge long">LONG</span>
+                <span class="impact-text">Rasio sangat rendah (< 1.2) menunjukkan pasar crowded short, memicu peluang SHORT SQUEEZE yang tinggi (reversal naik / LONG).</span>
+              </div>
+              <div class="tooltip-impact-row">
+                <span class="impact-badge short">SHORT</span>
+                <span class="impact-text">Rasio sangat tinggi (> 1.8) menunjukkan pasar crowded long, memicu peluang LONG SQUEEZE yang tinggi (reversal turun / SHORT).</span>
+              </div>
+            </div>
+          </div>
         </div>
         <div class="kpi-info">
           <span class="kpi-label">Long/Short Ratio</span>
@@ -292,6 +565,173 @@
           </div>
           <span class="kpi-footer" id="foot-ls-percentage">50.0% Long / 50.0% Short</span>
           <span class="kpi-time" id="foot-ls-top-trader" style="margin-top:2px;color:#98989D;">Top Traders: --</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── LSR Bot Status Card ─────────────────────────── -->
+    <section style="margin-bottom: var(--spacing-md);">
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
+          <div>
+            <h3 style="font-size:16px; font-weight:700; color:var(--accent-primary);">🎯 LSR Bot Status</h3>
+            <span style="font-size:11px; color:var(--text-muted);">Liquidity Sweep Reversal — Real-time Phase</span>
+          </div>
+          <div id="bot-phase-badge" class="phase-badge phase-default">INITIALIZING</div>
+        </div>
+
+        <div class="metrics-panel-grid">
+          <div class="metric-panel-item">
+            <div class="metric-panel-label">Nearest Pool</div>
+            <div id="bot-nearest-pool" class="metric-panel-value">--</div>
+            <div id="bot-pool-side" style="font-size:10px; font-weight:600; margin-top:2px; color:var(--text-muted);">--</div>
+          </div>
+          <div class="metric-panel-item">
+            <div class="metric-panel-label">Distance</div>
+            <div id="bot-pool-dist" class="metric-panel-value" style="color: #F0B90B;">--</div>
+          </div>
+          <div class="metric-panel-item">
+            <div class="metric-panel-label">Reversal Prob</div>
+            <div id="bot-reversal-prob" class="metric-panel-value">--</div>
+          </div>
+          <div class="metric-panel-item">
+            <div class="metric-panel-label">Sweep R:R</div>
+            <div id="bot-sweep-rr" class="metric-panel-value">--</div>
+          </div>
+        </div>
+
+        <!-- Reversal Probability Score Breakdown -->
+        <div style="margin-top: 15px; margin-bottom: 15px; border-top: 1px dashed var(--border-color); padding-top: 15px;">
+          <div style="font-size: 11px; font-weight: 700; color: var(--accent-primary); margin-bottom: 10px; text-transform: uppercase; letter-spacing: .5px;">📊 Reversal Probability Breakdown (100-Point Model)</div>
+          <div class="breakdown-grid" id="prob-breakdown-container">
+            <div style="font-size: 11px; color: var(--text-muted);">Loading breakdown...</div>
+          </div>
+        </div>
+
+        <!-- Wick Rejection & Sweep Details (only visible when sweepCandidate is active) -->
+        <div id="wick-details-panel" style="display: none; margin-bottom: 15px; background: rgba(14, 203, 129, 0.04); border: 1px solid rgba(14, 203, 129, 0.15); border-radius: 6px; padding: 12px 14px;">
+          <div style="font-size: 11px; font-weight: 700; color: #0ECB81; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .5px;">⚡ Active Sweep Candle Details</div>
+          <div class="wick-grid">
+            <div>
+              <span style="color: var(--text-muted);">Rejection Strength</span>
+              <div id="wick-rej-val" style="font-family: var(--font-mono); font-weight: 700; color: #0ECB81; margin-top: 2px;">--</div>
+            </div>
+            <div>
+              <span style="color: var(--text-muted);">Wick Depth</span>
+              <div id="wick-depth-val" style="font-family: var(--font-mono); font-weight: 700; color: #0ECB81; margin-top: 2px;">--</div>
+            </div>
+            <div>
+              <span style="color: var(--text-muted);">Confirm Candles</span>
+              <div id="wick-confirm-val" style="font-family: var(--font-mono); font-weight: 700; color: #fff; margin-top: 2px;">--</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Msg Block -->
+        <div style="background: rgba(0, 0, 0, 0.3); border-left: 3px solid var(--border-color); padding: 10px 14px; font-family: var(--font-mono); font-size: 12px; color: var(--text-main); border-radius: 4px;">
+          <span style="color: var(--text-muted); font-weight: 600;">MSG ›</span> <span id="bot-status-msg">Waiting for data...</span>
+        </div>
+      </div>
+    </section>
+
+    <!-- ── Two Column Sentiment & Flow Grid ─────────────────────────── -->
+    <section class="raw-grid" style="margin-bottom: var(--spacing-md);">
+      
+      <!-- Fear & Greed Card -->
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
+          <div>
+            <h3 style="font-size:16px; font-weight:700; color:var(--accent-primary);">😱 Fear & Greed Index</h3>
+            <span style="font-size:11px; color:var(--text-muted);">alternative.me · Updated daily</span>
+          </div>
+          <div id="fng-signal-pill" class="signal-pill sig-NEUTRAL">NEUTRAL</div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; align-items:center; justify-content:center; height:110px; margin-bottom:15px; background:rgba(0,0,0,0.15); border-radius:6px; border:1px solid var(--border-color);">
+          <div id="fng-value" style="font-size:42px; font-weight:700; font-family:var(--font-mono); color:#848E9C;">--</div>
+          <div id="fng-label" style="font-size:12px; font-weight:600; color:var(--text-muted); text-transform:uppercase; letter-spacing:0.5px;">--</div>
+        </div>
+
+        <!-- Progress Bar -->
+        <div style="background:rgba(0,0,0,0.4); border-radius:10px; height:10px; width:100%; overflow:hidden; margin-bottom:8px; border:1px solid var(--border-color);">
+          <div id="fng-bar" style="width:0%; height:100%; transition:width 0.5s ease; background:#848E9C;"></div>
+        </div>
+        <div style="display:flex; justify-content:space-between; font-size:9px; color:var(--text-muted); font-family:var(--font-mono); margin-bottom:15px;">
+          <span>0 Extreme Fear</span>
+          <span>50 Neutral</span>
+          <span>100 Extreme Greed</span>
+        </div>
+
+        <!-- FNG Context Hint -->
+        <div id="fng-lsr-hint" style="font-size:11px; color:var(--text-muted); line-height:1.4; padding:10px 12px; background:rgba(0,0,0,0.2); border-radius:4px; border-left:3px solid var(--border-color);">
+          Awaiting Fear & Greed index data...
+        </div>
+      </div>
+
+      <!-- BTC ETF Flow Card -->
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
+          <div>
+            <h3 style="font-size:16px; font-weight:700; color:var(--accent-primary);">📊 BTC ETF Flow</h3>
+            <span style="font-size:11px; color:var(--text-muted);">CoinGlass · Institutional Flow</span>
+          </div>
+          <div id="etf-signal-pill" class="signal-pill sig-NEUTRAL">NEUTRAL</div>
+        </div>
+
+        <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:15px;">
+          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.03); padding-bottom:6px;">
+            <span style="font-size:11px; color:var(--text-muted);">DAILY NET INFLOW</span>
+            <span id="etf-daily" style="font-size:13px; font-weight:700; font-family:var(--font-mono);">--</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.03); padding-bottom:6px;">
+            <span style="font-size:11px; color:var(--text-muted);">TOTAL NET INFLOW</span>
+            <span id="etf-total" style="font-size:13px; font-weight:700; font-family:var(--font-mono);">--</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.03); padding-bottom:6px;">
+            <span style="font-size:11px; color:var(--text-muted);">GBTC FLOW</span>
+            <span id="etf-gbtc" style="font-size:13px; font-weight:700; font-family:var(--font-mono);">--</span>
+          </div>
+          <div style="display:flex; justify-content:space-between; align-items:center; padding-bottom:2px;">
+            <span style="font-size:10px; color:var(--text-muted);">LAST SYNC</span>
+            <span id="etf-update" style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono);">--</span>
+          </div>
+        </div>
+
+        <!-- ETF Context Hint -->
+        <div id="etf-lsr-hint" style="font-size:11px; color:var(--text-muted); line-height:1.4; padding:10px 12px; background:rgba(0,0,0,0.2); border-radius:4px; border-left:3px solid var(--border-color);">
+          Awaiting ETF flow summary data...
+        </div>
+      </div>
+
+    </section>
+
+    <!-- ── Whale Trade Detector Card ─────────────────────────── -->
+    <section style="margin-bottom: var(--spacing-md);">
+      <div class="card">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
+          <div>
+            <h3 style="font-size:16px; font-weight:700; color:var(--accent-primary);">🐳 Whale Trade Detector</h3>
+            <span style="font-size:11px; color:var(--text-muted);">Binance aggTrades · Last 15 min · Threshold $500K</span>
+          </div>
+          <div id="whale-signal-pill" class="signal-pill sig-NEUTRAL">NEUTRAL</div>
+        </div>
+
+        <div class="whale-grid">
+          <div class="metric-panel-item" style="border-left:3px solid #0ECB81;">
+            <div class="metric-panel-label" style="color:#0ECB81; font-weight:600;">Whale Buys</div>
+            <div id="whale-buy-count" class="metric-panel-value" style="color:#0ECB81; font-size:20px;">0</div>
+            <div id="whale-buy-vol" style="font-size:11px; color:var(--text-muted); margin-top:2px;">$0.00</div>
+          </div>
+          <div class="metric-panel-item" style="border-left:3px solid #F6465D;">
+            <div class="metric-panel-label" style="color:#F6465D; font-weight:600;">Whale Sells</div>
+            <div id="whale-sell-count" class="metric-panel-value" style="color:#F6465D; font-size:20px;">0</div>
+            <div id="whale-sell-vol" style="font-size:11px; color:var(--text-muted); margin-top:2px;">$0.00</div>
+          </div>
+          <div class="metric-panel-item">
+            <div class="metric-panel-label">Net Whale Flow</div>
+            <div id="whale-net-flow" class="metric-panel-value" style="font-size:20px;">$0.00</div>
+            <div id="whale-lsr-hint" style="font-size:10px; color:var(--text-muted); margin-top:4px;">No dominant whale direction</div>
+          </div>
         </div>
       </div>
     </section>
