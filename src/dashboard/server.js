@@ -2671,7 +2671,6 @@ app.post('/api/tradingview/webhook', (req, res) => {
   }
 
   const trades = loadTrades();
-  const settings = loadSettings();
 
   if (data.action === 'buy' || data.action === 'sell') {
     const direction = data.direction || (data.action === 'buy' ? 'LONG' : 'SHORT');
