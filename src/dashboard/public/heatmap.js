@@ -484,7 +484,7 @@ function renderHeatmap(data) {
     ],
     dataZoom: [
       { type: 'inside', xAxisIndex: 0, filterMode: 'none' },
-      { type: 'inside', yAxisIndex: 0, filterMode: 'none' }
+      { type: 'inside', yAxisIndex: [0, 1], filterMode: 'none' }
     ]
   };
 
@@ -1400,7 +1400,7 @@ function renderHeatmap3D(data) {
     ],
     dataZoom: [
       { type: 'inside', xAxisIndex: 0, filterMode: 'none' },
-      { type: 'inside', yAxisIndex: 0, filterMode: 'none' }
+      { type: 'inside', yAxisIndex: [0, 1], filterMode: 'none' }
     ]
   });
 
