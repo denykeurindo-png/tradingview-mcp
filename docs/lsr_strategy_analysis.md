@@ -13,30 +13,35 @@ Strategi LSR adalah **automated trading bot** yang memanfaatkan data **liquidati
 
 ```mermaid
 flowchart TD
-    A["🔄 Background Bot Loop<br/>(every ~5m)"] --> B["Fetch Order Book<br/>+ 5m Candles"]
-    B --> C["Build Volume Map<br/>per Price Level"]
-    C --> D["Find Nearest<br/>Liquidity Pools"]
-    D --> E{Price Near Pool?<br/>&lt; 0.5%}
-    E -->|No| F["Phase: STANDBY<br/>Waiting..."]
-    E -->|Yes| G["Phase: ALERT<br/>Watching for Sweep"]
-    G --> H{Sweep Detected?<br/>Wick through + Close beyond}
-    H -->|No| G
-    H -->|Yes| I["Calculate R:R"]
-    I --> J{R:R ≥ Min?}
-    J -->|No| K["Phase: SWEEP_REJECTED<br/>(R:R too low)"]
-    J -->|Yes| L["Calculate Reversal<br/>Probability Score"]
-    L --> M{Prob ≥ Min?}
-    M -->|No| N["Phase: SWEEP_REJECTED<br/>(Prob too low)"]
-    M -->|Yes| O{Cooldown Active?}
-    O -->|Yes| P["Phase: COOLDOWN"]
-    O -->|No| Q{Conflicting<br/>Sweep?}
-    Q -->|Yes| R["Phase: CONFLICTING_SWEEP<br/>(Both-sides trap)"]
-    Q -->|No| S["🎯 EXECUTE TRADE"]
+    A["🔄 Background Bot Loop<br/>(setiap ~3 menit)"] --> B["1. Evaluasi Trade Aktif<br/>(Check TP / SL / Auto-Cut)"]
+    B --> C{Ada Trade Closed<br/>&lt; 180 Menit Lalu?}
+    C -->|Ya| D["Phase: COOLDOWN<br/>(Global Exit Cooldown)"]
+    C -->|Tidak| E["2. Ambil Data Pasar<br/>(Order Book + Candles + Metrics)"]
+    E --> F["3. Petakan Volume Pool<br/>per Level Harga"]
+    F --> G["4. Cari Liquidity Pool Terdekat"]
+    G --> H{Ada Pool Dekat?<br/>&lt; 0.5%}
+    H -->|Tidak| I["Phase: STANDBY<br/>(Memonitor pasar...)"]
+    H -->|Ya| J["Phase: ALERT<br/>(Menunggu Sweep)"]
+    J --> K{Sweep Terdeteksi?<br/>Wick tembus + Close balik}
+    K -->|Tidak| J
+    K -->|Ya| L["5. Hitung SL & TP<br/>(Terapkan Floor SL ≥ 0.5%)"]
+    L --> M["6. Hitung Rasio R:R"]
+    M --> N{R:R ≥ Min R:R?<br/>(Default: 2.0)}
+    N -->|Tidak| O["Phase: SWEEP_REJECTED<br/>(R:R terlalu rendah)"]
+    N -->|Ya| P["7. Hitung Skor Probabilitas<br/>(100-Point Reversal Model)"]
+    P --> Q{Probabilitas ≥ Min?<br/>(Default: 50%)}
+    Q -->|Tidak| R["Phase: SWEEP_REJECTED<br/>(Skor terlalu rendah)"]
+    Q -->|Ya| S{TP Zone Cooldown<br/>Aktif?}
+    S -->|Ya| T["Phase: COOLDOWN<br/>(LSR Cooldown lokal)"]
+    S -->|Tidak| U{Conflicting Sweep?}
+    U -->|Ya| V["Phase: CONFLICTING_SWEEP<br/>(Both-sides trap)"]
+    U -->|Tidak| W["🎯 EKSEKUSI TRADE<br/>(Position sizing & entry)"]
 
-    style S fill:#0ECB81,color:#000,stroke:#0ECB81
-    style K fill:#F6465D,color:#fff
-    style N fill:#F6465D,color:#fff
-    style R fill:#F0B90B,color:#000
+    style W fill:#0ECB81,color:#000,stroke:#0ECB81
+    style D fill:#BF5AF2,color:#fff
+    style O fill:#F6465D,color:#fff
+    style R fill:#F6465D,color:#fff
+    style V fill:#F0B90B,color:#000
 ```
 
 ---

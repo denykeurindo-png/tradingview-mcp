@@ -1,0 +1,872 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LSR Trading Cockpit</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+  <!-- ECharts CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <!-- Style -->
+  <link rel="stylesheet" href="style.css?v=2.2.0">
+  <style>
+    /* Cockpit Specific Dashboard Styles */
+    .cockpit-grid {
+      display: grid;
+      grid-template-columns: 380px 1fr 380px;
+      gap: 16px;
+      margin-top: 16px;
+      height: calc(100vh - 120px);
+      min-height: 720px;
+    }
+
+    .cockpit-col {
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+      height: 100%;
+    }
+
+    .cockpit-widget {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    /* Widget Heights to fit screen exactly without scrolling */
+    .w-bot-control {
+      flex: 0 0 340px;
+    }
+
+    .w-active-position {
+      flex: 1;
+      min-height: 200px;
+    }
+
+    .w-mini-heatmap {
+      flex: 1;
+      min-height: 380px;
+    }
+
+    .w-orderbook-depth {
+      flex: 0 0 160px;
+    }
+
+    .w-factor-grid {
+      flex: 0 0 360px;
+    }
+
+    .w-recent-trades {
+      flex: 1;
+      min-height: 200px;
+    }
+
+    .widget-title {
+      font-size: 14px;
+      font-weight: 600;
+      color: var(--text-muted);
+      margin-bottom: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+    }
+
+    /* Signal & Action Box */
+    .action-signal-container {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 12px;
+      margin-top: 8px;
+    }
+
+    .action-badge {
+      font-size: 32px;
+      font-weight: 700;
+      padding: 12px 32px;
+      border-radius: 8px;
+      text-align: center;
+      width: 100%;
+      letter-spacing: 1px;
+      box-shadow: 0 4px 12px rgba(0,0,0,0.25);
+    }
+
+    .action-WAIT {
+      background: #2A2004;
+      color: var(--accent-primary);
+      border: 1px solid var(--accent-primary);
+    }
+
+    .action-LONG {
+      background: #06281C;
+      color: var(--accent-success);
+      border: 1px solid var(--accent-success);
+    }
+
+    .action-SHORT {
+      background: #310E17;
+      color: var(--accent-alert);
+      border: 1px solid var(--accent-alert);
+    }
+
+    .action-FORCE_SKIP {
+      background: #1E2026;
+      color: #F0B90B;
+      border: 1px solid #F0B90B;
+    }
+
+    /* Auto-Trade Toggle Styling */
+    .toggle-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 10px 14px;
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      margin-top: 12px;
+    }
+
+    .switch {
+      position: relative;
+      display: inline-block;
+      width: 48px;
+      height: 24px;
+    }
+
+    .switch input {
+      opacity: 0;
+      width: 0;
+      height: 0;
+    }
+
+    .slider {
+      position: absolute;
+      cursor: pointer;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background-color: #3e4450;
+      transition: .3s;
+      border-radius: 24px;
+    }
+
+    .slider:before {
+      position: absolute;
+      content: "";
+      height: 18px;
+      width: 18px;
+      left: 3px;
+      bottom: 3px;
+      background-color: white;
+      transition: .3s;
+      border-radius: 50%;
+    }
+
+    input:checked + .slider {
+      background-color: var(--accent-success);
+    }
+
+    input:checked + .slider:before {
+      transform: translateX(24px);
+    }
+
+    /* Active Position Status */
+    .position-info-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      margin-top: 12px;
+    }
+
+    .info-tile {
+      background: rgba(255,255,255,0.02);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 8px 12px;
+    }
+
+    .info-tile-label {
+      font-size: 11px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+    }
+
+    .info-tile-val {
+      font-size: 16px;
+      font-weight: 600;
+      margin-top: 2px;
+    }
+
+    .floating-pnl-box {
+      grid-column: span 2;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 12px 16px;
+      border-radius: 6px;
+      font-size: 18px;
+      font-weight: 700;
+      margin-top: 8px;
+    }
+
+    .pnl-green {
+      background: rgba(14, 203, 129, 0.1);
+      border: 1px solid var(--accent-success);
+      color: var(--accent-success);
+    }
+
+    .pnl-red {
+      background: rgba(246, 70, 93, 0.1);
+      border: 1px solid var(--accent-alert);
+      color: var(--accent-alert);
+    }
+
+    .pnl-none {
+      background: rgba(255,255,255,0.03);
+      border: 1px solid var(--border-color);
+      color: var(--text-muted);
+    }
+
+    .btn-emergency {
+      width: 100%;
+      background: var(--accent-alert);
+      color: white;
+      border: none;
+      border-radius: 6px;
+      padding: 12px;
+      font-weight: 700;
+      font-size: 14px;
+      cursor: pointer;
+      margin-top: 12px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      transition: opacity 0.2s ease;
+    }
+
+    .btn-emergency:hover {
+      opacity: 0.9;
+    }
+
+    .btn-emergency:disabled {
+      background: rgba(255,255,255,0.05);
+      color: var(--text-muted);
+      cursor: not-allowed;
+      border: 1px solid var(--border-color);
+    }
+
+    /* Connection Status Lights in header */
+    .system-lights {
+      display: flex;
+      gap: 16px;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border-color);
+      padding: 6px 14px;
+      border-radius: 20px;
+    }
+
+    .light-item {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      font-size: 11px;
+      font-weight: 500;
+    }
+
+    .light-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: #4a4a4a;
+    }
+
+    .light-dot.ok {
+      background: var(--accent-success);
+      box-shadow: 0 0 6px var(--accent-success);
+    }
+
+    .light-dot.error {
+      background: var(--accent-alert);
+      box-shadow: 0 0 6px var(--accent-alert);
+    }
+
+    /* 100pt Strategy Scoring Grid */
+    .score-breakdown-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .score-factor-card {
+      background: rgba(255, 255, 255, 0.01);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 8px 10px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+    }
+
+    .factor-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      font-size: 11px;
+      color: var(--text-muted);
+    }
+
+    .factor-pts {
+      font-size: 12px;
+      font-weight: 600;
+      color: var(--accent-primary);
+    }
+
+    .factor-val {
+      font-size: 14px;
+      font-weight: 700;
+      margin-top: 4px;
+    }
+
+    /* Orderbook Depth Bar */
+    .depth-bar-container {
+      display: flex;
+      height: 24px;
+      width: 100%;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 12px;
+      border: 1px solid var(--border-color);
+    }
+
+    .depth-bar-bid {
+      background: rgba(14, 203, 129, 0.35);
+      border-right: 1px solid var(--accent-success);
+      transition: width 0.3s ease;
+      display: flex;
+      align-items: center;
+      padding-left: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent-success);
+    }
+
+    .depth-bar-ask {
+      background: rgba(246, 70, 93, 0.35);
+      transition: width 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding-right: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent-alert);
+    }
+
+    /* Recent Trade Table */
+    .recent-trades-list {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-top: 8px;
+      overflow-y: auto;
+    }
+
+    .recent-trade-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 8px 10px;
+      border-radius: 6px;
+      background: rgba(255,255,255,0.01);
+      border: 1px solid var(--border-color);
+      font-size: 12px;
+    }
+
+    .recent-trade-meta {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .recent-trade-dir {
+      font-weight: 700;
+    }
+
+    .recent-trade-price {
+      color: var(--text-muted);
+      font-size: 11px;
+    }
+
+    .recent-trade-pnl {
+      font-weight: 700;
+    }
+
+    .no-active-trade {
+      color: var(--text-muted);
+      text-align: center;
+      margin-top: auto;
+      margin-bottom: auto;
+      font-size: 13px;
+    }
+  </style>
+</head>
+
+<body>
+
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+        <path d="M13 10V3L4 14H11V21L20 10H13Z" stroke="#F0B90B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="sidebar-logo-text">JDA <span>Monitor</span></div>
+    </div>
+    <ul class="sidebar-nav">
+      <li class="sidebar-item" id="nav-cockpit">
+        <a href="cockpit.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line></svg>
+          <span>Trading Cockpit</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a href="index.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+          <span>ETF Monitor</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a href="heatmap.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 22 22 22"></polygon><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          <span>Liquidation Heatmap</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a href="orderbook.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          <span>Combined Depth</span>
+        </a>
+      </li>
+      <li class="sidebar-item" id="nav-depth-delta">
+        <a href="coinglass-reports.html?tab=depth-delta">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          <span>Depth Delta</span>
+        </a>
+      </li>
+      <li class="sidebar-item" id="nav-coinbase-premium">
+        <a href="coinglass-reports.html?tab=coinbase-premium">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+          <span>Coinbase Premium</span>
+        </a>
+      </li>
+      <li class="sidebar-item" id="nav-whale-orders">
+        <a href="coinglass-reports.html?tab=whale-orders">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+          <span>Whale Orders</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a href="trades.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+          <span>Live Trade Journal</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a href="raw-data.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+          <span>Raw Data</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a href="status.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          <span>Connection Status</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a href="settings.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <circle cx="12" cy="12" r="3"></circle>
+            <path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path>
+          </svg>
+          <span>Settings</span>
+        </a>
+      </li>
+    </ul>
+    <div class="sidebar-footer">
+      <a href="/auth/logout" class="sidebar-logout">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path>
+          <polyline points="16 17 21 12 16 7"></polyline>
+          <line x1="21" y1="12" x2="9" y2="12"></line>
+        </svg>
+        <span>Logout</span>
+      </a>
+    </div>
+  </nav>
+
+  <div class="top-bar">
+    <div class="top-bar-title">Trading Cockpit <span>LSR Consolidator Cockpit</span></div>
+    <div class="top-bar-controls">
+      <!-- Connection Status Lights -->
+      <div class="system-lights">
+        <div class="light-item" title="CDP Chrome browser monitoring">
+          <span class="light-dot" id="light-cdp"></span>
+          <span>CDP</span>
+        </div>
+        <div class="light-item" title="Binance Spot AggTrade WebSocket stream">
+          <span class="light-dot" id="light-spot-ws"></span>
+          <span>SpotWS</span>
+        </div>
+        <div class="light-item" title="Binance Futures WebSocket / JDA Signal stream">
+          <span class="light-dot" id="light-futures-ws"></span>
+          <span>FutWS</span>
+        </div>
+        <div class="light-item" title="Telegram channel notification alert bot">
+          <span class="light-dot" id="light-telegram"></span>
+          <span>TG</span>
+        </div>
+      </div>
+      <div id="connection-status" class="status-indicator normal">
+        <span class="status-dot"></span>
+        <span class="status-text">Server Online</span>
+      </div>
+    </div>
+  </div>
+
+  <div class="app-container">
+    <div class="cockpit-grid">
+
+      <!-- Column 1: Bot Signal & Position -->
+      <div class="cockpit-col">
+        <!-- Widget 5b: Performance Stats Row -->
+        <div class="cockpit-widget" id="widget-perf-stats" style="flex: 0 0 auto; padding: 10px; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 8px;">
+          <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px;">
+            <!-- Tile 1 -->
+            <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 4px; text-align: center;">
+              <div style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.3px;">Total Trades</div>
+              <div id="stat-total" style="font-size: 14px; font-weight: 700; font-family: var(--font-mono); margin-top: 4px; color: #fff; line-height: 1;">--</div>
+            </div>
+            <!-- Tile 2 -->
+            <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 4px; text-align: center;">
+              <div style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.3px;">Win Rate</div>
+              <div id="stat-winrate" style="font-size: 14px; font-weight: 700; font-family: var(--font-mono); margin-top: 4px; color: #00d2ff; line-height: 1;">--</div>
+            </div>
+            <!-- Tile 3 -->
+            <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 4px; text-align: center;">
+              <div style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.3px;">Hit TP</div>
+              <div id="stat-tp" style="font-size: 14px; font-weight: 700; font-family: var(--font-mono); margin-top: 4px; color: var(--accent-success); line-height: 1;">--</div>
+            </div>
+            <!-- Tile 4 -->
+            <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 4px; text-align: center;">
+              <div style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.3px;">Hit SL</div>
+              <div id="stat-sl" style="font-size: 14px; font-weight: 700; font-family: var(--font-mono); margin-top: 4px; color: var(--accent-alert); line-height: 1;">--</div>
+            </div>
+            <!-- Tile 5 -->
+            <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 4px; text-align: center;">
+              <div style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.3px;">Cut Loss</div>
+              <div id="stat-cut" style="font-size: 14px; font-weight: 700; font-family: var(--font-mono); margin-top: 4px; color: #FFA500; line-height: 1;">--</div>
+            </div>
+            <!-- Tile 6 -->
+            <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 4px; text-align: center;">
+              <div style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.3px;">Net PnL</div>
+              <div id="stat-pnl" style="font-size: 13px; font-weight: 700; font-family: var(--font-mono); margin-top: 4px; color: var(--accent-success); line-height: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">--</div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Widget 1: Bot Signal & Control -->
+        <div class="cockpit-widget w-bot-control">
+          <div class="widget-title">
+            <span>Strategy Decision & Control</span>
+            <span class="factor-pts" id="status-time">--:--:--</span>
+          </div>
+          
+          <div class="action-signal-container">
+            <div class="action-badge action-WAIT" id="action-signal">WAIT</div>
+            <div style="font-size: 13px; color: var(--text-muted); text-align: center; margin-top: 4px;" id="bot-message">
+              Bot is scanning liquidity pools...
+            </div>
+          </div>
+
+          <div style="height: 140px; width: 100%; margin-top: 8px;" id="chart-gauge-probability"></div>
+
+          <div class="toggle-row">
+            <span style="font-weight: 600; font-size: 13px;">Auto-Trading Enabled</span>
+            <label class="switch">
+              <input type="checkbox" id="auto-trade-toggle">
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Widget 2: Active Trade Card -->
+        <div class="cockpit-widget w-active-position">
+          <div class="widget-title">Active Market Position</div>
+          <div id="active-position-content" style="display: flex; flex-direction: column; height: 100%;">
+            <!-- Loaded dynamically -->
+            <div class="no-active-trade">No active trade in journal. Scanning...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- Column 2: Mini Heatmap & Orderbook -->
+      <div class="cockpit-col">
+        <!-- Widget 3: Mini Heatmap -->
+        <div class="cockpit-widget w-mini-heatmap">
+          <div class="widget-title" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span>Liquidity Sweep Map</span>
+              <div style="display: flex; background: rgba(255,255,255,0.05); border-radius: 4px; padding: 2px;" id="chart-period-toggle">
+                <button id="btn-chart-24h" class="active" style="background: var(--accent-primary); border: none; color: #000; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 3px; cursor: pointer; transition: all 0.2s;">24H</button>
+                <button id="btn-chart-3d" style="background: transparent; border: none; color: var(--text-muted); font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 3px; cursor: pointer; transition: all 0.2s;">3D</button>
+              </div>
+            </div>
+            <span style="font-family: var(--font-mono); color: var(--accent-primary); font-size: 14px;" id="live-btc-price">$0.00</span>
+          </div>
+          <div id="chart-mini-heatmap" style="flex: 1; width: 100%;"></div>
+        </div>
+
+        <!-- Widget 4: Orderbook Ratio -->
+        <div class="cockpit-widget w-orderbook-depth">
+          <div class="widget-title">
+            <span>Binance Orderbook Ratio (1% Depth)</span>
+            <span id="depth-ratio-text" style="font-size: 12px; font-weight: 700;">50% / 50%</span>
+          </div>
+          <div class="depth-bar-container">
+            <div class="depth-bar-bid" id="depth-bar-bid" style="width: 50%;">BID 50%</div>
+            <div class="depth-bar-ask" id="depth-bar-ask" style="width: 50%;">50% ASK</div>
+          </div>
+          <div style="font-size: 11px; color: var(--text-muted); margin-top: 8px; text-align: center;" id="orderbook-update-text">
+            Waiting for orderbook stream...
+          </div>
+        </div>
+      </div>
+
+      <!-- Column 3: 100pt Factor Grid & Logs -->
+      <div class="cockpit-col">
+        <!-- Widget 5: Factor Scoring Grid -->
+        <div class="cockpit-widget w-factor-grid">
+          <div class="widget-title">
+            <span>100-Point Strategy scoring</span>
+            <span class="factor-pts" id="total-factor-score">Score: 0/100</span>
+          </div>
+          
+          <div class="score-breakdown-grid">
+            <!-- Factor 1: Trend -->
+            <div class="score-factor-card">
+              <div class="factor-header">
+                <span>1h/4h Trend</span>
+                <span class="factor-pts" id="pts-trend">--</span>
+              </div>
+              <div class="factor-val" id="val-trend">WAIT</div>
+            </div>
+
+            <!-- Factor 2: OI Change -->
+            <div class="score-factor-card">
+              <div class="factor-header">
+                <span>OI Change 1h</span>
+                <span class="factor-pts" id="pts-oi">--</span>
+              </div>
+              <div class="factor-val" id="val-oi">0.00%</div>
+            </div>
+
+            <!-- Factor 3: Spot CVD -->
+            <div class="score-factor-card">
+              <div class="factor-header">
+                <span>Spot CVD Trend</span>
+                <span class="factor-pts" id="pts-cvd">--</span>
+              </div>
+              <div class="factor-val" id="val-cvd">NEUTRAL</div>
+            </div>
+
+            <!-- Factor 4: Funding Rate -->
+            <div class="score-factor-card">
+              <div class="factor-header">
+                <span>Funding Rate</span>
+                <span class="factor-pts" id="pts-funding">--</span>
+              </div>
+              <div class="factor-val" id="val-funding">0.0000%</div>
+            </div>
+
+            <!-- Factor 5: Long/Short Ratio -->
+            <div class="score-factor-card">
+              <div class="factor-header">
+                <span>Long/Short Accounts</span>
+                <span class="factor-pts" id="pts-lsr">--</span>
+              </div>
+              <div class="factor-val" id="val-lsr">1.0000</div>
+            </div>
+
+            <!-- Factor 6: Depth Delta -->
+            <div class="score-factor-card">
+              <div class="factor-header">
+                <span>Depth Delta 1%</span>
+                <span class="factor-pts" id="pts-delta">--</span>
+              </div>
+              <div class="factor-val" id="val-delta">0.00%</div>
+            </div>
+
+            <!-- Factor 7: Coinbase Premium -->
+            <div class="score-factor-card">
+              <div class="factor-header">
+                <span>Coinbase Premium</span>
+                <span class="factor-pts" id="pts-premium">--</span>
+              </div>
+              <div class="factor-val" id="val-premium">0.00%</div>
+            </div>
+
+            <!-- Factor 8: Whale Orders -->
+            <div class="score-factor-card">
+              <div class="factor-header">
+                <span>Whale Wall</span>
+                <span class="factor-pts" id="pts-whales">--</span>
+              </div>
+              <div class="factor-val" id="val-whales">0 Walls</div>
+            </div>
+          </div>
+        </div>
+
+
+
+        <!-- Widget 6 & 7: Market Extras (Fear & Greed + ETF Flow) side-by-side -->
+        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; flex: 0 0 250px;">
+          <!-- Fear & Greed Index -->
+          <div class="cockpit-widget" id="widget-fear-greed" style="display: flex; flex-direction: column; justify-content: space-between; padding: 12px;">
+            <div class="widget-title" style="margin-bottom: 8px;">
+              <div style="display: flex; flex-direction: column;">
+                <span>😱 Fear & Greed Index</span>
+                <span style="font-size: 9px; color: var(--text-muted); text-transform: none; font-weight: normal; margin-top: 2px;">alternative.me · Updated daily</span>
+              </div>
+              <span id="fng-badge" style="font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 4px; border: 1px solid transparent;">LOADING</span>
+            </div>
+            
+            <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1; margin: 8px 0;">
+              <div id="fng-value" style="font-size: 32px; font-weight: 700; font-family: var(--font-mono); line-height: 1;">--</div>
+              <div id="fng-label" style="font-size: 11px; font-weight: 700; margin-top: 4px; text-transform: uppercase; letter-spacing: 0.5px;">LOADING</div>
+            </div>
+
+            <!-- Progress Bar -->
+            <div style="margin-bottom: 8px; width: 100%;">
+              <div style="background: rgba(255,255,255,0.05); height: 6px; border-radius: 3px; overflow: hidden; width: 100%; position: relative;">
+                <div id="fng-bar" style="width: 0%; height: 100%; background: var(--text-muted); border-radius: 3px; transition: width 0.5s ease, background-color 0.5s;"></div>
+              </div>
+              <div style="display: flex; justify-content: space-between; font-size: 8px; color: var(--text-muted); margin-top: 4px; font-weight: 500;">
+                <span>0 Extreme Fear</span>
+                <span>50 Neutral</span>
+                <span>100 Extreme Greed</span>
+              </div>
+            </div>
+
+            <!-- Contrarian Status -->
+            <div id="fng-status" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; font-size: 9.5px; line-height: 1.3; font-weight: 500;">
+              Loading index status...
+            </div>
+          </div>
+
+          <!-- BTC ETF Flow -->
+          <div class="cockpit-widget" id="widget-etf-flow" style="display: flex; flex-direction: column; justify-content: space-between; padding: 12px;">
+            <div class="widget-title" style="margin-bottom: 8px;">
+              <div style="display: flex; flex-direction: column;">
+                <span>📊 BTC ETF Flow</span>
+                <span style="font-size: 9px; color: var(--text-muted); text-transform: none; font-weight: normal; margin-top: 2px;">CoinGlass · Institutional Flow</span>
+              </div>
+              <span id="etf-badge" style="font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 4px; border: 1px solid transparent;">LOADING</span>
+            </div>
+
+            <!-- ETF Stats List -->
+            <div style="display: flex; flex-direction: column; gap: 6px; font-size: 11px; flex: 1; justify-content: center; margin: 4px 0;">
+              <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.02); padding-bottom: 4px;">
+                <span style="color: var(--text-muted); font-weight: 500;">DAILY NET INFLOW</span>
+                <span id="etf-daily" style="font-family: var(--font-mono); font-weight: 700;">--</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.02); padding-bottom: 4px;">
+                <span style="color: var(--text-muted); font-weight: 500;">TOTAL NET INFLOW</span>
+                <span id="etf-total" style="font-family: var(--font-mono); font-weight: 700;">--</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.02); padding-bottom: 4px;">
+                <span style="color: var(--text-muted); font-weight: 500;">GBTC FLOW</span>
+                <span id="etf-gbtc" style="font-family: var(--font-mono); font-weight: 700;">--</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; padding-bottom: 2px;">
+                <span style="color: var(--text-muted); font-weight: 500;">LAST SYNC</span>
+                <span id="etf-sync" style="color: var(--text-muted); font-size: 9.5px; font-family: var(--font-mono);">--:--:--</span>
+              </div>
+            </div>
+
+            <!-- ETF Status -->
+            <div id="etf-status" style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 10px; font-size: 9.5px; line-height: 1.3; font-weight: 500;">
+              Loading ETF flow...
+            </div>
+          </div>
+        </div>
+
+        <!-- Widget 8: Top Liquidation Pools (24H / 3D) -->
+        <div class="cockpit-widget w-top-liq-pools" style="flex: 1; min-height: 420px; display: flex; flex-direction: column;">
+          <div class="widget-title" style="margin-bottom: 8px;">
+            <span>🔥 Top Liquidation Pools</span>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; flex: 1; font-size: 11px;">
+            <!-- Left Box: 24H Pools -->
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                <span style="font-weight: 600; font-size: 11px; color: var(--text-muted); letter-spacing: 0.3px;">24H POOLS</span>
+                <span style="font-size: 9px; color: var(--text-muted); font-family: var(--font-mono);" id="liq-pools-update-24h">--:--:--</span>
+              </div>
+              <!-- Resistance 24H -->
+              <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; flex: 1;">
+                <div style="font-weight: 700; color: var(--accent-alert); text-transform: uppercase; letter-spacing: 0.3px; font-size: 9px; margin-bottom: 6px;">▲ Resistance 24H</div>
+                <div id="cockpit-resistance-pools" style="display: flex; flex-direction: column; gap: 6px; flex: 1; justify-content: flex-start; margin-top: 4px;">
+                  <div style="color: var(--text-muted); text-align: center; padding: 10px; font-size: 10px;">Loading 24H...</div>
+                </div>
+              </div>
+              <!-- Support 24H -->
+              <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; flex: 1;">
+                <div style="font-weight: 700; color: var(--accent-success); text-transform: uppercase; letter-spacing: 0.3px; font-size: 9px; margin-bottom: 6px;">▼ Support 24H</div>
+                <div id="cockpit-support-pools" style="display: flex; flex-direction: column; gap: 6px; flex: 1; justify-content: flex-start; margin-top: 4px;">
+                  <div style="color: var(--text-muted); text-align: center; padding: 10px; font-size: 10px;">Loading 24H...</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right Box: 3D Pools -->
+            <div style="display: flex; flex-direction: column; gap: 8px;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                <span style="font-weight: 600; font-size: 11px; color: var(--text-muted); letter-spacing: 0.3px;">3D POOLS</span>
+                <span style="font-size: 9px; color: var(--text-muted); font-family: var(--font-mono);" id="liq-pools-update-3d">--:--:--</span>
+              </div>
+              <!-- Resistance 3D -->
+              <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; flex: 1;">
+                <div style="font-weight: 700; color: var(--accent-alert); text-transform: uppercase; letter-spacing: 0.3px; font-size: 9px; margin-bottom: 6px;">▲ Resistance 3D</div>
+                <div id="cockpit-resistance-pools-3d" style="display: flex; flex-direction: column; gap: 6px; flex: 1; justify-content: flex-start; margin-top: 4px;">
+                  <div style="color: var(--text-muted); text-align: center; padding: 10px; font-size: 10px;">Loading 3D...</div>
+                </div>
+              </div>
+              <!-- Support 3D -->
+              <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; flex: 1;">
+                <div style="font-weight: 700; color: var(--accent-success); text-transform: uppercase; letter-spacing: 0.3px; font-size: 9px; margin-bottom: 6px;">▼ Support 3D</div>
+                <div id="cockpit-support-pools-3d" style="display: flex; flex-direction: column; gap: 6px; flex: 1; justify-content: flex-start; margin-top: 4px;">
+                  <div style="color: var(--text-muted); text-align: center; padding: 10px; font-size: 10px;">Loading 3D...</div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <script src="cockpit.js?v=2.2.0"></script>
+</body>
+
+</html>

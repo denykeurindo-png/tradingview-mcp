@@ -103,7 +103,7 @@ document.addEventListener('DOMContentLoaded', () => {
       document.getElementById(`update-${tabId}`).innerText = `Last updated: ${timestamp} (${res.source || 'cache'})`;
 
       if (tabId === 'whale-orders') {
-        renderWhaleOrdersTable(res.data);
+        renderWhaleOrdersTable(res.data, res.btcPrice || 65000);
       } else {
         renderEChart(tabId, res.data);
       }
@@ -123,7 +123,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (isLoading) {
         document.getElementById('whale-orders-tbody').innerHTML = `
           <tr>
-            <td colspan="6" style="text-align: center; color: #848E9C;">
+            <td colspan="9" style="text-align: center; color: #848E9C;">
               <span class="spinner"></span> Loading whale orders... (CDP scrape might take 10-15s if refreshing)
             </td>
           </tr>
@@ -145,7 +145,7 @@ document.addEventListener('DOMContentLoaded', () => {
     if (tabId === 'whale-orders') {
       document.getElementById('whale-orders-tbody').innerHTML = `
         <tr>
-          <td colspan="6" style="text-align: center; color: #F6465D;">
+          <td colspan="9" style="text-align: center; color: #F6465D;">
             <strong>Error:</strong> ${message}
           </td>
         </tr>
@@ -269,14 +269,14 @@ document.addEventListener('DOMContentLoaded', () => {
     charts[tabId].setOption(option);
   }
 
-  function renderWhaleOrdersTable(cacheData) {
+  function renderWhaleOrdersTable(cacheData, btcPrice = 65000) {
     const tbody = document.getElementById('whale-orders-tbody');
     const orders = Array.isArray(cacheData) ? cacheData : (cacheData && cacheData.data ? cacheData.data : []);
 
     if (!orders || orders.length === 0) {
       tbody.innerHTML = `
         <tr>
-          <td colspan="6" style="text-align: center; color: #848E9C; padding: 20px;">
+          <td colspan="9" style="text-align: center; color: #848E9C; padding: 20px;">
             No active whale orders found matching the filter (>= $2M, >= 24H).
           </td>
         </tr>
@@ -284,30 +284,57 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    tbody.innerHTML = orders.map(order => {
+    const maxValue = Math.max(...orders.map(o => o.valueUsd || 0), 1);
+
+    tbody.innerHTML = orders.map((order, idx) => {
       const sideClass = order.side === 'buy' ? 'side-buy' : 'side-sell';
       const sideText = order.side ? order.side.toUpperCase() : 'UNKNOWN';
-      const valueFormatted = new Intl.NumberFormat('en-US', {
-        style: 'currency',
-        currency: 'USD',
-        maximumFractionDigits: 0
-      }).format(order.valueUsd);
+      
+      // Clean formatted volume: e.g. $2.00M or $15.50M to match heatmap design
+      const formatVolume = (val) => {
+        if (val >= 1e9) return (val / 1e9).toFixed(2) + 'B';
+        if (val >= 1e6) return (val / 1e6).toFixed(2) + 'M';
+        if (val >= 1e3) return (val / 1e3).toFixed(0) + 'K';
+        return val.toFixed(0);
+      };
+      const valueFormatted = '$' + formatVolume(order.valueUsd);
       
       const priceFormatted = new Intl.NumberFormat('en-US', {
         style: 'currency',
         currency: 'USD'
       }).format(order.price);
 
+      // Distance calculation
+      const distancePercent = ((order.price - btcPrice) / btcPrice) * 100;
+      const distSign = distancePercent > 0 ? '+' : '';
+      const distFormatted = `${distSign}${distancePercent.toFixed(2)}%`;
+      const distColor = distancePercent > 0 ? '#FF453A' : '#32D74B'; // Red above price, green below
+
+      // Calculate intensity dynamically relative to max order value
+      const ratio = (order.valueUsd || 0) / maxValue;
+      let badgeClass = 'low';
+      let badgeLabel = 'Low';
+      if (ratio >= 0.7) {
+        badgeClass = 'high';
+        badgeLabel = 'High';
+      } else if (ratio >= 0.3) {
+        badgeClass = 'medium';
+        badgeLabel = 'Medium';
+      }
+
       return `
         <tr>
+          <td style="color: #848E9C;">#${idx + 1}</td>
           <td>
             <div style="display:flex; align-items:center; gap:8px;">
               <span>${order.exchange || 'Unknown'}</span>
             </div>
           </td>
           <td><span class="badge select-mono" style="background:#2B3139; color:#EAECEF; padding:2px 6px; border-radius:4px; font-size:11px;">${order.marketType || 'P'}</span></td>
-          <td class="select-mono" style="font-weight: 500;">${priceFormatted}</td>
-          <td class="select-mono" style="font-weight: 500;">${valueFormatted}</td>
+          <td class="select-mono" style="font-weight: 600; color: #FFFFFF;">${priceFormatted}</td>
+          <td class="select-mono" style="font-weight: 600; color: ${order.side === 'buy' ? '#32D74B' : '#FF453A'};">${valueFormatted}</td>
+          <td class="select-mono" style="font-weight: 500; color: ${distColor};">${distFormatted}</td>
+          <td><span class="intensity-badge ${badgeClass}">${badgeLabel}</span></td>
           <td class="select-mono" style="color: #848E9C;">${order.age || '--'}</td>
           <td class="${sideClass}">${sideText}</td>
         </tr>

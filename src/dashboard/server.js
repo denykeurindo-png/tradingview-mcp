@@ -220,6 +220,11 @@ app.get('/login', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'login.html'));
 });
 
+// Cockpit page route fallback
+app.get('/cockpit', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'cockpit.html'));
+});
+
 // Serve static frontend files with cache-control headers to prevent caching issues
 app.use((req, res, next) => {
   res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
@@ -1989,8 +1994,17 @@ app.get('/api/coinbase-premium', async (req, res) => {
 app.get('/api/whale-orders', async (req, res) => {
   const forceRefresh = req.query.refresh === 'true';
 
+  let btcPrice = 65000;
+  try {
+    const tickerResp = await fetchBinance('https://api.binance.com/api/v3/ticker/price?symbol=BTCUSDT');
+    const tickerData = await tickerResp.json();
+    btcPrice = parseFloat(tickerData.price) || 65000;
+  } catch (e) {
+    console.error('[API] Failed to fetch BTC price for whale-orders, using fallback:', e.message);
+  }
+
   if (whaleOrdersCache && !forceRefresh && lastWhaleOrdersFetchTime && (Date.now() - lastWhaleOrdersFetchTime < 300000)) {
-    return res.json({ success: true, source: 'cache', data: whaleOrdersCache });
+    return res.json({ success: true, source: 'cache', data: whaleOrdersCache, btcPrice });
   }
 
   if (isWhaleOrdersScrapingBusy) {
@@ -2005,11 +2019,11 @@ app.get('/api/whale-orders', async (req, res) => {
     lastWhaleOrdersFetchTime = Date.now();
     saveCacheToDisk('whale_orders_cache.json', whaleOrdersCache);
 
-    res.json({ success: true, source: 'live', data: result });
+    res.json({ success: true, source: 'live', data: result, btcPrice });
   } catch (err) {
     console.error('[API] Large Orderbook Statistics scrape failed:', err.message);
     if (whaleOrdersCache) {
-      res.json({ success: true, source: 'fallback-cache', data: whaleOrdersCache, warning: err.message });
+      res.json({ success: true, source: 'fallback-cache', data: whaleOrdersCache, warning: err.message, btcPrice });
     } else {
       res.status(500).json({ success: false, error: err.message });
     }
@@ -2118,9 +2132,13 @@ app.get('/api/etf-data', async (req, res) => {
     const etfAlertInfo = buildEtfAlerts(result, btcPrice);
     if (etfAlertInfo && etfAlertInfo.stateKey !== lastEtfAlertState) {
       lastEtfAlertState = etfAlertInfo.stateKey;
-      const header = `📊 <b>ETF Monitor Update</b>\n${'─'.repeat(20)}\n`;
-      sendTelegramAlert(header + etfAlertInfo.alerts.join('\n\n'));
-      console.log(`[ETF Alert] State changed to: ${etfAlertInfo.stateKey}`);
+      if (etfAlertInfo.stateKey !== 'stable') {
+        const header = `📊 <b>ETF Monitor Update</b>\n${'─'.repeat(20)}\n`;
+        sendTelegramAlert(header + etfAlertInfo.alerts.join('\n\n'));
+        console.log(`[ETF Alert] State changed to: ${etfAlertInfo.stateKey}`);
+      } else {
+        console.log(`[ETF Alert] State changed to: stable (alert suppressed to avoid spam)`);
+      }
     }
 
     res.json({ success: true, source: 'live', data: result, btcPrice });
@@ -2449,7 +2467,15 @@ app.post('/api/tradingview/webhook', (req, res) => {
       return res.status(400).json({ success: false, error: 'Max active trades reached' });
     }
 
-    const slDistance = Math.abs(((entry - sl) / entry) * 100);
+    let slDistance = Math.abs(((entry - sl) / entry) * 100);
+    const minSLPercent = Math.max(0.5, settings.minSLPercent !== undefined ? parseFloat(settings.minSLPercent) : 0.5);
+    const slFloorFraction = minSLPercent / 100;
+    if (slDistance < minSLPercent) {
+      slDistance = minSLPercent;
+      sl = direction === 'LONG' ? (entry * (1 - slFloorFraction)) : (entry * (1 + slFloorFraction));
+      console.log(`[Webhook] Stop Loss was too tight (${slDistance.toFixed(3)}%). Clamped to ${minSLPercent}%: $${sl.toFixed(2)}`);
+    }
+
     const tpDistance = Math.abs(((tp - entry) / entry) * 100);
     const rr = (tpDistance / slDistance).toFixed(1);
 
@@ -2464,7 +2490,7 @@ app.post('/api/tradingview/webhook', (req, res) => {
       direction,
       entry,
       tp,
-      sl,
+      sl: parseFloat(sl.toFixed(2)),
       capital: settings.capital,
       riskPercent: settings.riskPercent,
       riskUsd,
@@ -2757,8 +2783,8 @@ function calculateReversalProbability(sweepDetail, oiChange, spotCVD, trend1h, t
   let score = baseScore; // Base probability start at 40%
 
   // 1. Liquidation Pool Volume (Up to 15 points)
-  const volBillions = sweepDetail.volume / 1e9;
-  const poolVolumePoints = Math.min(15, volBillions * 15); // Scale so that $1B pool volume yields the full +15 points
+  const volMillions = sweepDetail.volume / 1e6;
+  const poolVolumePoints = Math.min(15, (volMillions / 50) * 15); // Scale so that $50M pool volume yields the full +15 points
   score += poolVolumePoints;
 
   // 2. Rejection Strength / Wick Depth (Up to 15 points)
@@ -2906,7 +2932,9 @@ function calculateReversalProbability(sweepDetail, oiChange, spotCVD, trend1h, t
       lsRatio: Math.round(lsRatioPoints * 10) / 10,
       coinbasePremium: Math.round(premiumPoints * 10) / 10,
       depthDelta: Math.round(deltaPoints * 10) / 10,
-      whaleWall: Math.round(whalePoints * 10) / 10
+      whaleWall: Math.round(whalePoints * 10) / 10,
+      depthDeltaVal: depthDelta !== null ? depthDelta : 0,
+      premiumVal: cbPremium !== null ? cbPremium : 0
     }
   };
 }
@@ -3347,7 +3375,9 @@ app.get('/api/bot-status', async (req, res) => {
         sweepConfirmCandles: settings.sweepConfirmCandles || 3,
         cooldownMinutes: settings.cooldownMinutes || 60,
         minPoolVolumeRatio: settings.minPoolVolumeRatio || 0.15,
-        minReversalProbability: settings.minReversalProbability || 65
+        minReversalProbability: settings.minReversalProbability || 65,
+        capital: settings.capital || 1000,
+        riskPercent: settings.riskPercent || 1.0
       }
     }
   });
@@ -3455,14 +3485,16 @@ function autoTradeStrategyBackend(heatmapData) {
 
   const yAxisData = heatmapData.yAxis || [];
   
-  // ─── Step 1: Build volume map per price level ─────────────
+  // ─── Step 1: Build volume map per price level (Latest timestamp only) ──
+  const latestXIdx = heatmapData.xAxis.length - 1;
   const volumeByY = {};
   heatmapSeries.data.forEach(item => {
     const v = Array.isArray(item) ? item : (item.value || []);
+    const xIdx = parseInt(v[0], 10);
     const yIdx = parseInt(v[1], 10);
     const val = parseFloat(v[2] || 0);
-    if (!isNaN(yIdx)) {
-      volumeByY[yIdx] = (volumeByY[yIdx] || 0) + val;
+    if (!isNaN(yIdx) && xIdx === latestXIdx) {
+      volumeByY[yIdx] = val;
     }
   });
 
@@ -3564,7 +3596,33 @@ function autoTradeStrategyBackend(heatmapData) {
     };
     return;
   }
-  
+  // ─── Global Exit Cooldown Check ─────────────────────────────
+  const exitCooldownMs = 180 * 60 * 1000; // 180 minutes (3 hours)
+  const exitCooldownTrade = trades.find(t => {
+    if (t.status === 'ACTIVE') return false;
+    if (!t.closeTimestamp) return false;
+    const timeSinceClose = Date.now() - t.closeTimestamp;
+    return timeSinceClose >= 0 && timeSinceClose < exitCooldownMs;
+  });
+
+  if (exitCooldownTrade) {
+    const minutesLeft = Math.ceil((exitCooldownMs - (Date.now() - exitCooldownTrade.closeTimestamp)) / 60000);
+    botPhaseState = {
+      phase: 'COOLDOWN',
+      nearestPool: closestPool.price,
+      nearestPoolDistance: closestPool.distance.toFixed(2) + '%',
+      nearestPoolVolume: closestPool.volume,
+      nearestPoolSide: poolSide,
+      sweepCandidate: null,
+      reversalProbabilityPreview: previewProb,
+      probabilityBreakdown: previewResult.breakdown,
+      message: `Exit Cooldown Active: A trade was recently closed (${exitCooldownTrade.status} at ${new Date(exitCooldownTrade.closeTimestamp).toLocaleTimeString()}). New entries blocked for ${minutesLeft} more minutes.`,
+      lastUpdate: new Date().toISOString()
+    };
+    console.log(`[LSR Bot] COOLDOWN — Exit Cooldown active. A trade recently closed (${exitCooldownTrade.status}).`);
+    return;
+  }
+
   // ─── Step 5: Sweep Detection across recent candles ────────
   const sweepCandidates = [];
   
@@ -3702,7 +3760,8 @@ function autoTradeStrategyBackend(heatmapData) {
 
   // ─── Step 8: Calculate SL (ATR-based, customizable floor and multiplier) ──────
   const atrMultiplier = settings.atrMultiplier !== undefined ? settings.atrMultiplier : 2.0;
-  const minSLPercent = settings.minSLPercent !== undefined ? settings.minSLPercent : 0.5;
+  // Enforce a strict minimum stop loss (SL) floor of 0.5% from the entry price
+  const minSLPercent = Math.max(0.5, settings.minSLPercent !== undefined ? parseFloat(settings.minSLPercent) : 0.5);
   const slFloorFraction = minSLPercent / 100;
 
   const atr = calculateATRFromCandles(cs.data, 14);
@@ -4640,17 +4699,23 @@ function predictSweepTargets(heatmapData, metrics) {
     const currentPrice = parseFloat(lastCandle[1]);
     if (!currentPrice || isNaN(currentPrice)) return null;
 
+    const latestXIdx = heatmapData.xAxis.length - 1;
     const volumeByY = {};
     heatmapSeries.data.forEach(item => {
       const v = Array.isArray(item) ? item : (item.value || []);
+      const xIdx = parseInt(v[0], 10);
       const yIdx = parseInt(v[1], 10);
       const val  = parseFloat(v[2] || 0);
-      if (!isNaN(yIdx) && val > 0) volumeByY[yIdx] = (volumeByY[yIdx] || 0) + val;
+      if (!isNaN(yIdx) && xIdx === latestXIdx && val > 0) {
+        volumeByY[yIdx] = val;
+      }
     });
 
     const pools = [];
     yAxisData.forEach((priceStr, idx) => {
       const price  = parseFloat(priceStr);
+      if (isNaN(price)) return;
+
       const volume = volumeByY[idx] || 0;
       if (!price || volume === 0) return;
       const dist    = ((price - currentPrice) / currentPrice) * 100;
@@ -4941,9 +5006,13 @@ app.listen(PORT, () => {
         const etfAlertInfo = buildEtfAlerts(result, btcPrice);
         if (etfAlertInfo) {
           lastEtfAlertState = etfAlertInfo.stateKey;
-          const header = `📊 <b>ETF Monitor Started</b>\n${'─'.repeat(20)}\n`;
-          sendTelegramAlert(header + etfAlertInfo.alerts.join('\n\n'));
-          console.log(`[ETF Alert] Initial state: ${etfAlertInfo.stateKey}`);
+          if (etfAlertInfo.stateKey !== 'stable') {
+            const header = `📊 <b>ETF Monitor Started</b>\n${'─'.repeat(20)}\n`;
+            sendTelegramAlert(header + etfAlertInfo.alerts.join('\n\n'));
+            console.log(`[ETF Alert] Initial state: ${etfAlertInfo.stateKey}`);
+          } else {
+            console.log(`[ETF Alert] Initial state: stable (alert suppressed to avoid spam)`);
+          }
         }
       } catch (e) { console.error('[ETF] Warm-up failed:', e.message); }
     }

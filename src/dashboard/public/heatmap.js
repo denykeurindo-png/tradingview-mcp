@@ -242,11 +242,20 @@ function renderLiquidationTables(data) {
   }
 
   const yAxisData = data.yAxis || [];
+  const latestXIdx = data.xAxis ? data.xAxis.length - 1 : 0;
   const leveragePerY = {};
+  
+  yAxisData.forEach((_, idx) => {
+    leveragePerY[idx] = 0;
+  });
+
   heatmapSeries.data.forEach(item => {
+    const xIdx = item[0];
     const yIdx = item[1];
     const val = parseFloat(item[2] || 0);
-    leveragePerY[yIdx] = (leveragePerY[yIdx] || 0) + val;
+    if (xIdx === latestXIdx) {
+      leveragePerY[yIdx] = val;
+    }
   });
 
   const levels = [];
@@ -258,12 +267,11 @@ function renderLiquidationTables(data) {
     const leverage = leveragePerY[yIdx];
     const distancePercent = ((price - currentPrice) / currentPrice) * 100;
     const isAbove = price > currentPrice;
-    const isLiquidated = isAbove ? (price <= maxHigh) : (price >= minLow);
-    levels.push({ price, leverage, distance: distancePercent, isAbove, isLiquidated });
+    levels.push({ price, leverage, distance: distancePercent, isAbove, isLiquidated: false });
   });
 
-  const aboveLevels = levels.filter(l => l.isAbove).sort((a, b) => b.leverage - a.leverage).slice(0, 5).sort((a, b) => a.price - b.price);
-  const belowLevels = levels.filter(l => !l.isAbove).sort((a, b) => b.leverage - a.leverage).slice(0, 5).sort((a, b) => b.price - a.price);
+  const aboveLevels = levels.filter(l => l.isAbove && l.leverage > 0).sort((a, b) => b.leverage - a.leverage).slice(0, 5).sort((a, b) => a.price - b.price);
+  const belowLevels = levels.filter(l => !l.isAbove && l.leverage > 0).sort((a, b) => b.leverage - a.leverage).slice(0, 5).sort((a, b) => b.price - a.price);
   const maxLeverage = Math.max(...levels.map(l => l.leverage), 1);
 
   const renderTableHtml = (pools, isAbove) => {
@@ -1201,10 +1209,20 @@ function renderLiquidationTables3D(data) {
   }
 
   const yAxisData = data.yAxis || [];
+  const latestXIdx = data.xAxis ? data.xAxis.length - 1 : 0;
   const leveragePerY = {};
+  
+  yAxisData.forEach((_, idx) => {
+    leveragePerY[idx] = 0;
+  });
+
   heatmapSeries.data.forEach(item => {
-    const yIdx = item[1], val = parseFloat(item[2] || 0);
-    leveragePerY[yIdx] = (leveragePerY[yIdx] || 0) + val;
+    const xIdx = item[0];
+    const yIdx = item[1];
+    const val = parseFloat(item[2] || 0);
+    if (xIdx === latestXIdx) {
+      leveragePerY[yIdx] = val;
+    }
   });
 
   const levels = [];
@@ -1216,12 +1234,11 @@ function renderLiquidationTables3D(data) {
     const leverage = leveragePerY[yIdx];
     const distPct = ((price - currentPrice) / currentPrice) * 100;
     const isAbove = price > currentPrice;
-    const isLiquidated = isAbove ? (price <= maxHigh) : (price >= minLow);
-    levels.push({ price, leverage, distance: distPct, isAbove, isLiquidated });
+    levels.push({ price, leverage, distance: distPct, isAbove, isLiquidated: false });
   });
 
-  const aboveLevels = levels.filter(l => l.isAbove).sort((a,b) => b.leverage - a.leverage).slice(0,5).sort((a,b) => a.price - b.price);
-  const belowLevels = levels.filter(l => !l.isAbove).sort((a,b) => b.leverage - a.leverage).slice(0,5).sort((a,b) => b.price - a.price);
+  const aboveLevels = levels.filter(l => l.isAbove && l.leverage > 0).sort((a,b) => b.leverage - a.leverage).slice(0,5).sort((a,b) => a.price - b.price);
+  const belowLevels = levels.filter(l => !l.isAbove && l.leverage > 0).sort((a,b) => b.leverage - a.leverage).slice(0,5).sort((a,b) => b.price - a.price);
   const maxLev = Math.max(...levels.map(l => l.leverage), 1);
 
   const buildTable = (pools, isAbove) => {
