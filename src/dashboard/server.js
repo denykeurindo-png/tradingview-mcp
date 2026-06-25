@@ -529,13 +529,15 @@ async function scrapeCoinGlass(path, forceRefresh = false) {
       return obj;
     });
 
-    return {
+    const dataObj = {
       hdrs,
       rows,
       formatted,
       kpis: parsed.kpis,
       timestamp: new Date().toISOString()
     };
+    pushToVps('/api/etf-data/update', { data: dataObj }).catch(console.error);
+    return dataObj;
 
   } finally {
     if (navigated && savedUrl) {
@@ -895,7 +897,9 @@ async function scrapeHeatMap3D() {
     const parsed = JSON.parse(val);
     if (parsed.error) throw new Error('3D scrape: ' + parsed.error);
 
-    return { data: parsed, timestamp: new Date().toISOString(), period: chartUpdated ? '3d' : '24h-fallback' };
+    const dataObj = { data: parsed, timestamp: new Date().toISOString(), period: chartUpdated ? '3d' : '24h-fallback' };
+    pushToVps('/api/heatmap-data/update', { period: dataObj.period === '3d' ? '3d' : '24h', data: dataObj.data || dataObj }).catch(console.error);
+    return dataObj;
   } finally {
     if (navigated && savedUrl) {
       console.log(`[Heatmap3D] Restoring original URL: ${savedUrl}`);
@@ -1031,7 +1035,9 @@ async function scrapeDepthDelta() {
     const parsed = JSON.parse(val);
     if (parsed.error) throw new Error('Depth Delta: ' + parsed.error);
 
-    return { data: parsed, timestamp: new Date().toISOString() };
+    const dataObj = { data: parsed, timestamp: new Date().toISOString() };
+    pushToVps('/api/depth-delta/update', { data: dataObj }).catch(console.error);
+    return dataObj;
   } finally {
     if (navigated && savedUrl) {
       console.log(`[Scraper] Restoring original URL: ${savedUrl}`);
@@ -1167,7 +1173,9 @@ async function scrapeCoinbasePremium() {
     const parsed = JSON.parse(val);
     if (parsed.error) throw new Error('Coinbase Premium: ' + parsed.error);
 
-    return { data: parsed, timestamp: new Date().toISOString() };
+    const dataObj = { data: parsed, timestamp: new Date().toISOString() };
+    pushToVps('/api/coinbase-premium/update', { data: dataObj }).catch(console.error);
+    return dataObj;
   } finally {
     if (navigated && savedUrl) {
       console.log(`[Scraper] Restoring original URL: ${savedUrl}`);
@@ -1331,7 +1339,9 @@ async function scrapeWhaleOrders() {
     const parsed = JSON.parse(val);
     if (parsed.error) throw new Error('Whale Orders: ' + parsed.error);
 
-    return { data: parsed, timestamp: new Date().toISOString() };
+    const dataObj = { data: parsed, timestamp: new Date().toISOString() };
+    pushToVps('/api/whale-orders/update', { data: dataObj }).catch(console.error);
+    return dataObj;
   } finally {
     if (navigated && savedUrl) {
       console.log(`[Scraper] Restoring original URL: ${savedUrl}`);
@@ -1699,10 +1709,12 @@ async function scrapeHeatMap(forceRefresh = false) {
     const parsed = JSON.parse(val);
     if (parsed.error) throw new Error('Scrape failed: ' + parsed.error);
 
-    return {
+    const dataObj = {
       data: parsed,
       timestamp: new Date().toISOString()
     };
+    pushToVps('/api/heatmap-data/update', { period: '24h', data: dataObj.data || dataObj }).catch(console.error);
+    return dataObj;
 
   } finally {
     if (navigated && savedUrl) {
@@ -1881,11 +1893,13 @@ async function scrapeOrderBookCombined(forceRefresh = false) {
         const parsed = JSON.parse(raw);
         if (!parsed.error && parsed.asks && parsed.asks.length > 0) {
           console.log('[OrderBook Scraper] Instant scrape succeeded!');
-          return {
+          const dataObj = {
             asks: parsed.asks,
             bids: parsed.bids,
             timestamp: new Date().toISOString()
           };
+          pushToVps('/api/orderbook-data/update', { data: dataObj }).catch(console.error);
+          return dataObj;
         }
       }
     }
@@ -1913,11 +1927,13 @@ async function scrapeOrderBookCombined(forceRefresh = false) {
     if (parsed.error) throw new Error(parsed.error);
 
     console.log(`[OrderBook Scraper] Successfully scraped. Asks: ${parsed.asks.length}, Bids: ${parsed.bids.length}`);
-    return {
+    const dataObj = {
       asks: parsed.asks,
       bids: parsed.bids,
       timestamp: new Date().toISOString()
     };
+    pushToVps('/api/orderbook-data/update', { data: dataObj }).catch(console.error);
+    return dataObj;
   } finally {
     if (navigated && savedUrl) {
       console.log(`[OrderBook Scraper] Restoring original URL: ${savedUrl}`);
@@ -2138,6 +2154,55 @@ app.post('/api/heatmap-data/update', (req, res) => {
   res.json({ success: true });
 });
 
+app.post('/api/orderbook-data/update', (req, res) => {
+  const { data } = req.body;
+  if (!data) return res.status(400).json({ success: false, error: 'No data provided' });
+  orderBookDataCache = data;
+  lastOrderBookFetchTime = Date.now();
+  saveCacheToDisk('orderbook_cache.json', orderBookDataCache);
+  console.log('[Push API] Received Combined Order Book update from client.');
+  res.json({ success: true });
+});
+
+app.post('/api/depth-delta/update', (req, res) => {
+  const { data } = req.body;
+  if (!data) return res.status(400).json({ success: false, error: 'No data provided' });
+  depthDeltaCache = data;
+  lastDepthDeltaFetchTime = Date.now();
+  saveCacheToDisk('depth_delta_cache.json', depthDeltaCache);
+  console.log('[Push API] Received Depth Delta update from client.');
+  res.json({ success: true });
+});
+
+app.post('/api/coinbase-premium/update', (req, res) => {
+  const { data } = req.body;
+  if (!data) return res.status(400).json({ success: false, error: 'No data provided' });
+  cbPremiumCache = data;
+  lastCbPremiumFetchTime = Date.now();
+  saveCacheToDisk('cb_premium_cache.json', cbPremiumCache);
+  console.log('[Push API] Received Coinbase Premium update from client.');
+  res.json({ success: true });
+});
+
+app.post('/api/whale-orders/update', (req, res) => {
+  const { data } = req.body;
+  if (!data) return res.status(400).json({ success: false, error: 'No data provided' });
+  whaleOrdersCache = data;
+  lastWhaleOrdersFetchTime = Date.now();
+  saveCacheToDisk('whale_orders_cache.json', whaleOrdersCache);
+  console.log('[Push API] Received Whale Orders update from client.');
+  res.json({ success: true });
+});
+
+app.post('/api/etf-data/update', (req, res) => {
+  const { data } = req.body;
+  if (!data) return res.status(400).json({ success: false, error: 'No data provided' });
+  etfDataCache = data;
+  lastFetchTime = Date.now();
+  console.log('[Push API] Received ETF Flow update from client.');
+  res.json({ success: true });
+});
+
 // REST API for fetching ETF data (with cache)
 app.get('/api/etf-data', async (req, res) => {
   const forceRefresh = req.query.refresh === 'true';
@@ -2239,7 +2304,10 @@ function loadSettings() {
     authPassword: 'admin123',
     localAppUrl: '',
     localAppUsername: '',
-    localAppPassword: ''
+    localAppPassword: '',
+    vpsUrl: '',
+    vpsUsername: '',
+    vpsPassword: ''
   };
   if (!fs.existsSync(SETTINGS_FILE)) {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(defaultSettings, null, 2));
@@ -2299,6 +2367,42 @@ async function fetchFromLocalApp(apiPath, queryParams = {}) {
   }
 
   return json.data;
+}
+
+async function pushToVps(apiPath, payload) {
+  const settings = loadSettings();
+  if (!settings.vpsUrl) return;
+
+  const url = `${settings.vpsUrl}${apiPath}`;
+  const username = settings.vpsUsername || settings.authUsername || 'admin';
+  const password = settings.vpsPassword || settings.authPassword || 'admin123';
+  const authHeader = 'Basic ' + Buffer.from(username + ':' + password).toString('base64');
+
+  try {
+    console.log(`[VPS Push] Pushing data to ${url}...`);
+    const response = await globalThis.fetch(url, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': authHeader
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(30000)
+    });
+
+    if (!response.ok) {
+      console.error(`[VPS Push] Failed to push to ${url}. Status: ${response.status}`);
+      return;
+    }
+    const json = await response.json();
+    if (json.success) {
+      console.log(`[VPS Push] Successfully pushed to ${url}`);
+    } else {
+      console.error(`[VPS Push] VPS API returned error:`, json.error);
+    }
+  } catch (err) {
+    console.error(`[VPS Push] Error pushing to ${url}:`, err.message);
+  }
 }
 
 // ─── Trade Log REST API Endpoints ────────────────────────────
