@@ -760,7 +760,11 @@ async function updateMiniHeatmap() {
             symbol: ['none', 'none'],
             data: markLines
           }
-        }]
+        }],
+        dataZoom: [
+          { type: 'inside', xAxisIndex: 0, filterMode: 'none' },
+          { type: 'inside', yAxisIndex: 0, filterMode: 'none' }
+        ]
       };
       miniHeatmapChart.setOption(option, true);
     }
