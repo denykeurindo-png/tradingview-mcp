@@ -481,6 +481,10 @@ function renderHeatmap(data) {
           borderColor: '#32D74B', borderColor0: '#FF453A'
         }
       }
+    ],
+    dataZoom: [
+      { type: 'inside', xAxisIndex: 0, filterMode: 'none' },
+      { type: 'inside', yAxisIndex: 0, filterMode: 'none' }
     ]
   };
 
@@ -1393,6 +1397,10 @@ function renderHeatmap3D(data) {
       { name: 'Candles 3D', type: 'candlestick', yAxisIndex: 1,
         data: candleSeries ? candleSeries.data.map(c => [parseFloat(c[0]),parseFloat(c[1]),parseFloat(c[2]),parseFloat(c[3])]) : [],
         itemStyle: { color: '#0ECB81', color0: '#F6465D', borderColor: '#0ECB81', borderColor0: '#F6465D' } }
+    ],
+    dataZoom: [
+      { type: 'inside', xAxisIndex: 0, filterMode: 'none' },
+      { type: 'inside', yAxisIndex: 0, filterMode: 'none' }
     ]
   });
 
