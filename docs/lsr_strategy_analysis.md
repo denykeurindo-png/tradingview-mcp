@@ -51,6 +51,9 @@ flowchart TD
 |--------|------|-----------|--------|
 | **CoinGlass Heatmap 24H** | Liquidation pool levels + volume | 24 jam | `scrapeHeatMap()` — scrape React Fiber dari ECharts chart di `coinglass.com/pro/futures/LiquidationHeatMap` |
 | **CoinGlass Heatmap 3D** | Liquidation pool levels + volume | 3 hari | `scrapeHeatMap3D()` — navigate ke halaman yang sama, klik dropdown "3D", scrape data |
+| **CoinGlass Depth Delta** | Orderbook Liquidity Delta | 15 menit | `scrapeDepthDelta()` — scrape ECharts chart di `coinglass.com/pro/depth-delta` |
+| **Coinbase Premium Index** | Coinbase Bitcoin Premium Index | Real-time | `scrapeCoinbasePremium()` — scrape ECharts chart di `coinglass.com/pro/i/coinbase-bitcoin-premium-index` |
+| **Whale Orders** | Large Orderbook Statistics | Real-time | `scrapeWhaleOrders()` — scrape flexbox DOM di `coinglass.com/large-orderbook-statistics` |
 
 > [!IMPORTANT]
 > Data **CoinGlass Liquidation Heatmap** berbeda secara fundamental dari order book biasa:
@@ -111,6 +114,9 @@ score = volume × (1 + rejectionStrength) × (1 + wickDepth) × (1 + confirmCoun
 | 5 | **HTF Trend (1h + 4h)** | +10 | EMA50 alignment: +5 per timeframe |
 | 6 | **Funding Rate** | ±10 | Funding berlawanan trade = +poin (crowded trade unwind) |
 | 7 | **Long/Short Ratio** | ±10 | Ratio rendah saat LONG = +poin (kontrarian) |
+| 8 | **Coinbase Premium Index** | ±15 | Premium positif saat LONG = +15 pts (pembelian spot AS), negative $<-0.05$ = -15 pts penalty |
+| 9 | **Orderbook Depth Delta** | ±15 | Delta positif = +15 pts, delta sangat negatif = memicu **Force Skip** (anti-spoofing) |
+| 10 | **Whale Order Wall** | +10 | Entry berada dekat ($\pm 0.15\%$) dari limit order besar active $\ge \$2\text{M}$ yang berumur $\ge 24\text{H}$ |
 | | **Total Range** | **10–99%** | Di-clamp antara 10% dan 99% |
 
 ### 4. Trade Execution & Sizing
@@ -148,6 +154,7 @@ Position Size = (Capital × Risk%) / SL%
 | **Min R:R** | Entry ditolak jika Risk:Reward di bawah threshold |
 | **Min Reversal Prob** | Entry ditolak jika probability score terlalu rendah |
 | **Stale Sweep Check** | Sweep oleh candle lama diabaikan (hanya candle recent yang dihitung) |
+| **Anti-Spoofing Force Skip** | Membatalkan entry trade secara mutlak jika Orderbook Liquidity Delta bernilai sangat negatif di area support (LONG) atau sangat positif di area resistance (SHORT) saat terjadi sweep, guna menghindari tembok likuiditas palsu |
 
 ---
 

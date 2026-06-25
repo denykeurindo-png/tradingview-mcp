@@ -411,7 +411,10 @@ function renderProbabilityBreakdown(breakdown) {
     { label: 'Spot CVD Divergence', key: 'spotCvd', max: 10, showMax: true, suffix: ' pts' },
     { label: 'HTF Trend Alignment', key: 'trend', max: 10, showMax: true, suffix: ' pts' },
     { label: 'Funding Rate', key: 'funding', max: 10, showMax: true, isSigned: true, suffix: ' pts' },
-    { label: 'Long/Short Ratio', key: 'lsRatio', max: 10, showMax: true, isSigned: true, suffix: ' pts' }
+    { label: 'Long/Short Ratio', key: 'lsRatio', max: 10, showMax: true, isSigned: true, suffix: ' pts' },
+    { label: 'Coinbase Premium Index', key: 'coinbasePremium', max: 15, showMax: true, isSigned: true, suffix: ' pts' },
+    { label: 'Orderbook Depth Delta', key: 'depthDelta', max: 15, showMax: true, isSigned: true, suffix: ' pts' },
+    { label: 'Whale Order Wall', key: 'whaleWall', max: 10, showMax: true, suffix: ' pts' }
   ];
 
   container.innerHTML = factors.map(f => {

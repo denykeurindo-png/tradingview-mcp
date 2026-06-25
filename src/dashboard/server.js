@@ -546,6 +546,19 @@ let orderBookDataCache = null;
 let lastOrderBookFetchTime = null;
 let isOrderBookScrapingBusy = false;
 
+// Cache variables for Depth Delta, Coinbase Premium, and Whale Orders
+let depthDeltaCache = null;
+let lastDepthDeltaFetchTime = null;
+let isDepthDeltaScrapingBusy = false;
+
+let cbPremiumCache = null;
+let lastCbPremiumFetchTime = null;
+let isCbPremiumScrapingBusy = false;
+
+let whaleOrdersCache = null;
+let lastWhaleOrdersFetchTime = null;
+let isWhaleOrdersScrapingBusy = false;
+
 // ─── Cache Disk Persistence ──────────────────────────────────────────────────
 const CACHE_DIR = path.join(__dirname, 'cache');
 if (!fs.existsSync(CACHE_DIR)) {
@@ -591,6 +604,21 @@ if (heatmap3DCache) {
 orderBookDataCache = loadCacheFromDisk('orderbook_cache.json');
 if (orderBookDataCache) {
   lastOrderBookFetchTime = Date.now();
+}
+
+depthDeltaCache = loadCacheFromDisk('depth_delta_cache.json');
+if (depthDeltaCache) {
+  lastDepthDeltaFetchTime = Date.now();
+}
+
+cbPremiumCache = loadCacheFromDisk('cb_premium_cache.json');
+if (cbPremiumCache) {
+  lastCbPremiumFetchTime = Date.now();
+}
+
+whaleOrdersCache = loadCacheFromDisk('whale_orders_cache.json');
+if (whaleOrdersCache) {
+  lastWhaleOrdersFetchTime = Date.now();
 }
 
 
@@ -853,6 +881,427 @@ async function scrapeHeatMap3D() {
     if (navigated && savedUrl) {
       console.log(`[Heatmap3D] Restoring original URL: ${savedUrl}`);
       await cdp('Page.navigate', { url: savedUrl }).catch(e => console.error('[Heatmap3D] Failed to navigate back:', e));
+    }
+    ws.close();
+  }
+}
+
+async function scrapeDepthDelta() {
+  let tabs = null;
+  let retries = 3;
+  while (retries > 0) {
+    try {
+      const tabsResponse = await fetch('http://127.0.0.1:9222/json', { signal: AbortSignal.timeout(4000) });
+      tabs = await tabsResponse.json();
+      break;
+    } catch (e) {
+      retries--;
+      if (retries === 0) throw new Error('Failed to fetch Chrome tab list from port 9222.');
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+  
+  let tab = tabs.find(t => t.type === 'page' && t.url?.includes('coinglass.com/pro/depth-delta'));
+  let navigated = true; // Always navigate to ensure fresh page load
+  if (!tab) {
+    tab = tabs.find(t => t.type === 'page' && t.url?.includes('coinglass.com'));
+    if (!tab) {
+      tab = tabs.find(t => t.type === 'page' && t.url?.startsWith('http') && !t.url?.includes('devtools'));
+    }
+    if (!tab) throw new Error('No suitable tab found.');
+  }
+  const savedUrl = tab.url;
+
+  let ws = null;
+  retries = 3;
+  while (retries > 0) {
+    try {
+      ws = new WebSocket(tab.webSocketDebuggerUrl);
+      await new Promise((res, rej) => {
+        const connTimeout = setTimeout(() => rej(new Error('WebSocket connection timeout')), 4000);
+        ws.on('open', () => { clearTimeout(connTimeout); res(); });
+        ws.on('error', (err) => { clearTimeout(connTimeout); rej(err); });
+      });
+      break;
+    } catch (e) {
+      retries--;
+      if (ws) { try { ws.close(); } catch (err) {} ws = null; }
+      if (retries === 0) throw new Error(`Failed to connect to Chrome DevTools WebSocket: ${e.message}`);
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+
+  let _mid = 1;
+  const cdp = (method, params = {}) => new Promise((res, rej) => {
+    const id = _mid++;
+    ws.send(JSON.stringify({ id, method, params }));
+    const t = setTimeout(() => rej(new Error(`CDP timeout: ${method}`)), 40000);
+    const handler = (data) => {
+      const m = JSON.parse(data.toString());
+      if (m.id === id) {
+        clearTimeout(t);
+        ws.off('message', handler);
+        if (m.error) rej(new Error(m.error.message || JSON.stringify(m.error)));
+        else res(m.result);
+      }
+    };
+    ws.on('message', handler);
+  });
+
+  try {
+    await cdp('Page.enable');
+
+    const fiberExpression = `
+      (() => {
+        try {
+          const charts = document.querySelectorAll('.echarts-for-react');
+          if (charts.length === 0) return null;
+          
+          const results = Array.from(charts).map((el, index) => {
+            const keys = Object.keys(el);
+            const fiberKey = keys.find(k => k.startsWith('__reactFiber$') || k.startsWith('__reactContainer$'));
+            if (!fiberKey) return { index, error: 'No fiber key' };
+            
+            let fiber = el[fiberKey];
+            let option = null;
+            while (fiber) {
+              if (fiber.memoizedProps && fiber.memoizedProps.option) {
+                option = fiber.memoizedProps.option;
+                break;
+              }
+              fiber = fiber.return;
+            }
+            if (!option) return { index, error: 'No option' };
+            
+            return {
+              index,
+              xAxis: option.xAxis ? (Array.isArray(option.xAxis) ? option.xAxis[0].data : option.xAxis.data) : null,
+              series: option.series ? option.series.map(s => ({
+                name: s.name,
+                type: s.type,
+                data: s.data
+              })) : null
+            };
+          });
+          return JSON.stringify(results);
+        } catch (e) {
+          return JSON.stringify({ error: e.message });
+        }
+      })()
+    `;
+
+    if (navigated) {
+      console.log('[Scraper] Navigating to Depth Delta...');
+      await cdp('Page.navigate', { url: 'https://www.coinglass.com/pro/depth-delta' });
+      await new Promise(r => setTimeout(r, 15000));
+    }
+
+    console.log('[Scraper] Polling Depth Delta ECharts data...');
+    const result = await cdp('Runtime.evaluate', {
+      expression: fiberExpression,
+      returnByValue: true
+    });
+
+    const val = result?.result?.value;
+    if (!val) throw new Error('No depth delta data returned');
+    const parsed = JSON.parse(val);
+    if (parsed.error) throw new Error('Depth Delta: ' + parsed.error);
+
+    return { data: parsed, timestamp: new Date().toISOString() };
+  } finally {
+    if (navigated && savedUrl) {
+      console.log(`[Scraper] Restoring original URL: ${savedUrl}`);
+      await cdp('Page.navigate', { url: savedUrl }).catch(e => console.error('[Scraper] Failed to navigate back:', e));
+    }
+    ws.close();
+  }
+}
+
+async function scrapeCoinbasePremium() {
+  let tabs = null;
+  let retries = 3;
+  while (retries > 0) {
+    try {
+      const tabsResponse = await fetch('http://127.0.0.1:9222/json', { signal: AbortSignal.timeout(4000) });
+      tabs = await tabsResponse.json();
+      break;
+    } catch (e) {
+      retries--;
+      if (retries === 0) throw new Error('Failed to fetch Chrome tab list.');
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+  
+  let tab = tabs.find(t => t.type === 'page' && t.url?.includes('coinglass.com/pro/i/coinbase-bitcoin-premium-index'));
+  let navigated = true; // Always navigate to ensure fresh page load
+  if (!tab) {
+    tab = tabs.find(t => t.type === 'page' && t.url?.includes('coinglass.com'));
+    if (!tab) {
+      tab = tabs.find(t => t.type === 'page' && t.url?.startsWith('http') && !t.url?.includes('devtools'));
+    }
+    if (!tab) throw new Error('No suitable tab found.');
+  }
+  const savedUrl = tab.url;
+
+  let ws = null;
+  retries = 3;
+  while (retries > 0) {
+    try {
+      ws = new WebSocket(tab.webSocketDebuggerUrl);
+      await new Promise((res, rej) => {
+        const connTimeout = setTimeout(() => rej(new Error('WebSocket connection timeout')), 4000);
+        ws.on('open', () => { clearTimeout(connTimeout); res(); });
+        ws.on('error', (err) => { clearTimeout(connTimeout); rej(err); });
+      });
+      break;
+    } catch (e) {
+      retries--;
+      if (ws) { try { ws.close(); } catch (err) {} ws = null; }
+      if (retries === 0) throw new Error(`Failed to connect to Chrome DevTools WebSocket: ${e.message}`);
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+
+  let _mid = 1;
+  const cdp = (method, params = {}) => new Promise((res, rej) => {
+    const id = _mid++;
+    ws.send(JSON.stringify({ id, method, params }));
+    const t = setTimeout(() => rej(new Error(`CDP timeout: ${method}`)), 40000);
+    const handler = (data) => {
+      const m = JSON.parse(data.toString());
+      if (m.id === id) {
+        clearTimeout(t);
+        ws.off('message', handler);
+        if (m.error) rej(new Error(m.error.message || JSON.stringify(m.error)));
+        else res(m.result);
+      }
+    };
+    ws.on('message', handler);
+  });
+
+  try {
+    await cdp('Page.enable');
+
+    const fiberExpression = `
+      (() => {
+        try {
+          const charts = document.querySelectorAll('.echarts-for-react');
+          if (charts.length === 0) return null;
+          
+          const results = Array.from(charts).map((el, index) => {
+            const keys = Object.keys(el);
+            const fiberKey = keys.find(k => k.startsWith('__reactFiber$') || k.startsWith('__reactContainer$'));
+            if (!fiberKey) return { index, error: 'No fiber key' };
+            
+            let fiber = el[fiberKey];
+            let option = null;
+            while (fiber) {
+              if (fiber.memoizedProps && fiber.memoizedProps.option) {
+                option = fiber.memoizedProps.option;
+                break;
+              }
+              fiber = fiber.return;
+            }
+            if (!option) return { index, error: 'No option' };
+            
+            return {
+              index,
+              xAxis: option.xAxis ? (Array.isArray(option.xAxis) ? option.xAxis[0].data : option.xAxis.data) : null,
+              series: option.series ? option.series.map(s => ({
+                name: s.name,
+                type: s.type,
+                data: s.data
+              })) : null
+            };
+          });
+          return JSON.stringify(results);
+        } catch (e) {
+          return JSON.stringify({ error: e.message });
+        }
+      })()
+    `;
+
+    if (navigated) {
+      console.log('[Scraper] Navigating to Coinbase Premium Index...');
+      await cdp('Page.navigate', { url: 'https://www.coinglass.com/pro/i/coinbase-bitcoin-premium-index' });
+      await new Promise(r => setTimeout(r, 15000));
+    }
+
+    console.log('[Scraper] Polling Coinbase Premium ECharts data...');
+    const result = await cdp('Runtime.evaluate', {
+      expression: fiberExpression,
+      returnByValue: true
+    });
+
+    const val = result?.result?.value;
+    if (!val) throw new Error('No coinbase premium data returned');
+    const parsed = JSON.parse(val);
+    if (parsed.error) throw new Error('Coinbase Premium: ' + parsed.error);
+
+    return { data: parsed, timestamp: new Date().toISOString() };
+  } finally {
+    if (navigated && savedUrl) {
+      console.log(`[Scraper] Restoring original URL: ${savedUrl}`);
+      await cdp('Page.navigate', { url: savedUrl }).catch(e => console.error('[Scraper] Failed to navigate back:', e));
+    }
+    ws.close();
+  }
+}
+
+async function scrapeWhaleOrders() {
+  let tabs = null;
+  let retries = 3;
+  while (retries > 0) {
+    try {
+      const tabsResponse = await fetch('http://127.0.0.1:9222/json', { signal: AbortSignal.timeout(4000) });
+      tabs = await tabsResponse.json();
+      break;
+    } catch (e) {
+      retries--;
+      if (retries === 0) throw new Error('Failed to fetch Chrome tab list.');
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+  
+  let tab = tabs.find(t => t.type === 'page' && t.url?.includes('coinglass.com/large-orderbook-statistics'));
+  let navigated = true; // Always navigate to ensure fresh page load
+  if (!tab) {
+    tab = tabs.find(t => t.type === 'page' && t.url?.includes('coinglass.com'));
+    if (!tab) {
+      tab = tabs.find(t => t.type === 'page' && t.url?.startsWith('http') && !t.url?.includes('devtools'));
+    }
+    if (!tab) throw new Error('No suitable tab found.');
+  }
+  const savedUrl = tab.url;
+
+  let ws = null;
+  retries = 3;
+  while (retries > 0) {
+    try {
+      ws = new WebSocket(tab.webSocketDebuggerUrl);
+      await new Promise((res, rej) => {
+        const connTimeout = setTimeout(() => rej(new Error('WebSocket connection timeout')), 4000);
+        ws.on('open', () => { clearTimeout(connTimeout); res(); });
+        ws.on('error', (err) => { clearTimeout(connTimeout); rej(err); });
+      });
+      break;
+    } catch (e) {
+      retries--;
+      if (ws) { try { ws.close(); } catch (err) {} ws = null; }
+      if (retries === 0) throw new Error(`Failed to connect to Chrome DevTools WebSocket: ${e.message}`);
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+
+  let _mid = 1;
+  const cdp = (method, params = {}) => new Promise((res, rej) => {
+    const id = _mid++;
+    ws.send(JSON.stringify({ id, method, params }));
+    const t = setTimeout(() => rej(new Error(`CDP timeout: ${method}`)), 40000);
+    const handler = (data) => {
+      const m = JSON.parse(data.toString());
+      if (m.id === id) {
+        clearTimeout(t);
+        ws.off('message', handler);
+        if (m.error) rej(new Error(m.error.message || JSON.stringify(m.error)));
+        else res(m.result);
+      }
+    };
+    ws.on('message', handler);
+  });
+
+  try {
+    await cdp('Page.enable');
+
+    const domExpression = `
+      (() => {
+        try {
+          var rows = [];
+          var items = document.querySelectorAll('.large-order-item');
+          
+          var parseVal = function(str) {
+            if (!str) return 0;
+            var clean = str.replace(/\\$|,/g, '').toUpperCase().trim();
+            var mult = 1;
+            if (clean.endsWith('K')) { mult = 1000; clean = clean.slice(0, -1); }
+            else if (clean.endsWith('M')) { mult = 1000000; clean = clean.slice(0, -1); }
+            else if (clean.endsWith('B')) { mult = 1000000000; clean = clean.slice(0, -1); }
+            return parseFloat(clean) * mult;
+          };
+
+          var getExchangeName = function(src) {
+            if (!src) return 'Unknown';
+            var lower = src.toLowerCase();
+            if (lower.indexOf('coinbase') !== -1) return 'Coinbase';
+            if (lower.indexOf('binance') !== -1 || lower.indexOf('270.png') !== -1) return 'Binance';
+            if (lower.indexOf('okx') !== -1 || lower.indexOf('82.png') !== -1) return 'OKX';
+            if (lower.indexOf('bybit') !== -1 || lower.indexOf('1027.png') !== -1 || lower.indexOf('334.png') !== -1) return 'Bybit';
+            var parts = src.split('/');
+            var filename = parts[parts.length - 1].replace(/%20/g, ' ');
+            return filename.split('.')[0].toUpperCase();
+          };
+
+          items.forEach(function(el) {
+            var img = el.querySelector('img');
+            var exchange = img ? getExchangeName(img.src) : 'Binance';
+            
+            var text = (el.innerText || '').trim();
+            var tokens = text.split(/\\s+/).map(function(t) { return t.trim(); }).filter(function(t) { return t.length > 0; });
+            
+            if (tokens.length >= 4) {
+              var type = tokens[0]; // P or S
+              var price = parseFloat(tokens[1].replace(/,/g, '')) || 0;
+              var valueUsd = parseVal(tokens[2]);
+              var age = tokens.slice(3).join(' ');
+              
+              var side = 'buy';
+              if (el.querySelector('[class*=\"ovv2-item-bg-s\"]')) {
+                side = 'sell';
+              } else if (el.querySelector('[class*=\"ovv2-item-bg-b\"]')) {
+                side = 'buy';
+              }
+
+              if (price > 0 && valueUsd > 0) {
+                rows.push({
+                  exchange: exchange,
+                  marketType: type,
+                  price: price,
+                  valueUsd: valueUsd,
+                  age: age,
+                  side: side
+                });
+              }
+            }
+          });
+          return JSON.stringify(rows);
+        } catch (e) {
+          return JSON.stringify({ error: e.message });
+        }
+      })()
+    `;
+
+    if (navigated) {
+      console.log('[Scraper] Navigating to Large Orderbook Statistics...');
+      await cdp('Page.navigate', { url: 'https://www.coinglass.com/large-orderbook-statistics' });
+      await new Promise(r => setTimeout(r, 15000));
+    }
+
+    console.log('[Scraper] Polling Whale Orders from DOM...');
+    const result = await cdp('Runtime.evaluate', {
+      expression: domExpression,
+      returnByValue: true
+    });
+
+    const val = result?.result?.value;
+    if (!val) throw new Error('No whale orders data returned');
+    const parsed = JSON.parse(val);
+    if (parsed.error) throw new Error('Whale Orders: ' + parsed.error);
+
+    return { data: parsed, timestamp: new Date().toISOString() };
+  } finally {
+    if (navigated && savedUrl) {
+      console.log(`[Scraper] Restoring original URL: ${savedUrl}`);
+      await cdp('Page.navigate', { url: savedUrl }).catch(e => console.error('[Scraper] Failed to navigate back:', e));
     }
     ws.close();
   }
@@ -1466,6 +1915,106 @@ app.get('/api/orderbook-data', async (req, res) => {
     }
   } finally {
     isOrderBookScrapingBusy = false;
+  }
+});
+
+// REST API for fetching Depth Delta data
+app.get('/api/depth-delta', async (req, res) => {
+  const forceRefresh = req.query.refresh === 'true';
+
+  // Cache valid for 5 minutes (300,000 ms)
+  if (depthDeltaCache && !forceRefresh && lastDepthDeltaFetchTime && (Date.now() - lastDepthDeltaFetchTime < 300000)) {
+    return res.json({ success: true, source: 'cache', data: depthDeltaCache });
+  }
+
+  if (isDepthDeltaScrapingBusy) {
+    return res.status(409).json({ success: false, error: 'A scrape is already in progress, please wait.' });
+  }
+
+  isDepthDeltaScrapingBusy = true;
+  try {
+    console.log('[API] Starting CoinGlass Depth Delta scrape...');
+    const result = await runWithCdpLock(() => scrapeDepthDelta());
+    depthDeltaCache = result;
+    lastDepthDeltaFetchTime = Date.now();
+    saveCacheToDisk('depth_delta_cache.json', depthDeltaCache);
+
+    res.json({ success: true, source: 'live', data: result });
+  } catch (err) {
+    console.error('[API] Depth Delta scrape failed:', err.message);
+    if (depthDeltaCache) {
+      res.json({ success: true, source: 'fallback-cache', data: depthDeltaCache, warning: err.message });
+    } else {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  } finally {
+    isDepthDeltaScrapingBusy = false;
+  }
+});
+
+// REST API for fetching Coinbase Premium Index
+app.get('/api/coinbase-premium', async (req, res) => {
+  const forceRefresh = req.query.refresh === 'true';
+
+  if (cbPremiumCache && !forceRefresh && lastCbPremiumFetchTime && (Date.now() - lastCbPremiumFetchTime < 300000)) {
+    return res.json({ success: true, source: 'cache', data: cbPremiumCache });
+  }
+
+  if (isCbPremiumScrapingBusy) {
+    return res.status(409).json({ success: false, error: 'A scrape is already in progress, please wait.' });
+  }
+
+  isCbPremiumScrapingBusy = true;
+  try {
+    console.log('[API] Starting CoinGlass Coinbase Premium Index scrape...');
+    const result = await runWithCdpLock(() => scrapeCoinbasePremium());
+    cbPremiumCache = result;
+    lastCbPremiumFetchTime = Date.now();
+    saveCacheToDisk('cb_premium_cache.json', cbPremiumCache);
+
+    res.json({ success: true, source: 'live', data: result });
+  } catch (err) {
+    console.error('[API] Coinbase Premium Index scrape failed:', err.message);
+    if (cbPremiumCache) {
+      res.json({ success: true, source: 'fallback-cache', data: cbPremiumCache, warning: err.message });
+    } else {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  } finally {
+    isCbPremiumScrapingBusy = false;
+  }
+});
+
+// REST API for fetching Whale Orders (Large Orderbook Statistics)
+app.get('/api/whale-orders', async (req, res) => {
+  const forceRefresh = req.query.refresh === 'true';
+
+  if (whaleOrdersCache && !forceRefresh && lastWhaleOrdersFetchTime && (Date.now() - lastWhaleOrdersFetchTime < 300000)) {
+    return res.json({ success: true, source: 'cache', data: whaleOrdersCache });
+  }
+
+  if (isWhaleOrdersScrapingBusy) {
+    return res.status(409).json({ success: false, error: 'A scrape is already in progress, please wait.' });
+  }
+
+  isWhaleOrdersScrapingBusy = true;
+  try {
+    console.log('[API] Starting CoinGlass Large Orderbook Statistics scrape...');
+    const result = await runWithCdpLock(() => scrapeWhaleOrders());
+    whaleOrdersCache = result;
+    lastWhaleOrdersFetchTime = Date.now();
+    saveCacheToDisk('whale_orders_cache.json', whaleOrdersCache);
+
+    res.json({ success: true, source: 'live', data: result });
+  } catch (err) {
+    console.error('[API] Large Orderbook Statistics scrape failed:', err.message);
+    if (whaleOrdersCache) {
+      res.json({ success: true, source: 'fallback-cache', data: whaleOrdersCache, warning: err.message });
+    } else {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  } finally {
+    isWhaleOrdersScrapingBusy = false;
   }
 });
 
@@ -2114,6 +2663,95 @@ async function fetchBinanceLongShortRatio() {
   return { ratio: 1.0, long: 0.5, short: 0.5 };
 }
 
+// Helper functions for new CoinGlass metrics
+function getLatestCoinbasePremium() {
+  try {
+    if (!cbPremiumCache || !cbPremiumCache.data) return null;
+    const chart = Array.isArray(cbPremiumCache.data) ? cbPremiumCache.data[0] : cbPremiumCache.data;
+    if (!chart || !chart.series || !chart.series[0] || !chart.series[0].data) return null;
+    const data = chart.series[0].data;
+    for (let i = data.length - 1; i >= 0; i--) {
+      if (data[i] !== null && data[i] !== undefined) {
+        return parseFloat(data[i]);
+      }
+    }
+  } catch (e) {
+    console.error('[Premium Index Parser] Error:', e.message);
+  }
+  return null;
+}
+
+function getLatestDepthDelta() {
+  try {
+    if (!depthDeltaCache || !depthDeltaCache.data) return null;
+    const chart = Array.isArray(depthDeltaCache.data) ? depthDeltaCache.data[0] : depthDeltaCache.data;
+    if (!chart || !chart.series || !chart.series[0] || !chart.series[0].data) return null;
+
+    const series0 = chart.series[0];
+    const data0 = series0.data;
+    let val0 = null;
+    for (let i = data0.length - 1; i >= 0; i--) {
+      if (data0[i] !== null && data0[i] !== undefined) {
+        val0 = parseFloat(data0[i]);
+        break;
+      }
+    }
+
+    if (chart.series[1] && chart.series[1].data) {
+      const data1 = chart.series[1].data;
+      let val1 = null;
+      for (let i = data1.length - 1; i >= 0; i--) {
+        if (data1[i] !== null && data1[i] !== undefined) {
+          val1 = parseFloat(data1[i]);
+          break;
+        }
+      }
+      if (val0 !== null && val1 !== null) {
+        const name0 = (series0.name || '').toLowerCase();
+        const name1 = (chart.series[1].name || '').toLowerCase();
+        if (name0.includes('bid') || name1.includes('ask')) {
+          return val0 - Math.abs(val1);
+        }
+      }
+    }
+    return val0;
+  } catch (e) {
+    console.error('[Depth Delta Parser] Error:', e.message);
+  }
+  return null;
+}
+
+function findWhaleOrderNear(price, direction, tolerancePercent = 0.15) {
+  try {
+    if (!whaleOrdersCache) return null;
+    const rawData = whaleOrdersCache.data || whaleOrdersCache;
+    const data = Array.isArray(rawData) ? rawData : (rawData.data || []);
+    if (!Array.isArray(data)) return null;
+
+    const targetSide = direction === 'LONG' ? 'buy' : 'sell';
+
+    let closest = null;
+    let minDiff = Infinity;
+
+    data.forEach(order => {
+      if (order.side !== targetSide) return;
+
+      const diff = Math.abs(order.price - price);
+      const pct = (diff / price) * 100;
+      if (pct <= tolerancePercent) {
+        if (diff < minDiff) {
+          minDiff = diff;
+          closest = order;
+        }
+      }
+    });
+    return closest;
+  } catch (e) {
+    console.error('[Whale Order Finder] Error:', e.message);
+  }
+  return null;
+}
+
 function calculateReversalProbability(sweepDetail, oiChange, spotCVD, trend1h, trend4h, fundingRate, longShortRatio) {
   const baseScore = 40;
   let score = baseScore; // Base probability start at 40%
@@ -2194,10 +2832,69 @@ function calculateReversalProbability(sweepDetail, oiChange, spotCVD, trend1h, t
   }
   score += lsRatioPoints;
 
+  // 8. Coinbase Premium Index (Up to 15 points)
+  let premiumPoints = 0;
+  const cbPremium = getLatestCoinbasePremium();
+  if (cbPremium !== null) {
+    if (sweepDetail.direction === 'LONG') {
+      if (cbPremium > 0) {
+        premiumPoints = Math.min(15, cbPremium * 300); // e.g., 0.05% premium = +15 pts
+      } else if (cbPremium < -0.05) {
+        premiumPoints = -Math.min(15, Math.abs(cbPremium + 0.05) * 300); // penalty for strong dump
+      }
+    } else if (sweepDetail.direction === 'SHORT') {
+      if (cbPremium < 0) {
+        premiumPoints = Math.min(15, Math.abs(cbPremium) * 300);
+      } else if (cbPremium > 0.05) {
+        premiumPoints = -Math.min(15, (cbPremium - 0.05) * 300);
+      }
+    }
+  }
+  score += premiumPoints;
+
+  // 9. Orderbook Depth Delta (Up to 15 points + Anti-Spoofing Force Skip)
+  let deltaPoints = 0;
+  const depthDelta = getLatestDepthDelta();
+  if (depthDelta !== null) {
+    if (sweepDetail.direction === 'LONG') {
+      if (depthDelta > 0) {
+        deltaPoints = Math.min(15, (depthDelta / 50) * 15); // e.g., +50 BTC delta = +15 pts
+      } else if (depthDelta < -30) {
+        deltaPoints = -15;
+        sweepDetail.forceSkip = 'Spoofing detected: High negative depth delta (' + depthDelta.toFixed(0) + ' BTC)';
+      } else {
+        deltaPoints = -Math.min(15, Math.abs(depthDelta) * 0.5);
+      }
+    } else if (sweepDetail.direction === 'SHORT') {
+      if (depthDelta < 0) {
+        deltaPoints = Math.min(15, (Math.abs(depthDelta) / 50) * 15);
+      } else if (depthDelta > 30) {
+        deltaPoints = -15;
+        sweepDetail.forceSkip = 'Spoofing detected: High positive depth delta (' + depthDelta.toFixed(0) + ' BTC)';
+      } else {
+        deltaPoints = -Math.min(15, depthDelta * 0.5);
+      }
+    }
+  }
+  score += deltaPoints;
+
+  // 10. Whale Order Wall (Up to 10 points)
+  let whalePoints = 0;
+  if (sweepDetail.price) {
+    const whaleOrder = findWhaleOrderNear(sweepDetail.price, sweepDetail.direction, 0.15); // 0.15% tolerance
+    if (whaleOrder) {
+      const valMillions = whaleOrder.valueUsd / 1e6;
+      whalePoints = Math.min(10, valMillions * 2); // e.g., $5M whale wall = +10 pts
+    }
+  }
+  score += whalePoints;
+
   const finalScore = Math.max(10, Math.min(99, Math.round(score)));
+  const forceSkipText = sweepDetail.forceSkip || null;
 
   return {
     score: finalScore,
+    forceSkip: forceSkipText,
     breakdown: {
       baseScore,
       poolVolume: Math.round(poolVolumePoints * 10) / 10,
@@ -2206,7 +2903,10 @@ function calculateReversalProbability(sweepDetail, oiChange, spotCVD, trend1h, t
       spotCvd: Math.round(spotCvdPoints * 10) / 10,
       trend: Math.round(trendPoints * 10) / 10,
       funding: Math.round(fundingPoints * 10) / 10,
-      lsRatio: Math.round(lsRatioPoints * 10) / 10
+      lsRatio: Math.round(lsRatioPoints * 10) / 10,
+      coinbasePremium: Math.round(premiumPoints * 10) / 10,
+      depthDelta: Math.round(deltaPoints * 10) / 10,
+      whaleWall: Math.round(whalePoints * 10) / 10
     }
   };
 }
@@ -2832,7 +3532,8 @@ function autoTradeStrategyBackend(heatmapData) {
   const previewSweep = {
     volume: closestPool.volume,
     rejectionStrength: 0.1, // minimal
-    direction: closestPool.distance > 0 ? 'SHORT' : 'LONG'
+    direction: closestPool.distance > 0 ? 'SHORT' : 'LONG',
+    price: closestPool.price
   };
   const previewResult = calculateReversalProbability(
     previewSweep,
@@ -3111,6 +3812,34 @@ function autoTradeStrategyBackend(heatmapData) {
   const prob = probResult.score;
   botMetrics.reversalProbability = prob; // cache the latest calculated probability for reporting
   botMetrics.probabilityBreakdown = probResult.breakdown;
+
+  // Check for anti-spoofing or other override force-skips
+  if (probResult.forceSkip) {
+    botPhaseState = {
+      phase: 'SWEEP_REJECTED',
+      nearestPool: bestSweep.price,
+      nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
+      nearestPoolVolume: bestSweep.volume,
+      nearestPoolSide: direction === 'LONG' ? 'SUPPORT' : 'RESISTANCE',
+      sweepCandidate: { 
+        direction, 
+        entry, 
+        tp, 
+        sl, 
+        rr, 
+        prob,
+        rejectionStrength: bestSweep.rejectionStrength,
+        wickDepth: bestSweep.wickDepth,
+        confirmCount: bestSweep.confirmCount,
+        forceSkip: probResult.forceSkip
+      },
+      probabilityBreakdown: probResult.breakdown,
+      message: `Sweep detected at $${bestSweep.price.toFixed(0)} but force skipped: ${probResult.forceSkip}`,
+      lastUpdate: new Date().toISOString()
+    };
+    console.log(`[LSR Bot] FORCE_SKIP — ${probResult.forceSkip} for ${direction} at $${entry.toFixed(0)}`);
+    return;
+  }
 
   const minProb = settings.minReversalProbability || 65;
   if (prob < minProb) {
@@ -4131,6 +4860,37 @@ async function runBotCycle() {
           console.error('[Heatmap3D] Fallback Sweep3D computation failed:', fallbackErr.message);
         }
       }
+    }
+
+    // Scrape Coinbase Premium, Depth Delta, and Whale Orders sequentially in background
+    try {
+      console.log('[Background Bot] Running scheduled Coinbase Premium scrape...');
+      const rPremium = await runWithCdpLock(() => scrapeCoinbasePremium());
+      cbPremiumCache = rPremium;
+      lastCbPremiumFetchTime = Date.now();
+      saveCacheToDisk('cb_premium_cache.json', cbPremiumCache);
+    } catch (e) {
+      console.error('[Background Bot] Coinbase Premium scrape error:', e.message);
+    }
+
+    try {
+      console.log('[Background Bot] Running scheduled Depth Delta scrape...');
+      const rDelta = await runWithCdpLock(() => scrapeDepthDelta());
+      depthDeltaCache = rDelta;
+      lastDepthDeltaFetchTime = Date.now();
+      saveCacheToDisk('depth_delta_cache.json', depthDeltaCache);
+    } catch (e) {
+      console.error('[Background Bot] Depth Delta scrape error:', e.message);
+    }
+
+    try {
+      console.log('[Background Bot] Running scheduled Whale Orders scrape...');
+      const rWhales = await runWithCdpLock(() => scrapeWhaleOrders());
+      whaleOrdersCache = rWhales;
+      lastWhaleOrdersFetchTime = Date.now();
+      saveCacheToDisk('whale_orders_cache.json', whaleOrdersCache);
+    } catch (e) {
+      console.error('[Background Bot] Whale Orders scrape error:', e.message);
     }
 
     console.log('[Background Bot] Cycle completed successfully. Metrics:', JSON.stringify(botMetrics));
