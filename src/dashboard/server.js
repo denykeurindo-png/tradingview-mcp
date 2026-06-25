@@ -2657,6 +2657,12 @@ app.post('/api/telegram/test', async (req, res) => {
 
 // TradingView Webhook Endpoint
 app.post('/api/tradingview/webhook', (req, res) => {
+  const settings = loadSettings();
+  if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true') {
+    console.warn('[TradingView Webhook] Webhook ignored. VPS is in view-only mode.');
+    return res.status(403).json({ success: false, error: 'VPS is in view-only mode. Webhook alerts should be sent to your local app.' });
+  }
+
   const data = req.body;
   console.log('[TradingView Webhook] Received payload:', JSON.stringify(data));
 
@@ -5103,9 +5109,13 @@ async function runBotCycle() {
     }
 
     if (result && result.data) {
-      // Run evaluations and strategy
-      evaluateActiveTradesBackend(result.data, klines15m);
-      autoTradeStrategyBackend(result.data, klines15m);
+      if (isScraperEnabled) {
+        // Run evaluations and strategy only on local instance (master mode)
+        evaluateActiveTradesBackend(result.data, klines15m);
+        autoTradeStrategyBackend(result.data, klines15m);
+      } else {
+        console.log('[Background Bot] Running in view-only mode on VPS. Skipping trade evaluations and strategy.');
+      }
       const _sweepInput = result.data.data || result.data;
       console.log('[SweepPredict] Input series:', _sweepInput && _sweepInput.series ? _sweepInput.series.length : 'NO_SERIES', 'yAxis:', _sweepInput && _sweepInput.yAxis ? _sweepInput.yAxis.length : 0);
       sweepPredictionCache = predictSweepTargets(_sweepInput, botMetrics);
