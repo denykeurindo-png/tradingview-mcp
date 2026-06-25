@@ -5010,6 +5010,7 @@ async function runBotCycle() {
 
   isHeatmapScrapingBusy = true;
   try {
+    const settings = loadSettings();
     console.log('[Background Bot] Running scheduled scraper and trade evaluation cycle...');
     
     // Fetch Binance Metrics in parallel to save time
