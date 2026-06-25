@@ -3492,9 +3492,6 @@ app.get('/api/status', async (req, res) => {
     }
   }
 
-  // 6. TradingView Webhook (inbound — always ready if server is up)
-  checks.push({ name: 'TradingView Webhook', key: 'tv_webhook', status: 'ok', detail: 'POST /api/tradingview/webhook · Public endpoint active', latency: 0 });
-
   const okCount = checks.filter(c => c.status === 'ok').length;
   const errCount = checks.filter(c => c.status === 'error').length;
 
