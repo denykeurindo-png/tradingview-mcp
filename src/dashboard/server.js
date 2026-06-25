@@ -284,6 +284,11 @@ let isHeatmapScrapingBusy = false;
 let cdpMutex = Promise.resolve();
 
 async function runWithCdpLock(fn) {
+  const settings = loadSettings();
+  if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true') {
+    throw new Error('Scraper is disabled on this instance.');
+  }
+
   const currentLock = cdpMutex;
   let resolveLock;
   cdpMutex = new Promise((resolve) => {
@@ -2307,7 +2312,9 @@ function loadSettings() {
     localAppPassword: '',
     vpsUrl: '',
     vpsUsername: '',
-    vpsPassword: ''
+    vpsPassword: '',
+    disableScraper: false,
+    disableTelegram: false
   };
   if (!fs.existsSync(SETTINGS_FILE)) {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(defaultSettings, null, 2));
@@ -2537,6 +2544,7 @@ app.post('/api/settings', (req, res) => {
   };
 
   const updated = {
+    ...current,
     capital: parseNum(newSettings.capital, current.capital),
     riskPercent: parseNum(newSettings.riskPercent, current.riskPercent),
     minRR: parseNum(newSettings.minRR, current.minRR),
@@ -2555,7 +2563,9 @@ app.post('/api/settings', (req, res) => {
     autoCutDistanceThreshold: parseNum(newSettings.autoCutDistanceThreshold, current.autoCutDistanceThreshold),
     breakevenEnabled: newSettings.breakevenEnabled !== undefined ? !!newSettings.breakevenEnabled : current.breakevenEnabled,
     telegramBotToken: newSettings.telegramBotToken !== undefined ? String(newSettings.telegramBotToken).trim() : current.telegramBotToken,
-    telegramChatId: newSettings.telegramChatId !== undefined ? String(newSettings.telegramChatId).trim() : current.telegramChatId
+    telegramChatId: newSettings.telegramChatId !== undefined ? String(newSettings.telegramChatId).trim() : current.telegramChatId,
+    disableScraper: newSettings.disableScraper !== undefined ? !!newSettings.disableScraper : current.disableScraper,
+    disableTelegram: newSettings.disableTelegram !== undefined ? !!newSettings.disableTelegram : current.disableTelegram
   };
 
   saveSettings(updated);
@@ -2565,6 +2575,11 @@ app.post('/api/settings', (req, res) => {
 // Telegram Notification Helper
 async function sendTelegramAlert(message) {
   const settings = loadSettings();
+  if (settings.disableTelegram || process.env.DISABLE_TELEGRAM === 'true') {
+    console.log('[Telegram Alert] Telegram alerts are disabled on this instance.');
+    return;
+  }
+
   const token = settings.telegramBotToken;
   const chatId = settings.telegramChatId;
 
@@ -5153,6 +5168,12 @@ async function runBotCycle() {
 }
 
 async function startBackgroundBot() {
+  const settings = loadSettings();
+  if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true') {
+    console.log('[Background Bot] Scraper is disabled via configuration/env. Background cycles will not run.');
+    return;
+  }
+
   console.log('Background bot cycle scheduler started. Running every 3 minutes.');
   
   // Run once immediately on startup

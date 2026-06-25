@@ -41,6 +41,8 @@ async function loadSettingsFromServer() {
     document.getElementById('auto-breakeven-enabled').checked = s.breakevenEnabled !== false;
     document.getElementById('tele-bot-token').value = s.telegramBotToken || '';
     document.getElementById('tele-chat-id').value = s.telegramChatId || '';
+    document.getElementById('env-disable-scraper').checked = !!s.disableScraper;
+    document.getElementById('env-disable-telegram').checked = !!s.disableTelegram;
 
     autoTradeEnabled = s.autoTradeEnabled;
     if (btnToggle) {
@@ -82,7 +84,9 @@ async function saveSettingsToServer() {
         breakevenEnabled: document.getElementById('auto-breakeven-enabled').checked,
         autoTradeEnabled,
         telegramBotToken: document.getElementById('tele-bot-token').value.trim(),
-        telegramChatId: document.getElementById('tele-chat-id').value.trim()
+        telegramChatId: document.getElementById('tele-chat-id').value.trim(),
+        disableScraper: document.getElementById('env-disable-scraper').checked,
+        disableTelegram: document.getElementById('env-disable-telegram').checked
       })
     });
     if (res.ok) {
@@ -145,7 +149,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     'input-capital', 'input-risk', 'auto-min-rr', 'auto-min-prob', 
     'auto-max-active', 'auto-sweep-candles', 'auto-cooldown', 
     'auto-max-tp-percent', 'auto-cut-dist-threshold', 'auto-breakeven-enabled',
-    'tele-bot-token', 'tele-chat-id'
+    'tele-bot-token', 'tele-chat-id', 'env-disable-scraper', 'env-disable-telegram'
   ];
   autoSaveIds.forEach(id => {
     const el = document.getElementById(id);

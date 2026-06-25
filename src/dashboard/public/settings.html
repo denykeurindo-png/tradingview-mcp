@@ -395,6 +395,31 @@
           </div>
         </div>
 
+        <!-- Environment Controls Section -->
+        <div class="settings-section-title">Environment Controls</div>
+        <div class="settings-grid" style="grid-template-columns: 1fr 1fr; gap: 20px; width: 100%;">
+          <div class="setting-field">
+            <label style="margin-bottom: 12px;">Local Scraper</label>
+            <div class="setting-toggle-field">
+              <span>Disable Scraping Cycles</span>
+              <label class="switch">
+                <input type="checkbox" id="env-disable-scraper">
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+          <div class="setting-field">
+            <label style="margin-bottom: 12px;">Telegram Alerts</label>
+            <div class="setting-toggle-field">
+              <span>Disable All Telegram Alerts</span>
+              <label class="switch">
+                <input type="checkbox" id="env-disable-telegram">
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
+
         <!-- Save Confirmation Notification Toast (Hidden by default) -->
         <div id="save-toast" style="display:none; position:fixed; bottom:20px; right:20px; background:#0ECB81; color:#0B0E11; padding:12px 24px; border-radius:6px; font-weight:600; box-shadow:0 4px 12px rgba(0,0,0,0.5); z-index:1000; font-size:13px; align-items:center; gap:8px;">
           <span>✓ Configurations saved successfully!</span>
