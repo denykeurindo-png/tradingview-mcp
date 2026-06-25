@@ -2208,6 +2208,21 @@ app.post('/api/etf-data/update', (req, res) => {
   res.json({ success: true });
 });
 
+app.post('/api/trades/sync', (req, res) => {
+  const { trades } = req.body;
+  if (!trades || !Array.isArray(trades)) {
+    return res.status(400).json({ success: false, error: 'Invalid trades payload' });
+  }
+  try {
+    fs.writeFileSync(TRADES_FILE, JSON.stringify(trades, null, 2));
+    console.log(`[Sync API] Successfully synchronized ${trades.length} trades from local client.`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[Sync API] Failed to write trades file:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // REST API for fetching ETF data (with cache)
 app.get('/api/etf-data', async (req, res) => {
   const forceRefresh = req.query.refresh === 'true';
@@ -2279,6 +2294,7 @@ function loadTrades() {
 function saveTrades(trades) {
   try {
     fs.writeFileSync(TRADES_FILE, JSON.stringify(trades, null, 2));
+    pushToVps('/api/trades/sync', { trades }).catch(console.error);
   } catch (e) {
     console.error('Error saving trades file:', e);
   }
@@ -5195,6 +5211,14 @@ app.listen(PORT, () => {
 
   // Start background bot 24/7 worker
   startBackgroundBot().catch(e => console.error('Failed to start background bot:', e));
+
+  // Trigger initial sync of trades to VPS on startup
+  try {
+    const initialTrades = loadTrades();
+    pushToVps('/api/trades/sync', { trades: initialTrades }).catch(console.error);
+  } catch (err) {
+    console.error('Failed to trigger initial sync:', err.message);
+  }
 
   // Warm-up ETF cache 90s after start (after first heatmap scrape finishes)
   setTimeout(async () => {
