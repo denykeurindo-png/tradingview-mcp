@@ -5079,55 +5079,47 @@ async function runBotCycle() {
     botMetrics = { ...botMetrics
     };
 
-    let result;
-    try {
-      result = await runWithCdpLock(() => scrapeHeatMap(true)); // force refresh to get latest data from CoinGlass!
-      heatmapDataCache = result;
-      lastHeatmapFetchTime = Date.now();
-      saveCacheToDisk('heatmap24h_cache.json', heatmapDataCache);
-    } catch (scrapeErr) {
-      console.warn('[Background Bot] CoinGlass scrape failed, trying fallback to cached data:', scrapeErr.message);
-      if (heatmapDataCache) {
-        result = heatmapDataCache;
-      } else {
-        throw new Error('No heatmap data available (scrape failed and no cache exists)');
+    const isScraperEnabled = !settings.disableScraper && process.env.DISABLE_SCRAPER !== 'true';
+    let result = heatmapDataCache;
+
+    if (isScraperEnabled) {
+      try {
+        result = await runWithCdpLock(() => scrapeHeatMap(true)); // force refresh to get latest data from CoinGlass!
+        heatmapDataCache = result;
+        lastHeatmapFetchTime = Date.now();
+        saveCacheToDisk('heatmap24h_cache.json', heatmapDataCache);
+      } catch (scrapeErr) {
+        console.warn('[Background Bot] CoinGlass scrape failed, trying fallback to cached data:', scrapeErr.message);
+        if (heatmapDataCache) {
+          result = heatmapDataCache;
+        } else {
+          throw new Error('No heatmap data available (scrape failed and no cache exists)');
+        }
       }
+    } else {
+      console.log('[Background Bot] Scraper is disabled. Using pushed heatmap cache.');
     }
 
-    // Run evaluations and strategy
-    evaluateActiveTradesBackend(result.data, klines15m);
-    autoTradeStrategyBackend(result.data, klines15m);
-    const _sweepInput = result.data.data || result.data;
-    console.log('[SweepPredict] Input series:', _sweepInput && _sweepInput.series ? _sweepInput.series.length : 'NO_SERIES', 'yAxis:', _sweepInput && _sweepInput.yAxis ? _sweepInput.yAxis.length : 0);
-    sweepPredictionCache = predictSweepTargets(_sweepInput, botMetrics);
-    console.log('[SweepPredict] Result:', sweepPredictionCache ? sweepPredictionCache.direction + ' ' + sweepPredictionCache.confidence + '%' : 'NULL');
+    if (result && result.data) {
+      // Run evaluations and strategy
+      evaluateActiveTradesBackend(result.data, klines15m);
+      autoTradeStrategyBackend(result.data, klines15m);
+      const _sweepInput = result.data.data || result.data;
+      console.log('[SweepPredict] Input series:', _sweepInput && _sweepInput.series ? _sweepInput.series.length : 'NO_SERIES', 'yAxis:', _sweepInput && _sweepInput.yAxis ? _sweepInput.yAxis.length : 0);
+      sweepPredictionCache = predictSweepTargets(_sweepInput, botMetrics);
+      console.log('[SweepPredict] Result:', sweepPredictionCache ? sweepPredictionCache.direction + ' ' + sweepPredictionCache.confidence + '%' : 'NULL');
+    } else {
+      console.log('[Background Bot] No heatmap data cache available. Skipping trade evaluations.');
+    }
 
     // Scrape 3D heatmap in background after main cycle
-    try {
-      const r3d = await runWithCdpLock(() => scrapeHeatMap3D());
-      if (r3d.period === '3d') {
-        heatmap3DCache = r3d;
-        lastHeatmap3DFetchTime = Date.now();
-        const hd3 = r3d.data;
-        if (hd3) {
-          if (!hd3.series) hd3.series = [];
-          if (!hd3.series.some(s => s.type === 'candlestick' || s.type === 'candlestick_raw')) {
-            const mainData = heatmapDataCache?.data?.data || heatmapDataCache?.data || heatmapDataCache;
-            const cs2d = mainData?.series?.find(s => s.type === 'candlestick' || s.type === 'candlestick_raw');
-            if (cs2d) hd3.series.push(cs2d);
-          }
-        }
-        sweepPrediction3DCache = predictSweepTargets(hd3, botMetrics);
-        console.log('[Heatmap3D] OK. Sweep3D:', sweepPrediction3DCache ? sweepPrediction3DCache.direction + ' ' + sweepPrediction3DCache.confidence + '%' : 'NULL');
-        saveCacheToDisk('heatmap3d_cache.json', heatmap3DCache);
-      } else {
-        console.warn('[Heatmap3D] Period switch to 3D failed (got 24h-fallback), skipping cache update to avoid polluting 3D data.');
-      }
-    } catch(e) {
-      console.error('[Heatmap3D] Error:', e.message);
-      if (heatmap3DCache) {
-        try {
-          const hd3 = heatmap3DCache.data?.data || heatmap3DCache.data || heatmap3DCache;
+    if (isScraperEnabled) {
+      try {
+        const r3d = await runWithCdpLock(() => scrapeHeatMap3D());
+        if (r3d.period === '3d') {
+          heatmap3DCache = r3d;
+          lastHeatmap3DFetchTime = Date.now();
+          const hd3 = r3d.data;
           if (hd3) {
             if (!hd3.series) hd3.series = [];
             if (!hd3.series.some(s => s.type === 'candlestick' || s.type === 'candlestick_raw')) {
@@ -5137,42 +5129,75 @@ async function runBotCycle() {
             }
           }
           sweepPrediction3DCache = predictSweepTargets(hd3, botMetrics);
-          console.log('[Heatmap3D] Updated Sweep3D from cache fallback:', sweepPrediction3DCache ? sweepPrediction3DCache.direction + ' ' + sweepPrediction3DCache.confidence + '%' : 'NULL');
-        } catch (fallbackErr) {
-          console.error('[Heatmap3D] Fallback Sweep3D computation failed:', fallbackErr.message);
+          console.log('[Heatmap3D] OK. Sweep3D:', sweepPrediction3DCache ? sweepPrediction3DCache.direction + ' ' + sweepPrediction3DCache.confidence + '%' : 'NULL');
+          saveCacheToDisk('heatmap3d_cache.json', heatmap3DCache);
+        } else {
+          console.warn('[Heatmap3D] Period switch to 3D failed (got 24h-fallback), skipping cache update to avoid polluting 3D data.');
+        }
+      } catch(e) {
+        console.error('[Heatmap3D] Error:', e.message);
+        if (heatmap3DCache) {
+          try {
+            const hd3 = heatmap3DCache.data?.data || heatmap3DCache.data || heatmap3DCache;
+            if (hd3) {
+              if (!hd3.series) hd3.series = [];
+              if (!hd3.series.some(s => s.type === 'candlestick' || s.type === 'candlestick_raw')) {
+                const mainData = heatmapDataCache?.data?.data || heatmapDataCache?.data || heatmapDataCache;
+                const cs2d = mainData?.series?.find(s => s.type === 'candlestick' || s.type === 'candlestick_raw');
+                if (cs2d) hd3.series.push(cs2d);
+              }
+            }
+            sweepPrediction3DCache = predictSweepTargets(hd3, botMetrics);
+            console.log('[Heatmap3D] Updated Sweep3D from cache fallback:', sweepPrediction3DCache ? sweepPrediction3DCache.direction + ' ' + sweepPrediction3DCache.confidence + '%' : 'NULL');
+          } catch (fallbackErr) {
+            console.error('[Heatmap3D] Fallback Sweep3D computation failed:', fallbackErr.message);
+          }
+        }
+      }
+    } else {
+      // Re-compute 3D prediction from cache if we have it
+      if (heatmap3DCache) {
+        try {
+          const hd3 = heatmap3DCache.data?.data || heatmap3DCache.data || heatmap3DCache;
+          sweepPrediction3DCache = predictSweepTargets(hd3, botMetrics);
+          console.log('[Heatmap3D] Re-computed Sweep3D from pushed cache:', sweepPrediction3DCache ? sweepPrediction3DCache.direction + ' ' + sweepPrediction3DCache.confidence + '%' : 'NULL');
+        } catch (err) {
+          console.error('[Heatmap3D] Failed to compute Sweep3D from cache:', err.message);
         }
       }
     }
 
     // Scrape Coinbase Premium, Depth Delta, and Whale Orders sequentially in background
-    try {
-      console.log('[Background Bot] Running scheduled Coinbase Premium scrape...');
-      const rPremium = await runWithCdpLock(() => scrapeCoinbasePremium());
-      cbPremiumCache = rPremium;
-      lastCbPremiumFetchTime = Date.now();
-      saveCacheToDisk('cb_premium_cache.json', cbPremiumCache);
-    } catch (e) {
-      console.error('[Background Bot] Coinbase Premium scrape error:', e.message);
-    }
+    if (isScraperEnabled) {
+      try {
+        console.log('[Background Bot] Running scheduled Coinbase Premium scrape...');
+        const rPremium = await runWithCdpLock(() => scrapeCoinbasePremium());
+        cbPremiumCache = rPremium;
+        lastCbPremiumFetchTime = Date.now();
+        saveCacheToDisk('cb_premium_cache.json', cbPremiumCache);
+      } catch (e) {
+        console.error('[Background Bot] Coinbase Premium scrape error:', e.message);
+      }
 
-    try {
-      console.log('[Background Bot] Running scheduled Depth Delta scrape...');
-      const rDelta = await runWithCdpLock(() => scrapeDepthDelta());
-      depthDeltaCache = rDelta;
-      lastDepthDeltaFetchTime = Date.now();
-      saveCacheToDisk('depth_delta_cache.json', depthDeltaCache);
-    } catch (e) {
-      console.error('[Background Bot] Depth Delta scrape error:', e.message);
-    }
+      try {
+        console.log('[Background Bot] Running scheduled Depth Delta scrape...');
+        const rDelta = await runWithCdpLock(() => scrapeDepthDelta());
+        depthDeltaCache = rDelta;
+        lastDepthDeltaFetchTime = Date.now();
+        saveCacheToDisk('depth_delta_cache.json', depthDeltaCache);
+      } catch (e) {
+        console.error('[Background Bot] Depth Delta scrape error:', e.message);
+      }
 
-    try {
-      console.log('[Background Bot] Running scheduled Whale Orders scrape...');
-      const rWhales = await runWithCdpLock(() => scrapeWhaleOrders());
-      whaleOrdersCache = rWhales;
-      lastWhaleOrdersFetchTime = Date.now();
-      saveCacheToDisk('whale_orders_cache.json', whaleOrdersCache);
-    } catch (e) {
-      console.error('[Background Bot] Whale Orders scrape error:', e.message);
+      try {
+        console.log('[Background Bot] Running scheduled Whale Orders scrape...');
+        const rWhales = await runWithCdpLock(() => scrapeWhaleOrders());
+        whaleOrdersCache = rWhales;
+        lastWhaleOrdersFetchTime = Date.now();
+        saveCacheToDisk('whale_orders_cache.json', whaleOrdersCache);
+      } catch (e) {
+        console.error('[Background Bot] Whale Orders scrape error:', e.message);
+      }
     }
 
     console.log('[Background Bot] Cycle completed successfully. Metrics:', JSON.stringify(botMetrics));
@@ -5185,12 +5210,13 @@ async function runBotCycle() {
 
 async function startBackgroundBot() {
   const settings = loadSettings();
-  if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true') {
-    console.log('[Background Bot] Scraper is disabled via configuration/env. Background cycles will not run.');
-    return;
-  }
+  const isScraperEnabled = !settings.disableScraper && process.env.DISABLE_SCRAPER !== 'true';
 
-  console.log('Background bot cycle scheduler started. Running every 3 minutes.');
+  if (isScraperEnabled) {
+    console.log('Background bot cycle scheduler started. Running every 3 minutes.');
+  } else {
+    console.log('Background bot cycle scheduler started (Query/REST-only mode). Running every 3 minutes.');
+  }
   
   // Run once immediately on startup
   setTimeout(async () => {
