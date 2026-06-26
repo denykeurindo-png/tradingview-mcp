@@ -604,11 +604,20 @@ function renderSingleMiniChart(chartInstance, title, heatmapData, pools) {
 
   const resistancePools = pools.above;
   const supportPools = pools.below;
+  const maxLeverage = pools.maxLeverage || 1;
+
+  const getIntensityColor = (p) => {
+    if (p.isLiquidated) return '#848E9C';
+    const ratio = p.leverage / maxLeverage;
+    if (ratio >= 0.7) return '#bfdc21'; // High
+    if (ratio >= 0.3) return '#3ab56e'; // Medium
+    return '#3a9db5'; // Low
+  };
 
   const markLines = [];
   resistancePools.forEach(p => {
     const isLiq = p.isLiquidated;
-    const color = isLiq ? '#848E9C' : '#F6465D';
+    const color = getIntensityColor(p);
     const type = isLiq ? 'dotted' : 'dashed';
     const labelFormatter = isLiq
       ? `[LIQ] $${Math.round(p.price).toLocaleString()} ($${formatIntensity(p.leverage)})`
@@ -628,7 +637,7 @@ function renderSingleMiniChart(chartInstance, title, heatmapData, pools) {
 
   supportPools.forEach(p => {
     const isLiq = p.isLiquidated;
-    const color = isLiq ? '#848E9C' : '#0ECB81';
+    const color = getIntensityColor(p);
     const type = isLiq ? 'dotted' : 'dashed';
     const labelFormatter = isLiq
       ? `[LIQ] $${Math.round(p.price).toLocaleString()} ($${formatIntensity(p.leverage)})`
