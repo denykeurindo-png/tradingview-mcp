@@ -654,8 +654,8 @@ function renderSingleMiniChart(chartInstance, title, heatmapData, pools) {
       refPrice = closePrice;
     }
   }
-  const yAxisMin = Math.round(refPrice - 3000);
-  const yAxisMax = Math.round(refPrice + 3000);
+  const yAxisMin = Math.round(refPrice - 2500);
+  const yAxisMax = Math.round(refPrice + 2500);
 
   const option = {
     backgroundColor: 'transparent',
