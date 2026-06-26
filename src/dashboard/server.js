@@ -3360,27 +3360,84 @@ function evaluateActiveTradesBackend(heatmapData) {
       }
 
       if (trade.initialTpVolume && currentTpVolume < trade.initialTpVolume * 0.7) {
-        trade.status = 'CUT_LOSS';
-        const diff = trade.direction === 'LONG' ? (lastClose - trade.entry) : (trade.entry - lastClose);
-        const profit = trade.positionSizeUsd * (diff / trade.entry);
-        trade.pnl = profit;
-        trade.closePrice = lastClose;
-        trade.closeTimestamp = Date.now();
-        trade.note = 'Auto (Pool -70%)';
-        updated = true;
-        console.log(`[LSR Bot] ⚠️ AUTO-CUT TRIGGERED — ${trade.direction} Closed at $${lastClose.toFixed(2)} (Initial Pool: $${(trade.initialTpVolume/1e9).toFixed(2)}B, Current Pool: $${(currentTpVolume/1e9).toFixed(2)}B), PnL: ${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}`);
-        sendTelegramAlert(
-          `⚠️ <b>Trade Closed (Auto-Cut: Pool -70%)</b>\n` +
-          `Type: <b>${trade.direction}</b>\n` +
-          `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
-          `TP: <code>$${trade.tp.toFixed(2)}</code>\n` +
-          `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
-          `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
-          `Close: <code>$${lastClose.toFixed(2)}</code>\n` +
-          `PnL: <code>${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}</code> (${profit >= 0 ? '+' : ''}Bs. ${(profit * 6.96).toFixed(2)})\n` +
-          `Note: ${trade.note}`
-        );
-        return;
+        // Multi-timeframe validation: check if the pool is still intact in the 3D heatmap
+        let poolStillIntact3D = false;
+        try {
+          if (typeof heatmap3DCache !== 'undefined' && heatmap3DCache) {
+            const heatmap3d = heatmap3DCache.data || heatmap3DCache;
+            if (heatmap3d && heatmap3d.yAxis && heatmap3d.series) {
+              const yAxis3d = heatmap3d.yAxis;
+              const hs3d = heatmap3d.series.find(s => s.type === 'heatmap');
+              if (hs3d && hs3d.data) {
+                let closestYIdx3D = -1, minDiff3D = Infinity;
+                yAxis3d.forEach((priceStr, idx) => {
+                  const diff = Math.abs(parseFloat(priceStr) - trade.tp);
+                  if (diff < minDiff3D) { minDiff3D = diff; closestYIdx3D = idx; }
+                });
+                
+                if (closestYIdx3D !== -1) {
+                  let current3DVolume = 0;
+                  const latestXIdx3D = (heatmap3d.xAxis || []).length - 1;
+                  hs3d.data.forEach(item => {
+                    const v = Array.isArray(item) ? item : (item.value || []);
+                    const xIdx = parseInt(v[0], 10);
+                    const yIdx = parseInt(v[1], 10);
+                    if (yIdx === closestYIdx3D && xIdx === latestXIdx3D) {
+                      current3DVolume += parseFloat(v[2] || 0);
+                    }
+                  });
+                  
+                  // Compute dynamic top 25% volume cutoff for 3D heatmap
+                  const volumeByY3D = {};
+                  hs3d.data.forEach(item => {
+                    const v = Array.isArray(item) ? item : (item.value || []);
+                    const xIdx = parseInt(v[0], 10);
+                    const yIdx = parseInt(v[1], 10);
+                    const val = parseFloat(v[2] || 0);
+                    if (!isNaN(yIdx) && xIdx === latestXIdx3D) {
+                      volumeByY3D[yIdx] = (volumeByY3D[yIdx] || 0) + val;
+                    }
+                  });
+                  const allVolumes3D = Object.values(volumeByY3D).filter(v => v > 0).sort((a, b) => b - a);
+                  const topCutoffIndex3D = Math.max(1, Math.floor(allVolumes3D.length * 0.25));
+                  const minPoolVolume3D = allVolumes3D[topCutoffIndex3D - 1] || 0;
+                  
+                  if (current3DVolume >= minPoolVolume3D && current3DVolume > 50000000) {
+                    poolStillIntact3D = true;
+                  }
+                }
+              }
+            }
+          }
+        } catch (e3d) {
+          console.error('[LSR Bot] Error during 3D heatmap Auto-Cut validation:', e3d.message);
+        }
+
+        if (poolStillIntact3D) {
+          console.log(`[LSR Bot] 🛡️ Auto-Cut bypassed for trade ${trade.id}: 24H pool shrunk to $${(currentTpVolume/1e6).toFixed(1)}M, but 3D pool is still intact at $${trade.tp.toFixed(0)}.`);
+        } else {
+          trade.status = 'CUT_LOSS';
+          const diff = trade.direction === 'LONG' ? (lastClose - trade.entry) : (trade.entry - lastClose);
+          const profit = trade.positionSizeUsd * (diff / trade.entry);
+          trade.pnl = profit;
+          trade.closePrice = lastClose;
+          trade.closeTimestamp = Date.now();
+          trade.note = 'Auto (Pool -70%)';
+          updated = true;
+          console.log(`[LSR Bot] ⚠️ AUTO-CUT TRIGGERED — ${trade.direction} Closed at $${lastClose.toFixed(2)} (Initial Pool: $${(trade.initialTpVolume/1e9).toFixed(2)}B, Current Pool: $${(currentTpVolume/1e9).toFixed(2)}B), PnL: ${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}`);
+          sendTelegramAlert(
+            `⚠️ <b>Trade Closed (Auto-Cut: Pool -70%)</b>\n` +
+            `Type: <b>${trade.direction}</b>\n` +
+            `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
+            `TP: <code>$${trade.tp.toFixed(2)}</code>\n` +
+            `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
+            `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
+            `Close: <code>$${lastClose.toFixed(2)}</code>\n` +
+            `PnL: <code>${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}</code> (${profit >= 0 ? '+' : ''}Bs. ${(profit * 6.96).toFixed(2)})\n` +
+            `Note: ${trade.note}`
+          );
+          return;
+        }
       }
     }
 
