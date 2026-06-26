@@ -644,6 +644,14 @@ let whaleOrdersCache = null;
 let lastWhaleOrdersFetchTime = null;
 let isWhaleOrdersScrapingBusy = false;
 
+let whaleRetailDeltaCache = null;
+let lastWhaleRetailDeltaFetchTime = null;
+let isWhaleRetailDeltaScrapingBusy = false;
+
+let topTraderLsCache = null;
+let lastTopTraderLsFetchTime = null;
+let isTopTraderLsScrapingBusy = false;
+
 // Last strategy phase reported to Telegram to prevent duplicate alerts
 let lastTelegramPhase = null;
 
@@ -712,6 +720,16 @@ if (cbPremiumCache) {
 whaleOrdersCache = loadCacheFromDisk('whale_orders_cache.json');
 if (whaleOrdersCache) {
   lastWhaleOrdersFetchTime = Date.now();
+}
+
+whaleRetailDeltaCache = loadCacheFromDisk('whale_retail_delta_cache.json');
+if (whaleRetailDeltaCache) {
+  lastWhaleRetailDeltaFetchTime = Date.now();
+}
+
+topTraderLsCache = loadCacheFromDisk('top_trader_ls_cache.json');
+if (topTraderLsCache) {
+  lastTopTraderLsFetchTime = Date.now();
 }
 
 
@@ -1243,6 +1261,262 @@ async function scrapeCoinbasePremium() {
 
     const dataObj = { data: parsed, timestamp: new Date().toISOString() };
     pushToVps('/api/coinbase-premium/update', { data: dataObj }).catch(console.error);
+    return dataObj;
+  } finally {
+    if (navigated && savedUrl) {
+      console.log(`[Scraper] Restoring original URL: ${savedUrl}`);
+      await cdp('Page.navigate', { url: savedUrl }).catch(e => console.error('[Scraper] Failed to navigate back:', e));
+    }
+    ws.close();
+  }
+}
+
+async function scrapeWhaleRetailDelta() {
+  let tabs = null;
+  let retries = 3;
+  while (retries > 0) {
+    try {
+      const tabsResponse = await fetch('http://127.0.0.1:9222/json', { signal: AbortSignal.timeout(4000) });
+      tabs = await tabsResponse.json();
+      break;
+    } catch (e) {
+      retries--;
+      if (retries === 0) throw new Error('Failed to fetch Chrome tab list.');
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+  
+  let tab = tabs.find(t => t.type === 'page' && (t.url?.includes('coinglass.com/pro/i/whale-vs-retail-delta') || t.url?.includes('whale-vs-retail-delta')));
+  let navigated = false;
+  if (!tab) {
+    tab = tabs.find(t => t.type === 'page' && t.url?.includes('coinglass.com'));
+    if (!tab) {
+      tab = tabs.find(t => t.type === 'page' && t.url?.startsWith('http') && !t.url?.includes('devtools'));
+    }
+    if (!tab) throw new Error('No suitable tab found for Whale vs Retail Delta.');
+    navigated = true;
+  }
+  const savedUrl = navigated ? tab.url : null;
+
+  let ws = null;
+  retries = 3;
+  while (retries > 0) {
+    try {
+      ws = new WebSocket(tab.webSocketDebuggerUrl);
+      await new Promise((res, rej) => {
+        const connTimeout = setTimeout(() => rej(new Error('WebSocket connection timeout')), 4000);
+        ws.on('open', () => { clearTimeout(connTimeout); res(); });
+        ws.on('error', (err) => { clearTimeout(connTimeout); rej(err); });
+      });
+      break;
+    } catch (e) {
+      retries--;
+      if (ws) { try { ws.close(); } catch (err) {} ws = null; }
+      if (retries === 0) throw new Error(`Failed to connect to Chrome DevTools WebSocket: ${e.message}`);
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+
+  let _mid = 1;
+  const cdp = (method, params = {}) => new Promise((res, rej) => {
+    const id = _mid++;
+    ws.send(JSON.stringify({ id, method, params }));
+    const t = setTimeout(() => rej(new Error(`CDP timeout: ${method}`)), 40000);
+    const handler = (data) => {
+      const m = JSON.parse(data.toString());
+      if (m.id === id) {
+        clearTimeout(t);
+        ws.off('message', handler);
+        if (m.error) rej(new Error(m.error.message || JSON.stringify(m.error)));
+        else res(m.result);
+      }
+    };
+    ws.on('message', handler);
+  });
+
+  try {
+    await cdp('Page.enable');
+
+    const fiberExpression = `
+      (() => {
+        try {
+          const charts = document.querySelectorAll('.echarts-for-react');
+          if (charts.length === 0) return null;
+          
+          const results = Array.from(charts).map((el, index) => {
+            const keys = Object.keys(el);
+            const fiberKey = keys.find(k => k.startsWith('__reactFiber$') || k.startsWith('__reactContainer$'));
+            if (!fiberKey) return { index, error: 'No fiber key' };
+            
+            let fiber = el[fiberKey];
+            let option = null;
+            while (fiber) {
+              if (fiber.memoizedProps && fiber.memoizedProps.option) {
+                option = fiber.memoizedProps.option;
+                break;
+              }
+              fiber = fiber.return;
+            }
+            if (!option) return { index, error: 'No option' };
+            
+            return {
+              index,
+              xAxis: option.xAxis ? (Array.isArray(option.xAxis) ? option.xAxis[0].data : option.xAxis.data) : null,
+              series: option.series ? option.series.map(s => ({
+                name: s.name,
+                type: s.type,
+                data: s.data
+              })) : null
+            };
+          });
+          return JSON.stringify(results);
+        } catch (e) {
+          return JSON.stringify({ error: e.message });
+        }
+      })()
+    `;
+
+    if (navigated) {
+      console.log('[Scraper] Navigating to Whale vs Retail Delta...');
+      await cdp('Page.navigate', { url: 'https://www.coinglass.com/pro/i/whale-vs-retail-delta' });
+      await new Promise(r => setTimeout(r, 15000));
+    }
+
+    console.log('[Scraper] Polling Whale vs Retail Delta ECharts data...');
+    const result = await cdp('Runtime.evaluate', {
+      expression: fiberExpression,
+      returnByValue: true
+    });
+
+    const val = result?.result?.value;
+    if (!val) throw new Error('No whale vs retail delta data returned');
+    const parsed = JSON.parse(val);
+    if (parsed.error) throw new Error('Whale vs Retail Delta: ' + parsed.error);
+
+    const dataObj = { data: parsed, timestamp: new Date().toISOString() };
+    pushToVps('/api/whale-retail-delta/update', { data: dataObj }).catch(console.error);
+    return dataObj;
+  } finally {
+    if (navigated && savedUrl) {
+      console.log(`[Scraper] Restoring original URL: ${savedUrl}`);
+      await cdp('Page.navigate', { url: savedUrl }).catch(e => console.error('[Scraper] Failed to navigate back:', e));
+    }
+    ws.close();
+  }
+}
+
+async function scrapeTopTraderLs() {
+  let tabs = null;
+  let retries = 3;
+  while (retries > 0) {
+    try {
+      const tabsResponse = await fetch('http://127.0.0.1:9222/json', { signal: AbortSignal.timeout(4000) });
+      tabs = await tabsResponse.json();
+      break;
+    } catch (e) {
+      retries--;
+      if (retries === 0) throw new Error('Failed to fetch Chrome tab list.');
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+  
+  let tab = tabs.find(t => t.type === 'page' && (t.url?.includes('coinglass.com/position') || t.url?.includes('coinglass.com/zh/position')));
+  let navigated = false;
+  if (!tab) {
+    tab = tabs.find(t => t.type === 'page' && t.url?.includes('coinglass.com'));
+    if (!tab) {
+      tab = tabs.find(t => t.type === 'page' && t.url?.startsWith('http') && !t.url?.includes('devtools'));
+    }
+    if (!tab) throw new Error('No suitable tab found for Top Trader L/S.');
+    navigated = true;
+  }
+  const savedUrl = navigated ? tab.url : null;
+
+  let ws = null;
+  retries = 3;
+  while (retries > 0) {
+    try {
+      ws = new WebSocket(tab.webSocketDebuggerUrl);
+      await new Promise((res, rej) => {
+        const connTimeout = setTimeout(() => rej(new Error('WebSocket connection timeout')), 4000);
+        ws.on('open', () => { clearTimeout(connTimeout); res(); });
+        ws.on('error', (err) => { clearTimeout(connTimeout); rej(err); });
+      });
+      break;
+    } catch (e) {
+      retries--;
+      if (ws) { try { ws.close(); } catch (err) {} ws = null; }
+      if (retries === 0) throw new Error(`Failed to connect to Chrome DevTools WebSocket: ${e.message}`);
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+
+  let _mid = 1;
+  const cdp = (method, params = {}) => new Promise((res, rej) => {
+    const id = _mid++;
+    ws.send(JSON.stringify({ id, method, params }));
+    const t = setTimeout(() => rej(new Error(`CDP timeout: ${method}`)), 40000);
+    const handler = (data) => {
+      const m = JSON.parse(data.toString());
+      if (m.id === id) {
+        clearTimeout(t);
+        ws.off('message', handler);
+        if (m.error) rej(new Error(m.error.message || JSON.stringify(m.error)));
+        else res(m.result);
+      }
+    };
+    ws.on('message', handler);
+  });
+
+  try {
+    await cdp('Page.enable');
+
+    const domExpression = `
+      (() => {
+        try {
+          var headers = [];
+          var ths = document.querySelectorAll('th');
+          ths.forEach(function(th) {
+            headers.push((th.innerText || th.textContent || '').trim());
+          });
+
+          var rows = [];
+          var trs = document.querySelectorAll('tr.ant-table-row');
+          trs.forEach(function(tr) {
+            var tds = tr.querySelectorAll('td');
+            if (tds.length > 0) {
+              var rowData = Array.from(tds).map(function(td) {
+                return (td.innerText || td.textContent || '').trim().replace(/\\s+/g, ' ');
+              });
+              rows.push(rowData);
+            }
+          });
+          return JSON.stringify({ headers: headers, rows: rows });
+        } catch (e) {
+          return JSON.stringify({ error: e.message });
+        }
+      })()
+    `;
+
+    if (navigated) {
+      console.log('[Scraper] Navigating to Top Trader Long/Short Ratio...');
+      await cdp('Page.navigate', { url: 'https://www.coinglass.com/position' });
+      await new Promise(r => setTimeout(r, 15000));
+    }
+
+    console.log('[Scraper] Polling Top Trader Long/Short table...');
+    const result = await cdp('Runtime.evaluate', {
+      expression: domExpression,
+      returnByValue: true
+    });
+
+    const val = result?.result?.value;
+    if (!val) throw new Error('No top trader L/S data returned');
+    const parsed = JSON.parse(val);
+    if (parsed.error) throw new Error('Top Trader L/S: ' + parsed.error);
+
+    const dataObj = { data: parsed, timestamp: new Date().toISOString() };
+    pushToVps('/api/top-trader-ls/update', { data: dataObj }).catch(console.error);
     return dataObj;
   } finally {
     if (navigated && savedUrl) {
@@ -2161,6 +2435,84 @@ app.get('/api/whale-orders', async (req, res) => {
   }
 });
 
+// REST API for fetching Whale vs Retail Delta
+app.get('/api/whale-retail-delta', async (req, res) => {
+  const forceRefresh = req.query.refresh === 'true';
+
+  if (whaleRetailDeltaCache && !forceRefresh && lastWhaleRetailDeltaFetchTime && (Date.now() - lastWhaleRetailDeltaFetchTime < 300000)) {
+    return res.json({ success: true, source: 'cache', data: whaleRetailDeltaCache });
+  }
+
+  // Bypass if scraper is disabled
+  const settings = loadSettings();
+  if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true') {
+    return res.json({ success: true, source: 'cache', data: whaleRetailDeltaCache || null });
+  }
+
+  if (isWhaleRetailDeltaScrapingBusy) {
+    return res.status(409).json({ success: false, error: 'A scrape is already in progress, please wait.' });
+  }
+
+  isWhaleRetailDeltaScrapingBusy = true;
+  try {
+    console.log('[API] Starting CoinGlass Whale vs Retail Delta scrape...');
+    const result = await runWithCdpLock(() => scrapeWhaleRetailDelta());
+    whaleRetailDeltaCache = result;
+    lastWhaleRetailDeltaFetchTime = Date.now();
+    saveCacheToDisk('whale_retail_delta_cache.json', whaleRetailDeltaCache);
+
+    res.json({ success: true, source: 'live', data: result });
+  } catch (err) {
+    console.error('[API] Whale vs Retail Delta scrape failed:', err.message);
+    if (whaleRetailDeltaCache) {
+      res.json({ success: true, source: 'fallback-cache', data: whaleRetailDeltaCache, warning: err.message });
+    } else {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  } finally {
+    isWhaleRetailDeltaScrapingBusy = false;
+  }
+});
+
+// REST API for fetching Top Trader Long/Short
+app.get('/api/top-trader-ls', async (req, res) => {
+  const forceRefresh = req.query.refresh === 'true';
+
+  if (topTraderLsCache && !forceRefresh && lastTopTraderLsFetchTime && (Date.now() - lastTopTraderLsFetchTime < 300000)) {
+    return res.json({ success: true, source: 'cache', data: topTraderLsCache });
+  }
+
+  // Bypass if scraper is disabled
+  const settings = loadSettings();
+  if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true') {
+    return res.json({ success: true, source: 'cache', data: topTraderLsCache || null });
+  }
+
+  if (isTopTraderLsScrapingBusy) {
+    return res.status(409).json({ success: false, error: 'A scrape is already in progress, please wait.' });
+  }
+
+  isTopTraderLsScrapingBusy = true;
+  try {
+    console.log('[API] Starting CoinGlass Top Trader Long/Short scrape...');
+    const result = await runWithCdpLock(() => scrapeTopTraderLs());
+    topTraderLsCache = result;
+    lastTopTraderLsFetchTime = Date.now();
+    saveCacheToDisk('top_trader_ls_cache.json', topTraderLsCache);
+
+    res.json({ success: true, source: 'live', data: result });
+  } catch (err) {
+    console.error('[API] Top Trader Long/Short scrape failed:', err.message);
+    if (topTraderLsCache) {
+      res.json({ success: true, source: 'fallback-cache', data: topTraderLsCache, warning: err.message });
+    } else {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  } finally {
+    isTopTraderLsScrapingBusy = false;
+  }
+});
+
 // REST API for fetching HeatMap data (with cache)
 app.get('/api/heatmap-data', async (req, res) => {
   const forceRefresh = req.query.refresh === 'true';
@@ -2273,6 +2625,26 @@ app.post('/api/whale-orders/update', (req, res) => {
   lastWhaleOrdersFetchTime = Date.now();
   saveCacheToDisk('whale_orders_cache.json', whaleOrdersCache);
   console.log('[Push API] Received Whale Orders update from client.');
+  res.json({ success: true });
+});
+
+app.post('/api/whale-retail-delta/update', (req, res) => {
+  const { data } = req.body;
+  if (!data) return res.status(400).json({ success: false, error: 'No data provided' });
+  whaleRetailDeltaCache = data;
+  lastWhaleRetailDeltaFetchTime = Date.now();
+  saveCacheToDisk('whale_retail_delta_cache.json', whaleRetailDeltaCache);
+  console.log('[Push API] Received Whale vs Retail Delta update from client.');
+  res.json({ success: true });
+});
+
+app.post('/api/top-trader-ls/update', (req, res) => {
+  const { data } = req.body;
+  if (!data) return res.status(400).json({ success: false, error: 'No data provided' });
+  topTraderLsCache = data;
+  lastTopTraderLsFetchTime = Date.now();
+  saveCacheToDisk('top_trader_ls_cache.json', topTraderLsCache);
+  console.log('[Push API] Received Top Trader Long/Short update from client.');
   res.json({ success: true });
 });
 
@@ -6130,6 +6502,26 @@ async function runBotCycle() {
         saveCacheToDisk('whale_orders_cache.json', whaleOrdersCache);
       } catch (e) {
         console.error('[Background Bot] Whale Orders scrape error:', e.message);
+      }
+
+      try {
+        console.log('[Background Bot] Running scheduled Whale vs Retail Delta scrape...');
+        const rWhaleDelta = await runWithCdpLock(() => scrapeWhaleRetailDelta());
+        whaleRetailDeltaCache = rWhaleDelta;
+        lastWhaleRetailDeltaFetchTime = Date.now();
+        saveCacheToDisk('whale_retail_delta_cache.json', whaleRetailDeltaCache);
+      } catch (e) {
+        console.error('[Background Bot] Whale vs Retail Delta scrape error:', e.message);
+      }
+
+      try {
+        console.log('[Background Bot] Running scheduled Top Trader Long/Short scrape...');
+        const rTopTrader = await runWithCdpLock(() => scrapeTopTraderLs());
+        topTraderLsCache = rTopTrader;
+        lastTopTraderLsFetchTime = Date.now();
+        saveCacheToDisk('top_trader_ls_cache.json', topTraderLsCache);
+      } catch (e) {
+        console.error('[Background Bot] Top Trader Long/Short scrape error:', e.message);
       }
     }
 
