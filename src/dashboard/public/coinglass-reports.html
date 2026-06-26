@@ -179,6 +179,30 @@
           <span>Whale Orders</span>
         </a>
       </li>
+      <li class="sidebar-item" id="nav-whale-retail-delta">
+        <a href="coinglass-reports.html?tab=whale-retail-delta">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          <span>Whale vs Retail</span>
+        </a>
+      </li>
+      <li class="sidebar-item" id="nav-top-trader-ls">
+        <a href="coinglass-reports.html?tab=top-trader-ls">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
+          <span>Top Trader L/S</span>
+        </a>
+      </li>
+      <li class="sidebar-item" id="nav-whale-retail-delta">
+        <a href="coinglass-reports.html?tab=whale-retail-delta">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+          <span>Whale vs Retail</span>
+        </a>
+      </li>
+      <li class="sidebar-item" id="nav-top-trader-ls">
+        <a href="coinglass-reports.html?tab=top-trader-ls">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
+          <span>Top Trader L/S</span>
+        </a>
+      </li>
       <li class="sidebar-item" id="nav-trades">
         <a href="trades.html">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
@@ -221,7 +245,7 @@
 
   <!-- Top Bar Control -->
   <div class="top-bar">
-    <div class="top-bar-title" id="page-title-label">CoinGlass Reports<span>Depth Delta, Premium Index & Whale Orders</span></div>
+    <div class="top-bar-title" id="page-title-label">CoinGlass Reports<span>Depth Delta, Premium Index, Whale Orders, Whale vs Retail & Top Trader L/S</span></div>
     <div class="top-bar-controls">
       <div id="connection-status" class="status-indicator normal">
         <span class="status-dot"></span>
@@ -242,6 +266,8 @@
       <button class="report-tab-btn" id="tab-btn-depth-delta" data-tab="depth-delta">Orderbook Depth Delta</button>
       <button class="report-tab-btn" id="tab-btn-coinbase-premium" data-tab="coinbase-premium">Coinbase Premium Index</button>
       <button class="report-tab-btn" id="tab-btn-whale-orders" data-tab="whale-orders">Large Whale Orders</button>
+      <button class="report-tab-btn" id="tab-btn-whale-retail-delta" data-tab="whale-retail-delta">Whale vs Retail Delta</button>
+      <button class="report-tab-btn" id="tab-btn-top-trader-ls" data-tab="top-trader-ls">Top Trader Long/Short</button>
     </div>
 
     <!-- Panel 1: Depth Delta -->
@@ -290,6 +316,43 @@
           <tbody id="whale-orders-tbody">
             <tr>
               <td colspan="9" style="text-align: center; color: #848E9C;">Loading whale orders...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
+    <!-- Panel 4: Whale vs Retail Delta -->
+    <div class="report-content-panel" id="panel-whale-retail-delta">
+      <div class="report-header-info">
+        <h3 style="margin: 0; color: #EAECEF;">Whale vs Retail Position Delta</h3>
+        <span class="last-update-text" id="update-whale-retail-delta">Last updated: --</span>
+      </div>
+      <div class="chart-box" id="chart-whale-retail-delta">
+        <div style="display:flex; justify-content:center; align-items:center; height:100%; color:#848E9C;">Loading chart...</div>
+      </div>
+    </div>
+
+    <!-- Panel 5: Top Trader Long/Short -->
+    <div class="report-content-panel" id="panel-top-trader-ls">
+      <div class="report-header-info">
+        <h3 style="margin: 0; color: #EAECEF;">Top Trader Long/Short Ratio</h3>
+        <span class="last-update-text" id="update-top-trader-ls">Last updated: --</span>
+      </div>
+      <div class="whale-table-card">
+        <table class="whale-table" id="table-top-trader-ls">
+          <thead>
+            <tr>
+              <th>Asset</th>
+              <th>Exchange</th>
+              <th>Long/Short Ratio</th>
+              <th>Long Account %</th>
+              <th>Short Account %</th>
+            </tr>
+          </thead>
+          <tbody id="top-trader-ls-tbody">
+            <tr>
+              <td colspan="5" style="text-align: center; color: #848E9C;">Loading top trader ratios...</td>
             </tr>
           </tbody>
         </table>

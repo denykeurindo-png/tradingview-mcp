@@ -12,7 +12,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Parse URL tab parameter on load
   const urlParams = new URLSearchParams(window.location.search);
   const tabParam = urlParams.get('tab');
-  if (tabParam && ['depth-delta', 'coinbase-premium', 'whale-orders'].includes(tabParam)) {
+  if (tabParam && ['depth-delta', 'coinbase-premium', 'whale-orders', 'whale-retail-delta', 'top-trader-ls'].includes(tabParam)) {
     activeTab = tabParam;
   }
 
@@ -104,6 +104,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
       if (tabId === 'whale-orders') {
         renderWhaleOrdersTable(res.data, res.btcPrice || 65000);
+      } else if (tabId === 'top-trader-ls') {
+        renderTopTraderLsTable(res.data);
       } else {
         renderEChart(tabId, res.data);
       }
@@ -119,12 +121,15 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function setLoadingState(tabId, isLoading) {
-    if (tabId === 'whale-orders') {
+    if (tabId === 'whale-orders' || tabId === 'top-trader-ls') {
+      const tbodyId = tabId === 'whale-orders' ? 'whale-orders-tbody' : 'top-trader-ls-tbody';
+      const cols = tabId === 'whale-orders' ? 9 : 5;
+      const msg = tabId === 'whale-orders' ? 'Loading whale orders...' : 'Loading top trader ratios...';
       if (isLoading) {
-        document.getElementById('whale-orders-tbody').innerHTML = `
+        document.getElementById(tbodyId).innerHTML = `
           <tr>
-            <td colspan="9" style="text-align: center; color: #848E9C;">
-              <span class="spinner"></span> Loading whale orders... (CDP scrape might take 10-15s if refreshing)
+            <td colspan="${cols}" style="text-align: center; color: #848E9C;">
+              <span class="spinner"></span> ${msg} (CDP scrape might take 10-15s if refreshing)
             </td>
           </tr>
         `;
@@ -142,10 +147,12 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function showError(tabId, message) {
-    if (tabId === 'whale-orders') {
-      document.getElementById('whale-orders-tbody').innerHTML = `
+    if (tabId === 'whale-orders' || tabId === 'top-trader-ls') {
+      const tbodyId = tabId === 'whale-orders' ? 'whale-orders-tbody' : 'top-trader-ls-tbody';
+      const cols = tabId === 'whale-orders' ? 9 : 5;
+      document.getElementById(tbodyId).innerHTML = `
         <tr>
-          <td colspan="9" style="text-align: center; color: #F6465D;">
+          <td colspan="${cols}" style="text-align: center; color: #F6465D;">
             <strong>Error:</strong> ${message}
           </td>
         </tr>
@@ -185,7 +192,7 @@ document.addEventListener('DOMContentLoaded', () => {
       charts[tabId] = echarts.init(container, 'dark');
     }
 
-    const isPremium = tabId === 'coinbase-premium';
+    const isPremium = tabId === 'coinbase-premium' || tabId === 'whale-retail-delta';
 
     // Build configuration options
     const option = {
@@ -380,5 +387,41 @@ document.addEventListener('DOMContentLoaded', () => {
       connectionStatus.classList.add('critical');
       txt.innerText = 'Error';
     }
+  }
+
+  function renderTopTraderLsTable(cacheData) {
+    const tbody = document.getElementById('top-trader-ls-tbody');
+    const rows = cacheData && cacheData.rows ? cacheData.rows : [];
+
+    if (!rows || rows.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="5" style="text-align: center; color: #848E9C; padding: 20px;">
+            No top trader long/short ratio data found.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    tbody.innerHTML = rows.map(row => {
+      const symbol = row[0] || 'Unknown';
+      const exchange = row[1] || 'Unknown';
+      const ratio = parseFloat(row[2]) || 0;
+      const longPercent = row[3] || '--';
+      const shortPercent = row[4] || '--';
+
+      const ratioColor = ratio > 1 ? '#0ECB81' : (ratio < 1 && ratio > 0 ? '#F6465D' : '#EAECEF');
+
+      return `
+        <tr>
+          <td style="font-weight: 600; color: #FFFFFF;">${symbol}</td>
+          <td style="color: #848E9C;">${exchange}</td>
+          <td class="select-mono" style="font-weight: 600; color: ${ratioColor};">${ratio.toFixed(2)}</td>
+          <td class="select-mono" style="color: #0ECB81;">${longPercent}</td>
+          <td class="select-mono" style="color: #F6465D;">${shortPercent}</td>
+        </tr>
+      `;
+    }).join('');
   }
 });
