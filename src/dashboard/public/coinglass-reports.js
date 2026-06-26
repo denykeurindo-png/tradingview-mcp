@@ -220,19 +220,32 @@ document.addEventListener('DOMContentLoaded', () => {
         {
           type: 'value',
           name: 'Premium',
+          scale: true,
           axisLine: { lineStyle: { color: '#2B3139' } },
-          axisLabel: { color: '#848E9C', fontSize: 10 },
+          axisLabel: { 
+            color: '#848E9C', 
+            fontSize: 10,
+            formatter: '{value}%'
+          },
           splitLine: { lineStyle: { color: '#2B3139', type: 'dashed' } }
         },
         {
           type: 'value',
           name: 'Price',
+          scale: true,
           axisLine: { lineStyle: { color: '#2B3139' } },
-          axisLabel: { color: '#848E9C', fontSize: 10 },
+          axisLabel: { 
+            color: '#848E9C', 
+            fontSize: 10,
+            formatter: function(value) {
+              return '$' + (value >= 1000 ? (value / 1000).toFixed(0) + 'K' : value);
+            }
+          },
           splitLine: { show: false }
         }
       ] : {
         type: 'value',
+        scale: true,
         axisLine: { lineStyle: { color: '#2B3139' } },
         axisLabel: { color: '#848E9C', fontSize: 10 },
         splitLine: { lineStyle: { color: '#2B3139', type: 'dashed' } }
@@ -255,8 +268,16 @@ document.addEventListener('DOMContentLoaded', () => {
           smooth: true,
           showSymbol: false,
           lineStyle: { width: 2, color: color },
-          itemStyle: { color: color },
-          areaStyle: (tabId === 'depth-delta') ? {
+          itemStyle: {
+            color: function (params) {
+              if (s.name.toLowerCase().includes('delta')) {
+                const val = Array.isArray(params.value) ? parseFloat(params.value[1]) : parseFloat(params.value);
+                return val >= 0 ? '#0ECB81' : '#F6465D';
+              }
+              return color;
+            }
+          },
+          areaStyle: (tabId === 'depth-delta' && s.type !== 'bar') ? {
             color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
               { offset: 0, color: 'rgba(14, 203, 129, 0.2)' },
               { offset: 1, color: 'rgba(14, 203, 129, 0)' }
