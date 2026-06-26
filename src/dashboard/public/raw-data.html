@@ -839,8 +839,122 @@
       </div>
     </section>
 
+    <!-- Trade Form + Log -->
+    <section style="margin-top: 16px;">
+      <div class="card">
+        <div class="backtest-header">
+          <h3>Live Trade Journal</h3>
+          <button id="btn-clear-backtest-log" class="btn-action-sm danger">Clear All</button>
+        </div>
+
+        <!-- Manual Add Trade Form -->
+        <div class="trade-add-form">
+          <div class="trade-add-row">
+            <div class="form-group-inline">
+              <label>Direction</label>
+              <div class="direction-toggle-sm">
+                <button type="button" id="btn-toggle-long" class="toggle-btn-sm long active">LONG</button>
+                <button type="button" id="btn-toggle-short" class="toggle-btn-sm short">SHORT</button>
+              </div>
+            </div>
+            <div class="form-group-inline">
+              <label>TF</label>
+              <select id="input-tf-select" style="background:#2B3139; color:#fff; border:1px solid var(--border-color); border-radius:4px; padding:4px 8px; font-size:12px; height:28px; outline:none; cursor:pointer; min-width: 60px;">
+                <option value="15m">15m</option>
+                <option value="1H">1H</option>
+                <option value="4H">4H</option>
+                <option value="1D">1D</option>
+                <option value="1W">1W</option>
+              </select>
+            </div>
+            <div class="form-group-inline">
+              <label>Entry ($)</label>
+              <input type="number" id="input-entry" placeholder="Entry..." step="0.01">
+            </div>
+            <div class="form-group-inline">
+              <label>TP ($)</label>
+              <input type="number" id="input-tp" placeholder="Take Profit..." step="0.01">
+            </div>
+            <div class="form-group-inline">
+              <label>SL ($)</label>
+              <input type="number" id="input-sl" placeholder="Stop Loss..." step="0.01">
+            </div>
+            <div class="form-group-inline">
+              <label>Capital ($)</label>
+              <input type="number" id="input-capital-form" value="1000" min="1" step="100">
+            </div>
+            <div class="form-group-inline">
+              <label>Risk %</label>
+              <input type="number" id="input-risk-form" value="1.0" min="0.1" max="100" step="0.1">
+            </div>
+            <button type="button" id="btn-add-trade" class="btn btn-add-trade" style="background:#F0B90B; color:#000; font-weight:700;">+ Add Trade</button>
+          </div>
+        </div>
+
+        <!-- Stats Summary -->
+        <div class="backtest-summary">
+          <div class="backtest-stat-card">
+            <span class="backtest-stat-label">Total Trades</span>
+            <span class="backtest-stat-value" id="stat-total-trades">0</span>
+          </div>
+          <div class="backtest-stat-card">
+            <span class="backtest-stat-label">Win Rate</span>
+            <span class="backtest-stat-value winrate" id="stat-winrate">0.0%</span>
+          </div>
+          <div class="backtest-stat-card">
+            <span class="backtest-stat-label">Hit TP</span>
+            <span class="backtest-stat-value" id="stat-hit-tp" style="color:#32D74B;">0</span>
+          </div>
+          <div class="backtest-stat-card">
+            <span class="backtest-stat-label">Hit SL</span>
+            <span class="backtest-stat-value" id="stat-hit-sl" style="color:#FF453A;">0</span>
+          </div>
+          <div class="backtest-stat-card">
+            <span class="backtest-stat-label">Cut Loss</span>
+            <span class="backtest-stat-value" id="stat-cut-loss" style="color:#FF9F0A;">0</span>
+          </div>
+          <div class="backtest-stat-card">
+            <span class="backtest-stat-label">Net PnL (USD)</span>
+            <span class="backtest-stat-value" id="stat-net-profit-usd">$0.00</span>
+          </div>
+          <div class="backtest-stat-card">
+            <span class="backtest-stat-label">Net PnL (Bs.)</span>
+            <span class="backtest-stat-value" id="stat-net-profit-bs">Bs. 0.00</span>
+          </div>
+        </div>
+
+        <!-- Trade Log Table -->
+        <div class="backtest-table-container">
+          <table class="backtest-table" id="backtest-log-table">
+            <thead>
+              <tr>
+                <th>Time</th>
+                <th>Type</th>
+                <th>TF</th>
+                <th>Entry</th>
+                <th>TP</th>
+                <th>SL</th>
+                <th>Size (USD)</th>
+                <th>R:R</th>
+                <th>Status</th>
+                <th>Mark Price</th>
+                <th>PnL (USD)</th>
+                <th>PnL (Bs.)</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+            <tbody id="backtest-log-tbody">
+              <tr>
+                <td colspan="13" style="text-align:center; color:var(--text-muted); padding:20px;">No trades logged yet.</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </section>
+
   </div>
 
-  <script src="raw-data.js?v=2.1.0"></script>
+  <script src="raw-data.js?v=2.1.1"></script>
 </body>
 </html>

@@ -6,6 +6,7 @@ temp_*
 discovery-log.json
 src/dashboard/settings.json
 src/dashboard/trades.json
+src/dashboard/jda_trades.json
 chrome-profile/
 chrome_*.txt
 src/dashboard/cache/

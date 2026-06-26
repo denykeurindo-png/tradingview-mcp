@@ -185,7 +185,7 @@ app.get('/auth/logout', (req, res) => {
 
 // Auth middleware — sessions for browser, Basic Auth for API/backward compat
 const basicAuth = (req, res, next) => {
-  const PUBLIC_PATHS = ['/login', '/auth/login', '/auth/logout', '/api/tradingview/webhook', '/api/heatmap-data/update'];
+  const PUBLIC_PATHS = ['/login', '/auth/login', '/auth/logout', '/api/tradingview/webhook', '/api/jda-trades/webhook', '/api/heatmap-data/update'];
   if (PUBLIC_PATHS.some(p => req.path === p || req.path.startsWith(p + '?'))) {
     return next();
   }
@@ -2258,6 +2258,21 @@ app.post('/api/trades/sync', (req, res) => {
   }
 });
 
+app.post('/api/jda-trades/sync', (req, res) => {
+  const { trades } = req.body;
+  if (!trades || !Array.isArray(trades)) {
+    return res.status(400).json({ success: false, error: 'Invalid JDA trades payload' });
+  }
+  try {
+    fs.writeFileSync(JDA_TRADES_FILE, JSON.stringify(trades, null, 2));
+    console.log(`[Sync API] Successfully synchronized ${trades.length} JDA trades from local client.`);
+    res.json({ success: true });
+  } catch (err) {
+    console.error('[Sync API] Failed to write jda trades file:', err.message);
+    res.status(500).json({ success: false, error: err.message });
+  }
+});
+
 // REST API for fetching ETF data (with cache)
 app.get('/api/etf-data', async (req, res) => {
   const forceRefresh = req.query.refresh === 'true';
@@ -2322,6 +2337,7 @@ app.get('/api/etf-data', async (req, res) => {
 
 // ─── JSON Database Persistence ──────────────────────────────
 const TRADES_FILE = path.join(__dirname, 'trades.json');
+const JDA_TRADES_FILE = path.join(__dirname, 'jda_trades.json');
 
 function loadTrades() {
   if (!fs.existsSync(TRADES_FILE)) {
@@ -2343,6 +2359,29 @@ function saveTrades(trades) {
     pushToVps('/api/trades/sync', { trades }).catch(console.error);
   } catch (e) {
     console.error('Error saving trades file:', e);
+  }
+}
+
+function loadJdaTrades() {
+  if (!fs.existsSync(JDA_TRADES_FILE)) {
+    fs.writeFileSync(JDA_TRADES_FILE, JSON.stringify([], null, 2));
+    return [];
+  }
+  try {
+    const data = fs.readFileSync(JDA_TRADES_FILE, 'utf8');
+    return JSON.parse(data);
+  } catch (e) {
+    console.error('Error reading jda trades file:', e);
+    return [];
+  }
+}
+
+function saveJdaTrades(trades) {
+  try {
+    fs.writeFileSync(JDA_TRADES_FILE, JSON.stringify(trades, null, 2));
+    pushToVps('/api/jda-trades/sync', { trades }).catch(console.error);
+  } catch (e) {
+    console.error('Error saving jda trades file:', e);
   }
 }
 
@@ -2457,6 +2496,7 @@ app.post('/api/trades/add', (req, res) => {
     timestamp,
     time: trade.time || new Date(timestamp).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
     direction: trade.direction,
+    tf: trade.tf || '15m',
     entry: parseFloat(trade.entry),
     tp: parseFloat(trade.tp),
     sl: parseFloat(trade.sl),
@@ -2536,6 +2576,114 @@ app.post('/api/trades/delete', (req, res) => {
 
 app.post('/api/trades/clear', (req, res) => {
   saveTrades([]);
+  res.json({ success: true });
+});
+
+// ─── JDA Trade Log REST API Endpoints ─────────────────────────
+app.get('/api/jda-trades', (req, res) => {
+  const trades = loadJdaTrades();
+  res.json({ success: true, data: trades });
+});
+
+app.post('/api/jda-trades/add', (req, res) => {
+  const trade = req.body;
+  if (!trade || !trade.direction || !trade.entry || !trade.tp || !trade.sl || !trade.capital || !trade.riskPercent) {
+    return res.status(400).json({ success: false, error: 'Incomplete trade data' });
+  }
+
+  const id = trade.id || 'T' + Date.now();
+  let timestamp = trade.timestamp;
+  if (!timestamp) {
+    const parsedTs = parseInt(id.replace('T', ''), 10);
+    timestamp = isNaN(parsedTs) ? Date.now() : parsedTs;
+  }
+
+  const trades = loadJdaTrades();
+  trades.push({
+    id,
+    timestamp,
+    time: trade.time || new Date(timestamp).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+    direction: trade.direction,
+    tf: trade.tf || '15m',
+    entry: parseFloat(trade.entry),
+    tp: parseFloat(trade.tp),
+    sl: parseFloat(trade.sl),
+    capital: parseFloat(trade.capital),
+    riskPercent: parseFloat(trade.riskPercent),
+    riskUsd: parseFloat(trade.riskUsd),
+    positionSizeUsd: parseFloat(trade.positionSizeUsd),
+    tpDistance: parseFloat(trade.tpDistance),
+    slDistance: parseFloat(trade.slDistance),
+    status: trade.status || 'ACTIVE',
+    pnl: parseFloat(trade.pnl || 0),
+    initialTpVolume: trade.initialTpVolume ? parseFloat(trade.initialTpVolume) : null,
+    note: trade.note || ''
+  });
+
+  saveJdaTrades(trades);
+  res.json({ success: true });
+
+  // Send Telegram Alert for new manual trade
+  sendTelegramAlert(
+    `🔔 <b>JDA MTF Trade Logged (Manual)</b>\n` +
+    `Type: <b>${trade.direction}</b> (${trade.tf || '15m'})\n` +
+    `Entry: <code>$${parseFloat(trade.entry).toFixed(2)}</code>\n` +
+    `TP: <code>$${parseFloat(trade.tp).toFixed(2)}</code>\n` +
+    `SL: <code>$${parseFloat(trade.sl).toFixed(2)}</code>\n` +
+    `Size: <code>$${parseFloat(trade.positionSizeUsd).toFixed(0)}</code>\n` +
+    `Note: ${trade.note || 'Manual Entry'}`
+  );
+});
+
+app.post('/api/jda-trades/cut', (req, res) => {
+  const { id, closePrice } = req.body;
+  if (!id || !closePrice) {
+    return res.status(400).json({ success: false, error: 'Missing trade ID or close price' });
+  }
+
+  const trades = loadJdaTrades();
+  const trade = trades.find(t => t.id === id);
+  if (trade && trade.status === 'ACTIVE') {
+    trade.status = 'CUT_LOSS';
+    const diff = trade.direction === 'LONG' ? (closePrice - trade.entry) : (trade.entry - closePrice);
+    trade.pnl = parseFloat((trade.positionSizeUsd * (diff / trade.entry)).toFixed(2));
+    trade.closePrice = parseFloat(closePrice);
+    trade.closeTimestamp = Date.now();
+    trade.note = trade.note ? `${trade.note} (Manual Cut)` : 'Manual Cut';
+    saveJdaTrades(trades);
+    res.json({ success: true });
+
+    // Send Telegram Alert for manual cut
+    sendTelegramAlert(
+      `⚠️ <b>JDA MTF Trade Closed (Manual Cut)</b>\n` +
+      `Type: <b>${trade.direction}</b> (${trade.tf || '15m'})\n` +
+      `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
+      `TP: <code>$${trade.tp.toFixed(2)}</code>\n` +
+      `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
+      `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
+      `Close: <code>$${parseFloat(closePrice).toFixed(2)}</code>\n` +
+      `PnL: <code>${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(2)}</code> (${trade.pnl >= 0 ? '+' : ''}Bs. ${(trade.pnl * 6.96).toFixed(2)})\n` +
+      `Note: ${trade.note}`
+    );
+    return;
+  }
+  res.status(404).json({ success: false, error: 'Active JDA trade not found' });
+});
+
+app.post('/api/jda-trades/delete', (req, res) => {
+  const { id } = req.body;
+  if (!id) {
+    return res.status(400).json({ success: false, error: 'Missing trade ID' });
+  }
+
+  let trades = loadJdaTrades();
+  trades = trades.filter(t => t.id !== id);
+  saveJdaTrades(trades);
+  res.json({ success: true });
+});
+
+app.post('/api/jda-trades/clear', (req, res) => {
+  saveJdaTrades([]);
   res.json({ success: true });
 });
 
@@ -2720,6 +2868,7 @@ app.post('/api/tradingview/webhook', (req, res) => {
       timestamp,
       time: new Date(timestamp).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
       direction,
+      tf: data.tf || data.timeframe || '15m',
       entry,
       tp,
       sl: parseFloat(sl.toFixed(2)),
@@ -2779,6 +2928,125 @@ app.post('/api/tradingview/webhook', (req, res) => {
       );
     } else {
       res.status(404).json({ success: false, error: 'No active trade found to exit' });
+    }
+  } else {
+    res.status(400).json({ success: false, error: 'Unknown action' });
+  }
+});
+
+app.post('/api/jda-trades/webhook', (req, res) => {
+  const settings = loadSettings();
+  if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true') {
+    console.warn('[JDA Webhook] Webhook ignored. VPS is in view-only mode.');
+    return res.status(403).json({ success: false, error: 'VPS is in view-only mode.' });
+  }
+
+  const data = req.body;
+  console.log('[JDA Webhook] Received payload:', JSON.stringify(data));
+
+  if (!data || !data.action) {
+    return res.status(400).json({ success: false, error: 'Missing action parameter' });
+  }
+
+  const trades = loadJdaTrades();
+
+  if (data.action === 'buy' || data.action === 'sell') {
+    const direction = data.direction || (data.action === 'buy' ? 'LONG' : 'SHORT');
+    let entry = parseFloat(data.entry || 0);
+    let tp = parseFloat(data.tp || 0);
+    let sl = parseFloat(data.sl || 0);
+
+    if (!entry || !tp || !sl) {
+      return res.status(400).json({ success: false, error: 'Missing entry, tp, or sl' });
+    }
+
+    const activeTrades = trades.filter(t => t.status === 'ACTIVE');
+    if (activeTrades.length >= settings.maxActive) {
+      console.log('[JDA Webhook] Max active trades reached, skipping entry.');
+      return res.status(400).json({ success: false, error: 'Max active trades reached' });
+    }
+
+    let slDistance = Math.abs(((entry - sl) / entry) * 100);
+    const minSLPercent = Math.max(0.5, settings.minSLPercent !== undefined ? parseFloat(settings.minSLPercent) : 0.5);
+    const slFloorFraction = minSLPercent / 100;
+    if (slDistance < minSLPercent) {
+      slDistance = minSLPercent;
+      sl = direction === 'LONG' ? (entry * (1 - slFloorFraction)) : (entry * (1 + slFloorFraction));
+      console.log(`[JDA Webhook] Stop Loss clamped to ${minSLPercent}%: $${sl.toFixed(2)}`);
+    }
+
+    const tpDistance = Math.abs(((tp - entry) / entry) * 100);
+    const rr = (tpDistance / slDistance).toFixed(1);
+
+    const riskUsd = settings.capital * (settings.riskPercent / 100);
+    const positionSizeUsd = riskUsd / (slDistance / 100);
+
+    const timestamp = Date.now();
+    const newTrade = {
+      id: 'T' + timestamp,
+      timestamp,
+      time: new Date(timestamp).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+      direction,
+      tf: data.tf || data.timeframe || '15m',
+      entry,
+      tp,
+      sl: parseFloat(sl.toFixed(2)),
+      capital: settings.capital,
+      riskPercent: settings.riskPercent,
+      riskUsd,
+      positionSizeUsd,
+      tpDistance,
+      slDistance,
+      status: 'ACTIVE',
+      pnl: 0,
+      note: data.note || 'JDA TradingView Alert'
+    };
+
+    trades.push(newTrade);
+    saveJdaTrades(trades);
+    res.json({ success: true, data: newTrade });
+
+    sendTelegramAlert(
+      `🔔 <b>New JDA MTF Trade (TradingView Alert)</b>\n` +
+      `Type: <b>${direction}</b> (${newTrade.tf})\n` +
+      `Entry: <code>$${entry.toFixed(2)}</code>\n` +
+      `TP: <code>$${tp.toFixed(2)}</code> (Risk R: 1:${rr})\n` +
+      `SL: <code>$${sl.toFixed(2)}</code>\n` +
+      `Size: <code>$${positionSizeUsd.toFixed(0)}</code> (Risk: $${riskUsd.toFixed(2)})\n` +
+      `Note: ${newTrade.note}`
+    );
+
+  } else if (data.action === 'cut') {
+    const direction = data.direction;
+    const closePrice = parseFloat(data.close || 0);
+
+    const trade = direction 
+      ? trades.find(t => t.status === 'ACTIVE' && t.direction === direction)
+      : trades.find(t => t.status === 'ACTIVE');
+
+    if (trade) {
+      trade.status = 'CUT_LOSS';
+      const diff = trade.direction === 'LONG' ? (closePrice - trade.entry) : (trade.entry - closePrice);
+      trade.pnl = parseFloat((trade.positionSizeUsd * (diff / trade.entry)).toFixed(2));
+      trade.closePrice = closePrice || trade.entry;
+      trade.closeTimestamp = Date.now();
+      trade.note = trade.note ? `${trade.note} (${data.note || 'JDA TradingView Exit'})` : (data.note || 'JDA TradingView Exit');
+      saveJdaTrades(trades);
+      res.json({ success: true, data: trade });
+
+      sendTelegramAlert(
+        `⚠️ <b>JDA MTF Trade Closed (TradingView Exit)</b>\n` +
+        `Type: <b>${trade.direction}</b> (${trade.tf || '15m'})\n` +
+        `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
+        `TP: <code>$${trade.tp.toFixed(2)}</code>\n` +
+        `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
+        `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
+        `Close: <code>$${trade.closePrice.toFixed(2)}</code>\n` +
+        `PnL: <code>${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(2)}</code> (${trade.pnl >= 0 ? '+' : ''}Bs. ${(trade.pnl * 6.96).toFixed(2)})\n` +
+        `Note: ${trade.note}`
+      );
+    } else {
+      res.status(404).json({ success: false, error: 'No active JDA trade found to exit' });
     }
   } else {
     res.status(400).json({ success: false, error: 'Unknown action' });
@@ -3454,6 +3722,140 @@ function evaluateActiveTradesBackend(heatmapData) {
     saveTrades(trades);
   }
 }
+
+function evaluateActiveJdaTradesBackend(heatmapData) {
+  const cs = heatmapData.series.find(s => s.type === 'candlestick');
+  if (!cs || !cs.data || cs.data.length === 0) return;
+
+  const lastCandle = cs.data[cs.data.length - 1];
+  const lastClose = parseFloat(lastCandle[1]);
+  const lastLow = parseFloat(lastCandle[2]);
+  const lastHigh = parseFloat(lastCandle[3]);
+
+  if (isNaN(lastClose) || isNaN(lastLow) || isNaN(lastHigh)) return;
+
+  const trades = loadJdaTrades();
+  let updated = false;
+
+  trades.forEach(trade => {
+    if (trade.status !== 'ACTIVE') return;
+
+    if (trade.direction === 'LONG') {
+      // 1. Check Stop Loss Hit
+      if (lastLow <= trade.sl) {
+        trade.status = 'HIT_SL';
+        const pnl = -trade.riskUsd;
+        trade.pnl = pnl;
+        trade.closePrice = trade.sl;
+        trade.closeTimestamp = Date.now();
+        trade.note = `Wick Hit SL ($${lastLow.toFixed(2)})`;
+        updated = true;
+
+        const pnlText = `-$${trade.riskUsd.toFixed(2)}`;
+        const pnlBsText = `-Bs. ${(trade.riskUsd * 6.96).toFixed(2)}`;
+        console.log(`[JDA Bot] LONG Hit SL at $${trade.sl.toFixed(2)} (Last Low: $${lastLow.toFixed(2)}), PnL: ${pnlText}`);
+        sendTelegramAlert(
+          `🚨 <b>JDA MTF Trade Closed (Hit SL)</b>\n` +
+          `Type: <b>LONG</b> (${trade.tf || '15m'})\n` +
+          `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
+          `TP: <code>$${trade.tp.toFixed(2)}</code>\n` +
+          `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
+          `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
+          `SL Hit: <code>$${trade.sl.toFixed(2)}</code>\n` +
+          `PnL: <code>${pnlText}</code> (${pnlBsText})\n` +
+          `Note: ${trade.note}`
+        );
+        return;
+      }
+      // 2. Check Take Profit Hit
+      if (lastHigh >= trade.tp) {
+        trade.status = 'HIT_TP';
+        const profit = trade.positionSizeUsd * (trade.tpDistance / 100);
+        trade.pnl = profit;
+        trade.closePrice = trade.tp;
+        trade.closeTimestamp = Date.now();
+        trade.note = `Wick Hit TP ($${lastHigh.toFixed(2)})`;
+        updated = true;
+        console.log(`[JDA Bot] 🎉 LONG Hit TP at $${trade.tp.toFixed(2)} (Last High: $${lastHigh.toFixed(2)}), PnL: +$${profit.toFixed(2)}`);
+        sendTelegramAlert(
+          `🎉 <b>JDA MTF Trade Closed (Hit TP)</b>\n` +
+          `Type: <b>LONG</b> (${trade.tf || '15m'})\n` +
+          `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
+          `TP: <code>$${trade.tp.toFixed(2)}</code>\n` +
+          `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
+          `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
+          `TP Hit: <code>$${trade.tp.toFixed(2)}</code>\n` +
+          `PnL: <code>+$${profit.toFixed(2)}</code> (+Bs. ${(profit * 6.96).toFixed(2)})\n` +
+          `Note: ${trade.note}`
+        );
+        return;
+      }
+    } else { // SHORT
+      // 1. Check Stop Loss Hit
+      if (lastHigh >= trade.sl) {
+        trade.status = 'HIT_SL';
+        const pnl = -trade.riskUsd;
+        trade.pnl = pnl;
+        trade.closePrice = trade.sl;
+        trade.closeTimestamp = Date.now();
+        trade.note = `Wick Hit SL ($${lastHigh.toFixed(2)})`;
+        updated = true;
+
+        const pnlText = `-$${trade.riskUsd.toFixed(2)}`;
+        const pnlBsText = `-Bs. ${(trade.riskUsd * 6.96).toFixed(2)}`;
+        console.log(`[JDA Bot] SHORT Hit SL at $${trade.sl.toFixed(2)} (Last High: $${lastHigh.toFixed(2)}), PnL: ${pnlText}`);
+        sendTelegramAlert(
+          `🚨 <b>JDA MTF Trade Closed (Hit SL)</b>\n` +
+          `Type: <b>SHORT</b> (${trade.tf || '15m'})\n` +
+          `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
+          `TP: <code>$${trade.tp.toFixed(2)}</code>\n` +
+          `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
+          `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
+          `SL Hit: <code>$${trade.sl.toFixed(2)}</code>\n` +
+          `PnL: <code>${pnlText}</code> (${pnlBsText})\n` +
+          `Note: ${trade.note}`
+        );
+        return;
+      }
+      // 2. Check Take Profit Hit
+      if (lastLow <= trade.tp) {
+        trade.status = 'HIT_TP';
+        const profit = trade.positionSizeUsd * (trade.tpDistance / 100);
+        trade.pnl = profit;
+        trade.closePrice = trade.tp;
+        trade.closeTimestamp = Date.now();
+        trade.note = `Wick Hit TP ($${lastLow.toFixed(2)})`;
+        updated = true;
+        console.log(`[JDA Bot] 🎉 SHORT Hit TP at $${trade.tp.toFixed(2)} (Last Low: $${lastLow.toFixed(2)}), PnL: +$${profit.toFixed(2)}`);
+        sendTelegramAlert(
+          `🎉 <b>JDA MTF Trade Closed (Hit TP)</b>\n` +
+          `Type: <b>SHORT</b> (${trade.tf || '15m'})\n` +
+          `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
+          `TP: <code>$${trade.tp.toFixed(2)}</code>\n` +
+          `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
+          `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
+          `TP Hit: <code>$${trade.tp.toFixed(2)}</code>\n` +
+          `PnL: <code>+$${profit.toFixed(2)}</code> (+Bs. ${(profit * 6.96).toFixed(2)})\n` +
+          `Note: ${trade.note}`
+        );
+        return;
+      }
+    }
+
+    // 4. Update current floating PnL
+    const diff = trade.direction === 'LONG' ? (lastClose - trade.entry) : (trade.entry - lastClose);
+    const floatingPnl = parseFloat((trade.positionSizeUsd * (diff / trade.entry)).toFixed(2));
+    if (trade.pnl !== floatingPnl) {
+      trade.pnl = floatingPnl;
+      updated = true;
+    }
+  });
+
+  if (updated) {
+    saveJdaTrades(trades);
+  }
+}
+
 
 // ─── Global Bot Phase State (for API reporting) ─────────────
 let botPhaseState = {
@@ -4332,6 +4734,7 @@ function autoTradeStrategyBackend(heatmapData) {
     timestamp,
     time: new Date(timestamp).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
     direction,
+    tf: '15m',
     entry: parseFloat(entry.toFixed(2)),
     tp: parseFloat(tp.toFixed(2)),
     sl: parseFloat(sl.toFixed(2)),
@@ -5179,6 +5582,7 @@ async function runBotCycle() {
       if (isScraperEnabled) {
         // Run evaluations and strategy only on local instance (master mode)
         evaluateActiveTradesBackend(result.data, klines15m);
+        evaluateActiveJdaTradesBackend(result.data);
         const oldPhase = botPhaseState?.phase;
         autoTradeStrategyBackend(result.data, klines15m);
         const newPhase = botPhaseState?.phase;
@@ -5369,6 +5773,8 @@ app.listen(PORT, () => {
   try {
     const initialTrades = loadTrades();
     pushToVps('/api/trades/sync', { trades: initialTrades }).catch(console.error);
+    const initialJdaTrades = loadJdaTrades();
+    pushToVps('/api/jda-trades/sync', { trades: initialJdaTrades }).catch(console.error);
   } catch (err) {
     console.error('Failed to trigger initial sync:', err.message);
   }

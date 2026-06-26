@@ -52,6 +52,7 @@ async function loadTradeLog() {
 async function addTradeFromForm() {
   const isLong = document.getElementById('btn-toggle-long').classList.contains('active');
   const direction = isLong ? 'LONG' : 'SHORT';
+  const tf = document.getElementById('input-tf-select').value || '15m';
   const capital = parseFloat(document.getElementById('input-capital-form').value) || 0;
   const riskPercent = parseFloat(document.getElementById('input-risk-form').value) || 0;
   const entry = parseFloat(document.getElementById('input-entry').value) || 0;
@@ -79,7 +80,7 @@ async function addTradeFromForm() {
   const newTrade = {
     id: 'T' + timestamp, timestamp,
     time: new Date(timestamp).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
-    direction, entry, tp, sl, capital, riskPercent, riskUsd,
+    direction, tf, entry, tp, sl, capital, riskPercent, riskUsd,
     positionSizeUsd, tpDistance, slDistance,
     status: 'ACTIVE', pnl: 0, initialTpVolume: null
   };
@@ -170,7 +171,7 @@ function renderTradeTable() {
   if (npBs)  { npBs.innerText  = formatBs(netPnl);  npBs.className  = 'backtest-stat-value ' + (netPnl >= 0 ? 'profit-positive' : 'profit-negative'); }
 
   if (!total) {
-    tbody.innerHTML = '<tr><td colspan="12" style="text-align:center;color:var(--text-muted);padding:20px;">No trades logged yet.</td></tr>';
+    tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--text-muted);padding:20px;">No trades logged yet.</td></tr>';
     return;
   }
 
@@ -219,6 +220,7 @@ function renderTradeTable() {
     html += `<tr ${rowOpacity}>
       <td>${displayTime}</td>
       <td style="font-weight:700;color:${trade.direction === 'LONG' ? '#32D74B' : '#FF453A'};">${trade.direction}</td>
+      <td style="font-family:var(--font-mono);color:#98989D;">${trade.tf || '15m'}</td>
       <td class="mono">$${trade.entry.toLocaleString(undefined,{minimumFractionDigits:2})}${entrySubtext}</td>
       <td class="mono" style="color:#32D74B;">$${trade.tp.toLocaleString(undefined,{minimumFractionDigits:2})}${tpSubtext}</td>
       <td class="mono" style="color:#FF453A;">$${trade.sl.toLocaleString(undefined,{minimumFractionDigits:2})}${slSubtext}</td>

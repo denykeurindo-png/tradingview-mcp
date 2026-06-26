@@ -36,7 +36,7 @@ async function getTradingViewTab() {
 async function runBridge() {
   // Sinkronisasi status aktif trade dari VPS
   try {
-    const res = await fetch(`${VPS_URL}/api/trades`);
+    const res = await fetch(`${VPS_URL}/api/jda-trades`);
     if (res.ok) {
       const rawData = await res.json();
       const trades = Array.isArray(rawData) ? rawData : (rawData.data || []);
@@ -149,7 +149,7 @@ function startMonitoring(ws) {
           const direction = dir === 1 ? 'LONG' : 'SHORT';
           console.log(`[Bridge] Mengirim trade ${direction} ke VPS...`);
 
-          const response = await fetch(`${VPS_URL}/api/tradingview/webhook`, {
+          const response = await fetch(`${VPS_URL}/api/jda-trades/webhook`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
@@ -171,7 +171,7 @@ function startMonitoring(ws) {
           }
         } else if (dir === 0 && isTradeActive) {
           console.log('[Bridge] Sinyal kembali ke FLAT. Mengirim instruksi Cut/Close ke VPS...');
-          const response = await fetch(`${VPS_URL}/api/tradingview/webhook`, {
+          const response = await fetch(`${VPS_URL}/api/jda-trades/webhook`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
