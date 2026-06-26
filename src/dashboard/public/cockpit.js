@@ -229,8 +229,132 @@ async function updateBotStatus() {
     // Render Active Position
     renderActivePosition();
 
+    // Update JDA MTF Strategy metrics
+    updateJdaMtfStatus();
+
   } catch (e) {
     console.error('[Cockpit] Bot Status update failed:', e.message);
+  }
+}
+
+// Update JDA MTF Strategy Status Widget
+async function updateJdaMtfStatus() {
+  try {
+    const res = await fetch('/api/jda-signal');
+    if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+    const json = await res.json();
+    const d = json.data;
+    if (!d) return;
+
+    // 1. Update Time
+    const timeEl = document.getElementById('jda-mtf-update-time');
+    if (timeEl) {
+      timeEl.innerText = 'Updated: ' + new Date(d.fetchTime).toLocaleTimeString();
+    }
+
+    // 2. Bias & Conf
+    const biasEl = document.getElementById('jda-card-bias');
+    if (biasEl) {
+      biasEl.innerText = `${d.marketBias} | ${d.conf}% (${d.confLevel})`;
+      if (d.marketBias === 'BULLISH') {
+        biasEl.className = 'jda-card-val text-bullish';
+      } else if (d.marketBias === 'BEARISH') {
+        biasEl.className = 'jda-card-val text-bearish';
+      } else {
+        biasEl.className = 'jda-card-val text-neutral';
+      }
+    }
+
+    // 3. Phase
+    const phaseEl = document.getElementById('jda-card-phase');
+    if (phaseEl) {
+      phaseEl.innerText = d.phase;
+      if (d.phase.includes('BULL')) {
+        phaseEl.className = 'jda-card-val text-bullish';
+      } else if (d.phase.includes('BEAR')) {
+        phaseEl.className = 'jda-card-val text-bearish';
+      } else if (d.phase === 'SQUEEZE') {
+        phaseEl.className = 'jda-card-val text-squeeze';
+      } else {
+        phaseEl.className = 'jda-card-val text-neutral';
+      }
+    }
+
+    // 4. Dir Score
+    const scoreEl = document.getElementById('jda-card-score');
+    if (scoreEl) {
+      const sign = d.dirScore >= 0 ? '+' : '';
+      scoreEl.innerText = `${sign}${d.dirScore} (${d.aligned ? 'ALIGNED' : 'MIXED'})`;
+      if (d.dirScore > 0) {
+        scoreEl.className = 'jda-card-val text-bullish';
+      } else if (d.dirScore < 0) {
+        scoreEl.className = 'jda-card-val text-bearish';
+      } else {
+        scoreEl.className = 'jda-card-val text-neutral';
+      }
+    }
+
+    // 5. EMA50 (4H) Filter
+    const emaEl = document.getElementById('jda-card-ema');
+    if (emaEl && d.emaFilter) {
+      emaEl.innerText = `${d.emaFilter.value} (${d.emaFilter.status})`;
+      if (d.emaFilter.status.includes('ABOVE')) {
+        emaEl.className = 'jda-card-val text-bullish';
+      } else {
+        emaEl.className = 'jda-card-val text-bearish';
+      }
+    }
+
+    // 6. ADX (15M) Filter
+    const adxEl = document.getElementById('jda-card-adx');
+    if (adxEl && d.adxFilter) {
+      adxEl.innerText = `${d.adxFilter.value} (${d.adxFilter.status})`;
+      if (d.adxFilter.status.includes('TRENDING')) {
+        adxEl.className = 'jda-card-val text-bullish';
+      } else {
+        adxEl.className = 'jda-card-val text-bearish';
+      }
+    }
+
+    // 7. EMA13/SMA50 (15M)
+    const crossEl = document.getElementById('jda-card-cross');
+    if (crossEl && d.crossFilter) {
+      crossEl.innerText = d.crossFilter.status;
+      if (d.crossFilter.status.includes('GOLDEN')) {
+        crossEl.className = 'jda-card-val text-bullish';
+      } else {
+        crossEl.className = 'jda-card-val text-bearish';
+      }
+    }
+
+    // 8. Final Call
+    const finalCallEl = document.getElementById('jda-card-final-call');
+    if (finalCallEl) {
+      finalCallEl.innerText = d.finalCall || d.action;
+      const isLong = d.action.includes('LONG');
+      const isShort = d.action.includes('SHORT');
+      if (isLong) {
+        finalCallEl.className = 'jda-card-val text-bullish';
+      } else if (isShort) {
+        finalCallEl.className = 'jda-card-val text-bearish';
+      } else {
+        finalCallEl.className = 'jda-card-val text-squeeze';
+      }
+    }
+
+    // 9. Aligned Status
+    const alignedEl = document.getElementById('jda-card-aligned');
+    if (alignedEl) {
+      alignedEl.innerText = d.aligned ? 'ALIGNED ✅' : 'MIXED ⚠️';
+      if (d.aligned) {
+        alignedEl.className = 'jda-card-val text-bullish';
+      } else {
+        alignedEl.className = 'jda-card-val text-squeeze';
+      }
+    }
+
+  } catch (e) {
+    console.error('[Cockpit] JDA MTF Status update failed:', e.message);
   }
 }
 

@@ -443,6 +443,89 @@
       gap: 4px;
     }
 
+    /* JDA MTF Strategy Widget Styles */
+    .w-jda-mtf {
+      background: var(--bg-surface);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 16px;
+      display: flex;
+      flex-direction: column;
+      position: relative;
+    }
+
+    .jda-grid {
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 12px;
+      margin-top: 4px;
+    }
+
+    .jda-card {
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 10px 14px;
+      display: flex;
+      flex-direction: column;
+      justify-content: center;
+      min-height: 58px;
+    }
+
+    .jda-card-label {
+      font-size: 10px;
+      font-weight: 600;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 4px;
+    }
+
+    .jda-card-val {
+      font-size: 15px;
+      font-weight: 700;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+
+    .jda-card-full {
+      grid-column: span 3;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      background: rgba(255, 255, 255, 0.02);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      padding: 10px 14px;
+      min-height: 58px;
+    }
+
+    .jda-flex-col {
+      display: flex;
+      flex-direction: column;
+    }
+
+    .jda-flex-col-right {
+      display: flex;
+      flex-direction: column;
+      align-items: flex-end;
+    }
+
+    /* Color highlights for JDA */
+    .text-bearish {
+      color: var(--accent-alert) !important;
+    }
+    .text-bullish {
+      color: var(--accent-success) !important;
+    }
+    .text-neutral {
+      color: var(--text-muted) !important;
+    }
+    .text-squeeze {
+      color: #FFD60A !important;
+    }
+
     @media (max-width: 1200px) {
       .cockpit-grid {
         grid-template-columns: 1fr;
@@ -506,6 +589,19 @@
 
       .score-breakdown-grid {
         grid-template-columns: 1fr;
+      }
+
+      .jda-grid {
+        grid-template-columns: 1fr;
+      }
+      .jda-card-full {
+        grid-column: span 1;
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+      }
+      .jda-flex-col-right {
+        align-items: flex-start;
       }
     }
   </style>
@@ -713,6 +809,60 @@
 
       <!-- Column 2: Mini Heatmap & Orderbook -->
       <div class="cockpit-col">
+        <!-- Widget: JDA MTF Strategy Status -->
+        <div class="cockpit-widget w-jda-mtf" style="flex: 0 0 auto; margin-bottom: 0px; padding: 14px;">
+          <div class="widget-title" style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
+            <span>JDA Multi-Timeframe Strategy</span>
+            <span style="font-size: 11px; color: var(--text-muted); text-transform: none; font-weight: normal;" id="jda-mtf-update-time">Updated: --:--:--</span>
+          </div>
+          
+          <div class="jda-grid">
+            <!-- Row 1 -->
+            <div class="jda-card">
+              <div class="jda-card-label">Bias & Conf</div>
+              <div class="jda-card-val" id="jda-card-bias">--</div>
+            </div>
+            
+            <div class="jda-card">
+              <div class="jda-card-label">Phase</div>
+              <div class="jda-card-val" id="jda-card-phase">--</div>
+            </div>
+            
+            <div class="jda-card">
+              <div class="jda-card-label">Dir Score</div>
+              <div class="jda-card-val" id="jda-card-score">--</div>
+            </div>
+            
+            <!-- Row 2 -->
+            <div class="jda-card">
+              <div class="jda-card-label">EMA50 (4H) Filter</div>
+              <div class="jda-card-val" id="jda-card-ema">--</div>
+            </div>
+            
+            <div class="jda-card">
+              <div class="jda-card-label">ADX (15M) Filter</div>
+              <div class="jda-card-val" id="jda-card-adx">--</div>
+            </div>
+            
+            <div class="jda-card">
+              <div class="jda-card-label">EMA13/SMA50 (15M)</div>
+              <div class="jda-card-val" id="jda-card-cross">--</div>
+            </div>
+            
+            <!-- Row 3 -->
+            <div class="jda-card-full">
+              <div class="jda-flex-col">
+                <div class="jda-card-label">Final Call</div>
+                <div class="jda-card-val" id="jda-card-final-call" style="font-size: 16px;">--</div>
+              </div>
+              <div class="jda-flex-col-right">
+                <div class="jda-card-label">Aligned Status</div>
+                <div class="jda-card-val" id="jda-card-aligned" style="font-size: 16px;">--</div>
+              </div>
+            </div>
+          </div>
+        </div>
+
         <!-- Widget 3: Mini Heatmap -->
         <div class="cockpit-widget w-mini-heatmap">
           <div class="widget-title" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
