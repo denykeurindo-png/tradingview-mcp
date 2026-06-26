@@ -38,7 +38,8 @@ const recentTradesList = document.getElementById('recent-trades-list');
 
 // ECharts instances
 let gaugeChart = null;
-let miniHeatmapChart = null;
+let miniHeatmapChart24h = null;
+let miniHeatmapChart3d = null;
 let equityCurveChart = null;
 
 // Global cache
@@ -70,6 +71,15 @@ const formatBs = (val) => {
   else if (abs >= 1e3) formatted = (abs / 1e3).toFixed(2) + 'K';
   else formatted = abs.toFixed(2);
   return `${valBs < 0 ? '-' : ''}Bs. ${formatted}`;
+};
+
+const formatIntensity = (val) => {
+  if (val === undefined || val === null) return '0.00';
+  const abs = Math.abs(val);
+  if (abs >= 1e9) return (abs / 1e9).toFixed(2) + 'B';
+  if (abs >= 1e6) return (abs / 1e6).toFixed(1) + 'M';
+  if (abs >= 1e3) return (abs / 1e3).toFixed(0) + 'K';
+  return abs.toFixed(0);
 };
 
 // Update Performance Statistics Tiles
@@ -157,9 +167,13 @@ function initCharts() {
     gaugeChart.setOption(option);
   }
 
-  const heatmapDom = document.getElementById('chart-mini-heatmap');
-  if (heatmapDom) {
-    miniHeatmapChart = echarts.init(heatmapDom, 'dark');
+  const heatmapDom24h = document.getElementById('chart-mini-heatmap-24h');
+  if (heatmapDom24h) {
+    miniHeatmapChart24h = echarts.init(heatmapDom24h, 'dark');
+  }
+  const heatmapDom3d = document.getElementById('chart-mini-heatmap-3d');
+  if (heatmapDom3d) {
+    miniHeatmapChart3d = echarts.init(heatmapDom3d, 'dark');
   }
 }
 
@@ -577,6 +591,111 @@ async function updateMarketExtras() {
   }
 }
 
+function renderSingleMiniChart(chartInstance, title, heatmapData, pools) {
+  if (!chartInstance) return;
+
+  const candlestickSeries = heatmapData.series.find(s => s.type === 'candlestick');
+  if (!candlestickSeries) return;
+
+  const slicedX = heatmapData.xAxis.slice(-40);
+  const slicedCandles = candlestickSeries.data.slice(-40).map(c => [
+    parseFloat(c[0]), parseFloat(c[1]), parseFloat(c[2]), parseFloat(c[3])
+  ]);
+
+  const resistancePools = pools.above;
+  const supportPools = pools.below;
+
+  const markLines = [];
+  resistancePools.forEach(p => {
+    markLines.push({
+      yAxis: p.price,
+      name: `RES $${Math.round(p.price)}`,
+      lineStyle: { color: '#F6465D', type: 'dashed', width: 1.5 },
+      label: {
+        formatter: `$${Math.round(p.price).toLocaleString()} ($${formatIntensity(p.leverage)})`,
+        position: 'end',
+        color: '#F6465D',
+        fontSize: 10
+      }
+    });
+  });
+
+  supportPools.forEach(p => {
+    markLines.push({
+      yAxis: p.price,
+      name: `SUP $${Math.round(p.price)}`,
+      lineStyle: { color: '#0ECB81', type: 'dashed', width: 1.5 },
+      label: {
+        formatter: `$${Math.round(p.price).toLocaleString()} ($${formatIntensity(p.leverage)})`,
+        position: 'end',
+        color: '#0ECB81',
+        fontSize: 10
+      }
+    });
+  });
+
+  let refPrice = currentBtcPrice || 60000;
+  if (slicedCandles.length > 0) {
+    const latestCandle = slicedCandles[slicedCandles.length - 1];
+    const closePrice = parseFloat(latestCandle[1]);
+    if (!isNaN(closePrice) && closePrice > 0) {
+      refPrice = closePrice;
+    }
+  }
+  const yAxisMin = Math.round(refPrice - 5000);
+  const yAxisMax = Math.round(refPrice + 5000);
+
+  const option = {
+    backgroundColor: 'transparent',
+    title: {
+      text: title,
+      textStyle: { color: '#848E9C', fontSize: 11, fontWeight: 'bold' },
+      left: 10,
+      top: 0
+    },
+    grid: { top: 30, bottom: 24, left: 55, right: 90 },
+    tooltip: {
+      trigger: 'axis',
+      axisPointer: { type: 'cross' }
+    },
+    xAxis: {
+      type: 'category',
+      data: slicedX.map(t => t.split(',')[1] || t), // show HH:MM only
+      axisLine: { lineStyle: { color: '#2B3139' } },
+      axisLabel: { color: '#848E9C', fontSize: 10 }
+    },
+    yAxis: {
+      type: 'value',
+      scale: false,
+      min: yAxisMin,
+      max: yAxisMax,
+      axisLine: { lineStyle: { color: '#2B3139' } },
+      axisLabel: { color: '#848E9C', fontSize: 10 },
+      splitLine: { lineStyle: { color: 'rgba(255,255,255,0.03)' } }
+    },
+    series: [{
+      name: 'BTC Price',
+      type: 'candlestick',
+      data: slicedCandles,
+      itemStyle: {
+        color: '#0ECB81',
+        color0: '#F6465D',
+        borderColor: '#0ECB81',
+        borderColor0: '#F6465D'
+      },
+      markLine: {
+        symbol: ['none', 'none'],
+        data: markLines
+      }
+    }],
+    dataZoom: [
+      { type: 'inside', xAxisIndex: 0, filterMode: 'filter' },
+      { type: 'inside', yAxisIndex: 0, filterMode: 'empty' }
+    ]
+  };
+  chartInstance.setOption(option, true);
+}
+
 // Fetch Liquidation Heatmap data and update ECharts Mini map
 async function updateMiniHeatmap() {
   try {
@@ -659,117 +778,25 @@ async function updateMiniHeatmap() {
       return { above: aboveLevels, below: belowLevels, maxLeverage };
     };
 
-    const formatIntensity = (val) => {
-      if (val >= 1e9) return (val / 1e9).toFixed(2) + 'B';
-      if (val >= 1e6) return (val / 1e6).toFixed(1) + 'M';
-      if (val >= 1e3) return (val / 1e3).toFixed(0) + 'K';
-      return val.toFixed(0);
-    };
-
     // --- Process Heatmap Data ---
     const pools24h = extractTopPools(data);
     const pools3d = data3d ? extractTopPools(data3d) : { above: [], below: [], maxLeverage: 1 };
 
-    // Choose the active data and pools based on selected toggle period
-    const activeData = (activeChartPeriod === '3d' && data3d) ? data3d : data;
-    const activePools = (activeChartPeriod === '3d' && data3d) ? pools3d : pools24h;
-
-    const candlestickSeries = activeData.series.find(s => s.type === 'candlestick');
-    if (!candlestickSeries) return;
-
-    // Extract current price from the latest candlestick close if available
-    if (candlestickSeries.data && candlestickSeries.data.length > 0) {
-      const latestCandle = candlestickSeries.data[candlestickSeries.data.length - 1];
+    // Update main BTC price in UI from latest 24h data close
+    const candlestickSeries24h = data.series.find(s => s.type === 'candlestick');
+    if (candlestickSeries24h && candlestickSeries24h.data && candlestickSeries24h.data.length > 0) {
+      const latestCandle = candlestickSeries24h.data[candlestickSeries24h.data.length - 1];
       const heatmapPrice = parseFloat(latestCandle[1]);
       if (!isNaN(heatmapPrice) && heatmapPrice > 0) {
         currentBtcPrice = heatmapPrice;
       }
     }
 
-    const slicedX = activeData.xAxis.slice(-40);
-    const slicedCandles = candlestickSeries.data.slice(-40).map(c => [
-      parseFloat(c[0]), parseFloat(c[1]), parseFloat(c[2]), parseFloat(c[3])
-    ]);
-
-    // Use all 5 levels from activePools for chart markLines to match the tables 100%
-    const resistancePools = activePools.above;
-    const supportPools = activePools.below;
-
-    const markLines = [];
-    resistancePools.forEach(p => {
-      markLines.push({
-        yAxis: p.price,
-        name: `RES $${Math.round(p.price)}`,
-        lineStyle: { color: '#F6465D', type: 'dashed', width: 1.5 },
-        label: {
-          formatter: `$${Math.round(p.price).toLocaleString()} ($${formatIntensity(p.leverage)})`,
-          position: 'end',
-          color: '#F6465D',
-          fontSize: 10
-        }
-      });
-    });
-
-    supportPools.forEach(p => {
-      markLines.push({
-        yAxis: p.price,
-        name: `SUP $${Math.round(p.price)}`,
-        lineStyle: { color: '#0ECB81', type: 'dashed', width: 1.5 },
-        label: {
-          formatter: `$${Math.round(p.price).toLocaleString()} ($${formatIntensity(p.leverage)})`,
-          position: 'end',
-          color: '#0ECB81',
-          fontSize: 10
-        }
-      });
-    });
-
-    // Render 2D Area Chart
-    if (miniHeatmapChart) {
-      const option = {
-        backgroundColor: 'transparent',
-        grid: { top: 30, bottom: 24, left: 55, right: 90 },
-        tooltip: {
-          trigger: 'axis',
-          axisPointer: { type: 'cross' }
-        },
-        xAxis: {
-          type: 'category',
-          data: slicedX.map(t => t.split(',')[1] || t), // show HH:MM only
-          axisLine: { lineStyle: { color: '#2B3139' } },
-          axisLabel: { color: '#848E9C', fontSize: 10 }
-        },
-        yAxis: {
-          type: 'value',
-          scale: true,
-          axisLine: { lineStyle: { color: '#2B3139' } },
-          axisLabel: { color: '#848E9C', fontSize: 10 },
-          splitLine: { lineStyle: { color: 'rgba(255,255,255,0.03)' } }
-        },
-        series: [{
-          name: 'BTC Price',
-          type: 'candlestick',
-          data: slicedCandles,
-          itemStyle: {
-            color: '#0ECB81',
-            color0: '#F6465D',
-            borderColor: '#0ECB81',
-            borderColor0: '#F6465D'
-          },
-          markLine: {
-            symbol: ['none', 'none'],
-            data: markLines
-          }
-        }],
-        dataZoom: [
-          { type: 'inside', xAxisIndex: 0, filterMode: 'filter' },
-          { type: 'inside', yAxisIndex: 0, filterMode: 'empty' }
-        ]
-      };
-      miniHeatmapChart.setOption(option, true);
+    // Render both charts stacked
+    renderSingleMiniChart(miniHeatmapChart24h, '24H SWEEP MAP', data, pools24h);
+    if (data3d) {
+      renderSingleMiniChart(miniHeatmapChart3d, '3D SWEEP MAP', data3d, pools3d);
     }
-
-
 
     const renderPoolList = (pools, isAbove, maxLeverage = 1) => {
       if (pools.length === 0) {
@@ -872,7 +899,8 @@ autoTradeToggle.addEventListener('change', async (e) => {
 // Window resize handler
 window.addEventListener('resize', () => {
   if (gaugeChart) gaugeChart.resize();
-  if (miniHeatmapChart) miniHeatmapChart.resize();
+  if (miniHeatmapChart24h) miniHeatmapChart24h.resize();
+  if (miniHeatmapChart3d) miniHeatmapChart3d.resize();
   if (equityCurveChart) equityCurveChart.resize();
 });
 
@@ -1093,33 +1121,7 @@ window.addEventListener('DOMContentLoaded', () => {
 
   initCharts();
 
-  // Liquidity Sweep Map chart toggle handlers
-  const btn24h = document.getElementById('btn-chart-24h');
-  const btn3d = document.getElementById('btn-chart-3d');
-  if (btn24h && btn3d) {
-    btn24h.addEventListener('click', () => {
-      if (activeChartPeriod === '24h') return;
-      activeChartPeriod = '24h';
-      btn24h.classList.add('active');
-      btn24h.style.background = 'var(--accent-primary)';
-      btn24h.style.color = '#000';
-      btn3d.classList.remove('active');
-      btn3d.style.background = 'transparent';
-      btn3d.style.color = 'var(--text-muted)';
-      updateMiniHeatmap();
-    });
-    btn3d.addEventListener('click', () => {
-      if (activeChartPeriod === '3d') return;
-      activeChartPeriod = '3d';
-      btn3d.classList.add('active');
-      btn3d.style.background = 'var(--accent-primary)';
-      btn3d.style.color = '#000';
-      btn24h.classList.remove('active');
-      btn24h.style.background = 'transparent';
-      btn24h.style.color = 'var(--text-muted)';
-      updateMiniHeatmap();
-    });
-  }
+  // Liquidity Sweep Map period toggle buttons removed (both 24h & 3d stacked and visible simultaneously)
   
   // Initial Loads
   updateBotStatus();

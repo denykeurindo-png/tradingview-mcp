@@ -53,7 +53,7 @@
 
     .w-mini-heatmap {
       flex: 1;
-      min-height: 380px;
+      min-height: 520px;
     }
 
     .w-orderbook-depth {
@@ -624,16 +624,13 @@
         <!-- Widget 3: Mini Heatmap -->
         <div class="cockpit-widget w-mini-heatmap">
           <div class="widget-title" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span>Liquidity Sweep Map</span>
-              <div style="display: flex; background: rgba(255,255,255,0.05); border-radius: 4px; padding: 2px;" id="chart-period-toggle">
-                <button id="btn-chart-24h" class="active" style="background: var(--accent-primary); border: none; color: #000; font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 3px; cursor: pointer; transition: all 0.2s;">24H</button>
-                <button id="btn-chart-3d" style="background: transparent; border: none; color: var(--text-muted); font-size: 9px; font-weight: 700; padding: 2px 6px; border-radius: 3px; cursor: pointer; transition: all 0.2s;">3D</button>
-              </div>
-            </div>
+            <span>Liquidity Sweep Map (24H & 3D)</span>
             <span style="font-family: var(--font-mono); color: var(--accent-primary); font-size: 14px;" id="live-btc-price">$0.00</span>
           </div>
-          <div id="chart-mini-heatmap" style="flex: 1; width: 100%;"></div>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 16px; height: calc(100% - 24px); min-height: 480px;">
+            <div id="chart-mini-heatmap-24h" style="flex: 1; width: 100%; min-height: 220px;"></div>
+            <div id="chart-mini-heatmap-3d" style="flex: 1; width: 100%; min-height: 220px;"></div>
+          </div>
         </div>
 
         <!-- Widget 4: Orderbook Ratio -->
