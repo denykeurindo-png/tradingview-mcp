@@ -48,7 +48,7 @@ async function fetchBinance(url, options = {}) {
         const res = await globalThis.fetch(targetUrl, fetchOpts);
         if (timeoutId) clearTimeout(timeoutId);
         
-        if (res.ok) {
+        if (res.ok && res.status === 200) {
           return res;
         }
         throw new Error(`HTTP status ${res.status}`);
