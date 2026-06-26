@@ -3502,9 +3502,30 @@ function calculateReversalProbability(sweepDetail, oiChange15m, spotCvd15m, tren
   // 7. Long/Short Ratio (Up to 10 points) - Deprecated in strategy calculation (set to 0 for backwards compatibility)
   let lsRatioPoints = 0;
 
-  // 8. Coinbase Premium Index (Up to 15 points) - Deprecated in strategy calculation (set to 0 for backwards compatibility)
+  // 8. Coinbase Premium Index (Reactivated for Directional Filtering)
   let coinbasePremiumPoints = 0;
   const cbPremium = getLatestCoinbasePremium();
+  if (cbPremium !== null) {
+    if (sweepDetail.direction === 'LONG') {
+      if (cbPremium > 0.01) {
+        coinbasePremiumPoints = 15;
+      } else if (cbPremium < -0.05) {
+        coinbasePremiumPoints = -20;
+      } else if (cbPremium < -0.01) {
+        coinbasePremiumPoints = -10;
+      }
+    } else if (sweepDetail.direction === 'SHORT') {
+      if (cbPremium < -0.01) {
+        coinbasePremiumPoints = 15;
+      } else if (cbPremium > 0.05) {
+        coinbasePremiumPoints = -20;
+      } else if (cbPremium > 0.01) {
+        coinbasePremiumPoints = -10;
+      }
+    }
+  }
+  score += lsRatioPoints;
+  score += coinbasePremiumPoints;
 
   // 9. Orderbook Depth Delta (Up to 15 points + Anti-Spoofing Force Skip)
   let deltaPoints = 0;
@@ -4905,6 +4926,42 @@ function autoTradeStrategyBackend(heatmapData) {
   const prob = probResult.score;
   botMetrics.reversalProbability = prob; // cache the latest calculated probability for reporting
   botMetrics.probabilityBreakdown = probResult.breakdown;
+
+  // ─── Step 10c: Hard Coinbase Premium Filter ────────────────
+  const latestPremium = getLatestCoinbasePremium();
+  if (latestPremium !== null) {
+    const minLongPremium = settings.minCoinbasePremiumForLongs !== undefined ? parseFloat(settings.minCoinbasePremiumForLongs) : -0.05;
+    const maxShortPremium = settings.maxCoinbasePremiumForShorts !== undefined ? parseFloat(settings.maxCoinbasePremiumForShorts) : 0.05;
+
+    if (direction === 'LONG' && latestPremium < minLongPremium) {
+      botPhaseState = {
+        phase: 'SWEEP_REJECTED',
+        nearestPool: bestSweep.price,
+        nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
+        nearestPoolVolume: bestSweep.volume,
+        nearestPoolSide: 'SUPPORT',
+        sweepCandidate: { direction, entry, tp, sl, rr, prob },
+        message: `Sweep detected at $${bestSweep.price.toFixed(0)} but LONG blocked: Coinbase Premium Index ${latestPremium.toFixed(4)} < min ${minLongPremium}`,
+        lastUpdate: new Date().toISOString()
+      };
+      console.log(`[LSR Bot] SWEEP_REJECTED — Coinbase Premium ${latestPremium.toFixed(4)} < min ${minLongPremium} for LONG at $${entry.toFixed(0)}`);
+      return;
+    }
+    if (direction === 'SHORT' && latestPremium > maxShortPremium) {
+      botPhaseState = {
+        phase: 'SWEEP_REJECTED',
+        nearestPool: bestSweep.price,
+        nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
+        nearestPoolVolume: bestSweep.volume,
+        nearestPoolSide: 'RESISTANCE',
+        sweepCandidate: { direction, entry, tp, sl, rr, prob },
+        message: `Sweep detected at $${bestSweep.price.toFixed(0)} but SHORT blocked: Coinbase Premium Index ${latestPremium.toFixed(4)} > max ${maxShortPremium}`,
+        lastUpdate: new Date().toISOString()
+      };
+      console.log(`[LSR Bot] SWEEP_REJECTED — Coinbase Premium ${latestPremium.toFixed(4)} > max ${maxShortPremium} for SHORT at $${entry.toFixed(0)}`);
+      return;
+    }
+  }
 
   // Check for anti-spoofing or other override force-skips
   if (probResult.forceSkip) {
