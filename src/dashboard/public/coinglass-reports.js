@@ -391,7 +391,8 @@ document.addEventListener('DOMContentLoaded', () => {
 
   function renderTopTraderLsTable(cacheData) {
     const tbody = document.getElementById('top-trader-ls-tbody');
-    const rows = cacheData && cacheData.rows ? cacheData.rows : [];
+    const innerData = cacheData && cacheData.data ? cacheData.data : cacheData;
+    const rows = innerData && innerData.rows ? innerData.rows : [];
 
     if (!rows || rows.length === 0) {
       tbody.innerHTML = `
@@ -404,22 +405,70 @@ document.addEventListener('DOMContentLoaded', () => {
       return;
     }
 
-    tbody.innerHTML = rows.map(row => {
-      const symbol = row[0] || 'Unknown';
-      const exchange = row[1] || 'Unknown';
-      const ratio = parseFloat(row[2]) || 0;
-      const longPercent = row[3] || '--';
-      const shortPercent = row[4] || '--';
+    // Accounts columns mapping in the raw scraped table:
+    // Binance U (Accounts) is index 8
+    // Binance C (Accounts) is index 9
+    // HTX U (Accounts) is index 10
+    // HTX C (Accounts) is index 11
+    // HTX F (Accounts) is index 12
+    // OKX (Accounts) is index 13
+    const accountsColumns = [
+      { name: 'Binance U', index: 8 },
+      { name: 'Binance C', index: 9 },
+      { name: 'HTX U', index: 10 },
+      { name: 'HTX C', index: 11 },
+      { name: 'HTX F', index: 12 },
+      { name: 'OKX', index: 13 }
+    ];
 
-      const ratioColor = ratio > 1 ? '#0ECB81' : (ratio < 1 && ratio > 0 ? '#F6465D' : '#EAECEF');
+    const mappedRows = [];
+
+    rows.forEach(row => {
+      const symbol = row[0] || 'Unknown';
+      
+      accountsColumns.forEach(col => {
+        const val = row[col.index];
+        if (val && val.trim() !== '' && val.includes('%')) {
+          const longPercentVal = parseFloat(val);
+          if (!isNaN(longPercentVal)) {
+            const shortPercentVal = 100 - longPercentVal;
+            const ratio = shortPercentVal > 0 ? (longPercentVal / shortPercentVal) : longPercentVal;
+            mappedRows.push({
+              symbol: symbol,
+              exchange: col.name,
+              ratio: ratio,
+              longPercent: longPercentVal.toFixed(2) + '%',
+              shortPercent: shortPercentVal.toFixed(2) + '%'
+            });
+          }
+        }
+      });
+    });
+
+    if (mappedRows.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="5" style="text-align: center; color: #848E9C; padding: 20px;">
+            No active top trader long/short ratio data found.
+          </td>
+        </tr>
+      `;
+      return;
+    }
+
+    // Sort by ratio desc
+    mappedRows.sort((a, b) => b.ratio - a.ratio);
+
+    tbody.innerHTML = mappedRows.map(item => {
+      const ratioColor = item.ratio > 1 ? '#0ECB81' : (item.ratio < 1 && item.ratio > 0 ? '#F6465D' : '#EAECEF');
 
       return `
         <tr>
-          <td style="font-weight: 600; color: #FFFFFF;">${symbol}</td>
-          <td style="color: #848E9C;">${exchange}</td>
-          <td class="select-mono" style="font-weight: 600; color: ${ratioColor};">${ratio.toFixed(2)}</td>
-          <td class="select-mono" style="color: #0ECB81;">${longPercent}</td>
-          <td class="select-mono" style="color: #F6465D;">${shortPercent}</td>
+          <td style="font-weight: 600; color: #FFFFFF;">${item.symbol}</td>
+          <td style="color: #848E9C;">${item.exchange}</td>
+          <td class="select-mono" style="font-weight: 600; color: ${ratioColor};">${item.ratio.toFixed(2)}</td>
+          <td class="select-mono" style="color: #0ECB81;">${item.longPercent}</td>
+          <td class="select-mono" style="color: #F6465D;">${item.shortPercent}</td>
         </tr>
       `;
     }).join('');
