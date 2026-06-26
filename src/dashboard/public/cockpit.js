@@ -431,18 +431,31 @@ async function fetchOrderbookRatio() {
         const bidPercent = Math.round((bidVol / totalVol) * 100);
         const askPercent = 100 - bidPercent;
 
-        depthBarBid.style.width = `${bidPercent}%`;
-        depthBarBid.innerText = `BID ${bidPercent}%`;
-        depthBarAsk.style.width = `${askPercent}%`;
-        depthBarAsk.innerText = `${askPercent}% ASK`;
-        depthRatioText.innerText = `${bidPercent}% / ${askPercent}%`;
+        const elBid = document.getElementById('depth-bar-bid');
+        const elAsk = document.getElementById('depth-bar-ask');
+        const elRatio = document.getElementById('depth-ratio-text');
+        const elUpdate = document.getElementById('orderbook-update-text');
 
-        const age = body.data.timestamp ? new Date(body.data.timestamp).toLocaleTimeString() : 'N/A';
-        orderbookUpdateText.innerText = `Last Scraped: ${age}`;
+        if (elBid) {
+          elBid.style.width = `${bidPercent}%`;
+          elBid.innerText = `BID ${bidPercent}%`;
+        }
+        if (elAsk) {
+          elAsk.style.width = `${askPercent}%`;
+          elAsk.innerText = `${askPercent}% ASK`;
+        }
+        if (elRatio) {
+          elRatio.innerText = `${bidPercent}% / ${askPercent}%`;
+        }
+        if (elUpdate) {
+          const age = body.data.timestamp ? new Date(body.data.timestamp).toLocaleTimeString() : 'N/A';
+          elUpdate.innerText = `Last Scraped: ${age}`;
+        }
       }
     }
   } catch (e) {
-    orderbookUpdateText.innerText = `Orderbook Error: ${e.message}`;
+    const elUpdate = document.getElementById('orderbook-update-text');
+    if (elUpdate) elUpdate.innerText = `Orderbook Error: ${e.message}`;
   }
 }
 
@@ -1146,7 +1159,7 @@ window.addEventListener('resize', () => {
 // Render LSR Bot Status when no active positions exist
 function renderLsrBotStatusEmptyState() {
   const titleEl = document.getElementById('active-position-title');
-  if (titleEl) titleEl.innerText = 'LSR Bot Status & Parameters';
+  if (titleEl) titleEl.innerText = 'LSR Bot Status & Orderbook';
 
   if (!latestBotStatus) {
     activePositionContent.innerHTML = `<div class="no-active-trade">No active trade. Loading bot status...</div>`;
@@ -1260,34 +1273,25 @@ function renderLsrBotStatusEmptyState() {
         </div>
       </div>
 
-      <!-- Card Section 3: Active Constraints -->
+      <!-- Card Section 3: Binance Orderbook Ratio -->
       <div>
-        <div style="font-size: 12px; font-weight: 700; color: var(--accent-primary); border-bottom: 1px dashed var(--border-color); padding-bottom: 6px;">
-          ⚙️ STRATEGY PARAMETERS
+        <div style="font-size: 12px; font-weight: 700; color: var(--accent-primary); border-bottom: 1px dashed var(--border-color); padding-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
+          <span>📊 BINANCE ORDERBOOK RATIO (1% DEPTH)</span>
+          <span id="depth-ratio-text" style="font-size: 11px; font-weight: 700;">50% / 50%</span>
         </div>
-        <div class="position-info-grid" style="margin-top: 6px;">
-          <div class="info-tile">
-            <div class="info-tile-label">Capital Allocated</div>
-            <div class="info-tile-val" style="font-size: 13px;">$${capital.toLocaleString()}</div>
-          </div>
-          <div class="info-tile">
-            <div class="info-tile-label">Risk per Trade</div>
-            <div class="info-tile-val" style="font-size: 13px;">${riskPercent}% ($${riskUsd.toFixed(0)})</div>
-          </div>
-          <div class="info-tile">
-            <div class="info-tile-label">Min Strategy R:R</div>
-            <div class="info-tile-val" style="font-size: 13px;">1 : ${s.minRR}</div>
-          </div>
-          <div class="info-tile">
-            <div class="info-tile-label">Min Prob Filter</div>
-            <div class="info-tile-val" style="font-size: 13px;">${s.minReversalProbability}%</div>
-          </div>
+        <div class="depth-bar-container" style="margin-top: 8px;">
+          <div class="depth-bar-bid" id="depth-bar-bid" style="width: 50%;">BID 50%</div>
+          <div class="depth-bar-ask" id="depth-bar-ask" style="width: 50%;">50% ASK</div>
+        </div>
+        <div style="font-size: 10px; color: var(--text-muted); margin-top: 6px; text-align: center;" id="orderbook-update-text">
+          Waiting for orderbook stream...
         </div>
       </div>
       
       ${wickHtml}
     </div>
   `;
+  fetchOrderbookRatio();
 }
 
 // Translate bot messages to a friendly Indonesian narrative layout
