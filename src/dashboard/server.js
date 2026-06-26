@@ -606,6 +606,9 @@ let whaleOrdersCache = null;
 let lastWhaleOrdersFetchTime = null;
 let isWhaleOrdersScrapingBusy = false;
 
+// Last strategy phase reported to Telegram to prevent duplicate alerts
+let lastTelegramPhase = null;
+
 // ─── Cache Disk Persistence ──────────────────────────────────────────────────
 const CACHE_DIR = path.join(__dirname, 'cache');
 if (!fs.existsSync(CACHE_DIR)) {
@@ -2581,6 +2584,9 @@ app.post('/api/settings', (req, res) => {
   };
 
   saveSettings(updated);
+  if (updated.autoTradeEnabled !== current.autoTradeEnabled) {
+    sendTelegramAlert(`⚙️ <b>LSR Auto-Trading Toggle</b>\n────────────────────\nAuto-Trading is now: <b>${updated.autoTradeEnabled ? 'ENABLED 🟢' : 'DISABLED 🔴'}</b>`);
+  }
   res.json({ success: true, data: updated });
 });
 
@@ -5107,7 +5113,55 @@ async function runBotCycle() {
       if (isScraperEnabled) {
         // Run evaluations and strategy only on local instance (master mode)
         evaluateActiveTradesBackend(result.data, klines15m);
+        const oldPhase = botPhaseState?.phase;
         autoTradeStrategyBackend(result.data, klines15m);
+        const newPhase = botPhaseState?.phase;
+
+        if (lastTelegramPhase === null) {
+          lastTelegramPhase = oldPhase || 'INITIALIZING';
+        }
+
+        if (newPhase && newPhase !== lastTelegramPhase) {
+          const prevPhase = lastTelegramPhase;
+          lastTelegramPhase = newPhase;
+
+          // Skip TRADE_EXECUTED because it sends its own custom detailed alert
+          if (newPhase !== 'TRADE_EXECUTED') {
+            let shouldAlert = false;
+            let icon = '🔔';
+
+            if (newPhase === 'ALERT') {
+              shouldAlert = true;
+              icon = '⚠️';
+            } else if (newPhase === 'SWEEP_REJECTED') {
+              shouldAlert = true;
+              icon = '⚙️';
+            } else if (newPhase === 'COOLDOWN') {
+              shouldAlert = true;
+              icon = '⏳';
+            } else if (newPhase === 'DISABLED') {
+              shouldAlert = true;
+              icon = '🔴';
+            } else if (newPhase === 'MAX_ACTIVE') {
+              shouldAlert = true;
+              icon = '🔒';
+            } else if (newPhase === 'STANDBY') {
+              // Only notify returning to standby if we were previously in an active alert/cooldown/rejected state
+              if (prevPhase === 'ALERT' || prevPhase === 'COOLDOWN' || prevPhase === 'SWEEP_REJECTED') {
+                shouldAlert = true;
+                icon = '🟢';
+              }
+            }
+
+            if (shouldAlert) {
+              sendTelegramAlert(
+                `${icon} <b>LSR Bot Status: ${newPhase}</b>\n` +
+                `────────────────────\n` +
+                `${botPhaseState.message}`
+              );
+            }
+          }
+        }
       } else {
         console.log('[Background Bot] Running in view-only mode on VPS. Skipping trade evaluations and strategy.');
       }

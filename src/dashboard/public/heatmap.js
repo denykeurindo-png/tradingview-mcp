@@ -483,7 +483,7 @@ function renderHeatmap(data) {
       }
     ],
     dataZoom: [
-      { type: 'inside', xAxisIndex: 0, filterMode: 'none' }
+      { type: 'inside', xAxisIndex: 0, filterMode: 'filter' }
     ]
   };
 
@@ -1398,7 +1398,7 @@ function renderHeatmap3D(data) {
         itemStyle: { color: '#0ECB81', color0: '#F6465D', borderColor: '#0ECB81', borderColor0: '#F6465D' } }
     ],
     dataZoom: [
-      { type: 'inside', xAxisIndex: 0, filterMode: 'none' }
+      { type: 'inside', xAxisIndex: 0, filterMode: 'filter' }
     ]
   });
 

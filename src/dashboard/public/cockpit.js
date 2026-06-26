@@ -762,8 +762,8 @@ async function updateMiniHeatmap() {
           }
         }],
         dataZoom: [
-          { type: 'inside', xAxisIndex: 0, filterMode: 'none' },
-          { type: 'inside', yAxisIndex: 0, filterMode: 'none' }
+          { type: 'inside', xAxisIndex: 0, filterMode: 'filter' },
+          { type: 'inside', yAxisIndex: 0, filterMode: 'empty' }
         ]
       };
       miniHeatmapChart.setOption(option, true);
