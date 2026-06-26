@@ -243,17 +243,22 @@ function updateFactorScoring(data) {
   factors.trend.pts.innerText = `${b.trend >= 0 ? '+' : ''}${b.trend !== undefined ? b.trend : 0}`;
 
   // OI Change
-  factors.oi.val.innerText = `${(m.oiChange1h || 0).toFixed(2)}%`;
+  const oi1h = m.oiChange1h || 0;
+  const oi15m = m.oiChange15m || 0;
+  factors.oi.val.innerText = `1h: ${oi1h >= 0 ? '+' : ''}${oi1h.toFixed(2)}% | 15m: ${oi15m >= 0 ? '+' : ''}${oi15m.toFixed(2)}%`;
   factors.oi.pts.innerText = `${b.oiChange >= 0 ? '+' : ''}${b.oiChange !== undefined ? b.oiChange : 0}`;
 
   // CVD
-  const cvdVal = m.spotCvd1h || 0;
-  factors.cvd.val.innerText = formatUSD(cvdVal);
-  factors.cvd.val.className = `factor-val ${cvdVal >= 0 ? 'text-positive' : 'text-negative'}`;
+  const cvd1h = m.spotCvd1h || 0;
+  const cvd15m = m.spotCvd15m || 0;
+  factors.cvd.val.innerText = `1h: ${formatUSD(cvd1h)} | 15m: ${formatUSD(cvd15m)}`;
+  factors.cvd.val.className = `factor-val ${cvd15m >= 0 ? 'text-positive' : 'text-negative'}`;
   factors.cvd.pts.innerText = `${b.spotCvd >= 0 ? '+' : ''}${b.spotCvd !== undefined ? b.spotCvd : 0}`;
 
   // Funding Rate
-  factors.funding.val.innerText = `${((m.fundingRate || 0) * 100).toFixed(4)}%`;
+  const fRate = m.fundingRate || 0;
+  const pRate = m.premiumRate || 0;
+  factors.funding.val.innerText = `Fnd: ${(fRate * 100).toFixed(4)}% | Prem: ${pRate.toFixed(4)}%`;
   factors.funding.pts.innerText = `${b.funding >= 0 ? '+' : ''}${b.funding !== undefined ? b.funding : 0}`;
 
   // Long/Short Ratio

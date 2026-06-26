@@ -61,20 +61,41 @@ async function fetchBinance(url, options = {}) {
   return globalThis.fetch(url, options);
 }
 
-// ─── Live Whale Trade Detector WebSocket Stream ──────────────────────────────
+// ─── Live WebSocket Stream for Whale Trades & Liquidations ──────────────────
 let recentWhaleTrades = [];
 let totalWsMessagesReceived = 0;
 let wsConnected = false;
+let liquidations = [];
+
+function addLiquidation(event) {
+  liquidations.push(event);
+  // Keep only the last 15 minutes of liquidations to save memory
+  const cutoff = Date.now() - 15 * 60 * 1000;
+  liquidations = liquidations.filter(liq => liq.timestamp >= cutoff);
+}
+
+function getRecentLiquidationsUsd(side, windowMinutes = 5) {
+  const cutoff = Date.now() - windowMinutes * 60 * 1000;
+  let totalUsd = 0;
+  for (let i = liquidations.length - 1; i >= 0; i--) {
+    const liq = liquidations[i];
+    if (liq.timestamp < cutoff) break;
+    if (liq.side === side) {
+      totalUsd += liq.usd;
+    }
+  }
+  return totalUsd;
+}
 
 function startWhaleWebSocket() {
-  const wsUrl = 'wss://stream.binance.com:9443/ws/btcusdt@aggTrade';
-  console.log(`[Whale WS] Connecting to ${wsUrl}...`);
+  const wsUrl = 'wss://fstream.binance.com/stream?streams=btcusdt@aggTrade/btcusdt@forceOrder';
+  console.log(`[Binance WS] Connecting to ${wsUrl}...`);
   
   let ws = new WebSocket(wsUrl);
   let pingInterval;
   
   ws.on('open', () => {
-    console.log('[Whale WS] Connected successfully.');
+    console.log('[Binance WS] Connected successfully.');
     wsConnected = true;
     pingInterval = setInterval(() => {
       if (ws.readyState === WebSocket.OPEN) {
@@ -83,36 +104,53 @@ function startWhaleWebSocket() {
     }, 180000);
   });
   
-  ws.on('message', (data) => {
+  ws.on('message', (rawData) => {
     totalWsMessagesReceived++;
     try {
-      const t = JSON.parse(data);
-      const price = parseFloat(t.p);
-      const qty = parseFloat(t.q);
-      const tradeUsd = price * qty;
+      const parsed = JSON.parse(rawData);
+      const stream = parsed.stream;
+      const t = parsed.data || parsed;
       
-      if (tradeUsd >= 500000) {
-        recentWhaleTrades.push({
-          time: parseInt(t.T, 10) || Date.now(),
-          usd: tradeUsd,
-          isBuyerMaker: t.m
-        });
+      if (stream === 'btcusdt@aggTrade') {
+        const price = parseFloat(t.p);
+        const qty = parseFloat(t.q);
+        const tradeUsd = price * qty;
         
-        // Keep memory footprint small, prune instantly
-        const cutoff = Date.now() - 15 * 60 * 1000;
-        recentWhaleTrades = recentWhaleTrades.filter(trade => trade.time >= cutoff);
+        if (tradeUsd >= 500000) {
+          recentWhaleTrades.push({
+            time: parseInt(t.T, 10) || Date.now(),
+            usd: tradeUsd,
+            isBuyerMaker: t.m
+          });
+          
+          // Keep memory footprint small, prune instantly
+          const cutoff = Date.now() - 15 * 60 * 1000;
+          recentWhaleTrades = recentWhaleTrades.filter(trade => trade.time >= cutoff);
+        }
+      } else if (stream === 'btcusdt@forceOrder') {
+        const order = t.o;
+        if (order) {
+          const price = parseFloat(order.p || 0);
+          const qty = parseFloat(order.q || 0);
+          const side = order.S; // BUY=short liq, SELL=long liq
+          const usd = price * qty;
+          addLiquidation({ timestamp: Date.now(), price, qty, usd, side });
+          if (usd >= 100000) {
+            console.log(`[Binance WS] ⚡ LIQUIDATION: ${side} $${(usd / 1e3).toFixed(1)}k at $${price.toFixed(2)}`);
+          }
+        }
       }
     } catch (e) {
-      console.error('[Whale WS] Message parse error:', e.message);
+      console.error('[Binance WS] Message parse error:', e.message);
     }
   });
   
   ws.on('error', (err) => {
-    console.error('[Whale WS] Error:', err.message);
+    console.error('[Binance WS] Error:', err.message);
   });
   
   ws.on('close', (code, reason) => {
-    console.log(`[Whale WS] Connection closed (code: ${code}). Reconnecting in 5 seconds...`);
+    console.log(`[Binance WS] Connection closed (code: ${code}). Reconnecting in 5 seconds...`);
     wsConnected = false;
     clearInterval(pingInterval);
     setTimeout(startWhaleWebSocket, 5000);
@@ -3069,10 +3107,13 @@ let botMetrics = {
   openInterest: 0,
   openInterestBtc: 0,
   oiChange1h: 0,
+  oiChange15m: 0,
   spotCvd1h: 0,
+  spotCvd15m: 0,
   trend1h: 'UNKNOWN',
   trend4h: 'UNKNOWN',
   fundingRate: 0,
+  premiumRate: 0,
   longShortRatio: 1.0,
   longAccount: 0.5,
   shortAccount: 0.5,
@@ -3098,16 +3139,21 @@ async function fetchBinanceOI() {
       const startOIVal = parseFloat(data[0].sumOpenInterestValue);
       const currentOI = parseFloat(data[data.length - 1].sumOpenInterest);
       const diffPercent = ((currentOIVal - startOIVal) / startOIVal) * 100;
+
+      const initialOi15m = parseFloat(data[data.length - 4]?.sumOpenInterestValue || data[0].sumOpenInterestValue);
+      const diff15m = initialOi15m > 0 ? ((currentOIVal - initialOi15m) / initialOi15m) * 100 : 0;
+
       return {
         currentOI,
         currentOIVal,
-        oiChange1h: isNaN(diffPercent) ? 0 : diffPercent
+        oiChange1h: isNaN(diffPercent) ? 0 : diffPercent,
+        oiChange15m: isNaN(diff15m) ? 0 : diff15m
       };
     }
   } catch (err) {
     console.error('[Binance API] Error fetching OI:', err.message);
   }
-  return { currentOI: 0, currentOIVal: 0, oiChange1h: 0 };
+  return { currentOI: 0, currentOIVal: 0, oiChange1h: 0, oiChange15m: 0 };
 }
 
 async function fetchBinanceSpotCVD() {
@@ -3117,20 +3163,24 @@ async function fetchBinanceSpotCVD() {
     const data = await res.json();
     if (Array.isArray(data)) {
       let cumulativeDelta = 0;
-      data.forEach(k => {
+      let cvd15m = 0;
+      data.forEach((k, idx) => {
         const totalVal = parseFloat(k[7]);
         const takerBuyVal = parseFloat(k[10]);
         if (!isNaN(totalVal) && !isNaN(takerBuyVal)) {
           const delta = 2 * takerBuyVal - totalVal;
           cumulativeDelta += delta;
+          if (idx >= data.length - 3) {
+            cvd15m += delta;
+          }
         }
       });
-      return cumulativeDelta;
+      return { cvd1h: cumulativeDelta, cvd15m };
     }
   } catch (err) {
     console.error('[Binance API] Error fetching Spot CVD:', err.message);
   }
-  return 0;
+  return { cvd1h: 0, cvd15m: 0 };
 }
 
 async function fetchBinanceHTFTrend() {
@@ -3173,13 +3223,20 @@ async function fetchBinanceFundingRate() {
     const res = await fetchBinance('https://fapi.binance.com/fapi/v1/premiumIndex?symbol=BTCUSDT');
     if (!res.ok) throw new Error(`HTTP ${res.status}`);
     const data = await res.json();
-    if (data && data.lastFundingRate !== undefined) {
-      return parseFloat(data.lastFundingRate);
+    if (data) {
+      const lastFundingRate = parseFloat(data.lastFundingRate || 0);
+      const markPrice = parseFloat(data.markPrice || 0);
+      const indexPrice = parseFloat(data.indexPrice || 0);
+      let premiumRate = 0;
+      if (indexPrice > 0) {
+        premiumRate = ((markPrice - indexPrice) / indexPrice) * 100;
+      }
+      return { fundingRate: lastFundingRate, premiumRate };
     }
   } catch (err) {
-    console.error('[Binance API] Error fetching Funding Rate:', err.message);
+    console.error('[Binance API] Error fetching Funding Rate & Premium:', err.message);
   }
-  return 0;
+  return { fundingRate: 0, premiumRate: 0 };
 }
 
 async function fetchBinanceLongShortRatio() {
@@ -3289,38 +3346,39 @@ function findWhaleOrderNear(price, direction, tolerancePercent = 0.15) {
   return null;
 }
 
-function calculateReversalProbability(sweepDetail, oiChange, spotCVD, trend1h, trend4h, fundingRate, longShortRatio) {
+function calculateReversalProbability(sweepDetail, oiChange15m, spotCvd15m, trend1h, trend4h, premiumRate, longShortRatio) {
   const baseScore = 40;
-  let score = baseScore; // Base probability start at 40%
+  let score = baseScore;
 
   // 1. Liquidation Pool Volume (Up to 15 points)
+  // Scale so that $20M of aggregated bin volume gives full 15 points
   const volMillions = sweepDetail.volume / 1e6;
-  const poolVolumePoints = Math.min(15, (volMillions / 50) * 15); // Scale so that $50M pool volume yields the full +15 points
+  const poolVolumePoints = Math.min(15, parseFloat((volMillions * 0.75).toFixed(1)));
   score += poolVolumePoints;
 
   // 2. Rejection Strength / Wick Depth (Up to 15 points)
-  const rejectionPoints = Math.min(15, (sweepDetail.rejectionStrength || 0) * 15);
+  const rejectionPoints = Math.min(15, parseFloat(((sweepDetail.rejectionStrength || 0) * 15).toFixed(1)));
   score += rejectionPoints;
 
-  // 3. Open Interest change (Up to 10 points)
+  // 3. Open Interest change (±10) - Short-term 15m
+  // Squeeze: OI drops during a support sweep = positive reversal indicator
   let oiChangePoints = 0;
-  if (oiChange < 0) {
-    oiChangePoints = Math.min(10, Math.abs(oiChange) * 3);
-    score += oiChangePoints;
-  } else {
-    oiChangePoints = -Math.min(10, oiChange * 2);
-    score += oiChangePoints;
+  if (sweepDetail.direction === 'LONG' && oiChange15m < 0) {
+    oiChangePoints = 10;
+  } else if (sweepDetail.direction === 'SHORT' && oiChange15m > 0) {
+    oiChangePoints = -10;
   }
+  score += oiChangePoints;
 
-  // 4. Spot CVD Divergence (Up to 10 points)
+  // 4. Spot CVD Divergence (+10 max) - Short-term 15m
+  // Spot buying (positive spotCvd) during LONG = full points
   let spotCvdPoints = 0;
-  if (sweepDetail.direction === 'LONG' && spotCVD > 0) {
+  if (sweepDetail.direction === 'LONG' && spotCvd15m > 0) {
     spotCvdPoints = 10;
-    score += 10;
-  } else if (sweepDetail.direction === 'SHORT' && spotCVD < 0) {
+  } else if (sweepDetail.direction === 'SHORT' && spotCvd15m < 0) {
     spotCvdPoints = 10;
-    score += 10;
   }
+  score += spotCvdPoints;
 
   // 5. HTF Trend Alignment (Up to 10 points)
   let trendPoints = 0;
@@ -3333,61 +3391,30 @@ function calculateReversalProbability(sweepDetail, oiChange, spotCVD, trend1h, t
   }
   score += trendPoints;
 
-  // 6. Funding Rate (Up to 10 points)
-  let fundingPoints = 0;
-  const fundingNum = parseFloat(fundingRate) || 0;
+  // 6. Premium Rate (±10) - Sensitivity of micro-sentiment
+  let premiumRatePoints = 0;
+  const pRate = parseFloat(premiumRate) || 0;
   if (sweepDetail.direction === 'LONG') {
-    if (fundingNum < 0) {
-      fundingPoints = Math.min(10, Math.abs(fundingNum) * 20000);
-    } else if (fundingNum > 0.0005) {
-      fundingPoints = -Math.min(10, (fundingNum - 0.0005) * 10000);
+    if (pRate < -0.01) {
+      premiumRatePoints = 10;
+    } else if (pRate > 0.01) {
+      premiumRatePoints = -10;
     }
   } else if (sweepDetail.direction === 'SHORT') {
-    if (fundingNum > 0) {
-      fundingPoints = Math.min(10, fundingNum * 20000);
-    } else if (fundingNum < -0.0005) {
-      fundingPoints = -Math.min(10, Math.abs(fundingNum + 0.0005) * 10000);
+    if (pRate > 0.01) {
+      premiumRatePoints = 10;
+    } else if (pRate < -0.01) {
+      premiumRatePoints = -10;
     }
   }
-  score += fundingPoints;
+  score += premiumRatePoints;
 
-  // 7. Long/Short Ratio (Up to 10 points)
+  // 7. Long/Short Ratio (Up to 10 points) - Deprecated in strategy calculation (set to 0 for backwards compatibility)
   let lsRatioPoints = 0;
-  const lsRatio = parseFloat(longShortRatio) || 1.0;
-  if (sweepDetail.direction === 'LONG') {
-    if (lsRatio < 1.3) {
-      lsRatioPoints = Math.min(10, (1.3 - lsRatio) * 25);
-    } else if (lsRatio > 1.8) {
-      lsRatioPoints = -Math.min(10, (lsRatio - 1.8) * 10);
-    }
-  } else if (sweepDetail.direction === 'SHORT') {
-    if (lsRatio > 1.6) {
-      lsRatioPoints = Math.min(10, (lsRatio - 1.6) * 12.5);
-    } else if (lsRatio < 1.1) {
-      lsRatioPoints = -Math.min(10, (1.1 - lsRatio) * 20);
-    }
-  }
-  score += lsRatioPoints;
 
-  // 8. Coinbase Premium Index (Up to 15 points)
-  let premiumPoints = 0;
+  // 8. Coinbase Premium Index (Up to 15 points) - Deprecated in strategy calculation (set to 0 for backwards compatibility)
+  let coinbasePremiumPoints = 0;
   const cbPremium = getLatestCoinbasePremium();
-  if (cbPremium !== null) {
-    if (sweepDetail.direction === 'LONG') {
-      if (cbPremium > 0) {
-        premiumPoints = Math.min(15, cbPremium * 300); // e.g., 0.05% premium = +15 pts
-      } else if (cbPremium < -0.05) {
-        premiumPoints = -Math.min(15, Math.abs(cbPremium + 0.05) * 300); // penalty for strong dump
-      }
-    } else if (sweepDetail.direction === 'SHORT') {
-      if (cbPremium < 0) {
-        premiumPoints = Math.min(15, Math.abs(cbPremium) * 300);
-      } else if (cbPremium > 0.05) {
-        premiumPoints = -Math.min(15, (cbPremium - 0.05) * 300);
-      }
-    }
-  }
-  score += premiumPoints;
 
   // 9. Orderbook Depth Delta (Up to 15 points + Anti-Spoofing Force Skip)
   let deltaPoints = 0;
@@ -3395,7 +3422,7 @@ function calculateReversalProbability(sweepDetail, oiChange, spotCVD, trend1h, t
   if (depthDelta !== null) {
     if (sweepDetail.direction === 'LONG') {
       if (depthDelta > 0) {
-        deltaPoints = Math.min(15, (depthDelta / 50) * 15); // e.g., +50 BTC delta = +15 pts
+        deltaPoints = Math.min(15, (depthDelta / 50) * 15);
       } else if (depthDelta < -30) {
         deltaPoints = -15;
         sweepDetail.forceSkip = 'Spoofing detected: High negative depth delta (' + depthDelta.toFixed(0) + ' BTC)';
@@ -3415,16 +3442,29 @@ function calculateReversalProbability(sweepDetail, oiChange, spotCVD, trend1h, t
   }
   score += deltaPoints;
 
-  // 10. Whale Order Wall (Up to 10 points)
+  // 10. Whale Order Wall (Up to 5 points)
   let whalePoints = 0;
   if (sweepDetail.price) {
     const whaleOrder = findWhaleOrderNear(sweepDetail.price, sweepDetail.direction, 0.15); // 0.15% tolerance
     if (whaleOrder) {
       const valMillions = whaleOrder.valueUsd / 1e6;
-      whalePoints = Math.min(10, valMillions * 2); // e.g., $5M whale wall = +10 pts
+      whalePoints = Math.min(5, valMillions * 1);
     }
   }
   score += whalePoints;
+
+  // 11. Liquidation Spike (+10 max)
+  let liqScore = 0;
+  if (sweepDetail.direction === 'LONG') {
+    // long positions liquidated (SELL side)
+    const liqUsd = getRecentLiquidationsUsd('SELL', 5);
+    liqScore = Math.min(10, parseFloat((liqUsd / 200000).toFixed(1)));
+  } else {
+    // short positions liquidated (BUY side)
+    const liqUsd = getRecentLiquidationsUsd('BUY', 5);
+    liqScore = Math.min(10, parseFloat((liqUsd / 200000).toFixed(1)));
+  }
+  score += liqScore;
 
   const finalScore = Math.max(10, Math.min(99, Math.round(score)));
   const forceSkipText = sweepDetail.forceSkip || null;
@@ -3439,11 +3479,12 @@ function calculateReversalProbability(sweepDetail, oiChange, spotCVD, trend1h, t
       oiChange: Math.round(oiChangePoints * 10) / 10,
       spotCvd: Math.round(spotCvdPoints * 10) / 10,
       trend: Math.round(trendPoints * 10) / 10,
-      funding: Math.round(fundingPoints * 10) / 10,
-      lsRatio: Math.round(lsRatioPoints * 10) / 10,
-      coinbasePremium: Math.round(premiumPoints * 10) / 10,
+      funding: Math.round(premiumRatePoints * 10) / 10, // Maps to funding field on UI
+      lsRatio: lsRatioPoints,
+      coinbasePremium: coinbasePremiumPoints,
       depthDelta: Math.round(deltaPoints * 10) / 10,
       whaleWall: Math.round(whalePoints * 10) / 10,
+      liquidations: Math.round(liqScore * 10) / 10,
       depthDeltaVal: depthDelta !== null ? depthDelta : 0,
       premiumVal: cbPremium !== null ? cbPremium : 0
     }
@@ -4472,11 +4513,11 @@ function autoTradeStrategyBackend(heatmapData) {
   };
   const previewResult = calculateReversalProbability(
     previewSweep,
-    botMetrics.oiChange1h,
-    botMetrics.spotCvd1h,
+    botMetrics.oiChange15m,
+    botMetrics.spotCvd15m,
     botMetrics.trend1h,
     botMetrics.trend4h,
-    botMetrics.fundingRate,
+    botMetrics.premiumRate,
     botMetrics.longShortRatio
   );
   const previewProb = previewResult.score;
@@ -4770,7 +4811,7 @@ function autoTradeStrategyBackend(heatmapData) {
   }
 
   // ─── Step 10b: Reversal Probability Filter ────────────────
-  const probResult = calculateReversalProbability(bestSweep, botMetrics.oiChange1h, botMetrics.spotCvd1h, botMetrics.trend1h, botMetrics.trend4h, botMetrics.fundingRate, botMetrics.longShortRatio);
+  const probResult = calculateReversalProbability(bestSweep, botMetrics.oiChange15m, botMetrics.spotCvd15m, botMetrics.trend1h, botMetrics.trend4h, botMetrics.premiumRate, botMetrics.longShortRatio);
   const prob = probResult.score;
   botMetrics.reversalProbability = prob; // cache the latest calculated probability for reporting
   botMetrics.probabilityBreakdown = probResult.breakdown;
@@ -5709,11 +5750,11 @@ async function runBotCycle() {
       fetchBinanceLongShortRatio(),
       fetchBinance15mKlines()
     ]);
-    const val = (i, def) => results[i].status === 'fulfilled' ? results[i].value : def;
-    const oiData     = val(0, { currentOI: 0, currentOIVal: 0, oiChange1h: 0 });
-    const cvdVal     = val(1, { futures: 0, spot: 0 });
+        const val = (i, def) => results[i].status === 'fulfilled' ? results[i].value : def;
+    const oiData     = val(0, { currentOI: 0, currentOIVal: 0, oiChange1h: 0, oiChange15m: 0 });
+    const cvdVal     = val(1, { cvd1h: 0, cvd15m: 0 });
     const jdaSig     = val(2, null);
-    const fundingRate = val(3, 0);
+    const fundingData = val(3, { fundingRate: 0, premiumRate: 0 });
     const lsRatioData = val(4, { ratio: 1.0, long: 0.5, short: 0.5, topRatio: 1.0, topLong: 0.5, topShort: 0.5 });
     const klines15m  = val(5, null);
     if (jdaSig) jdaSignalCache = jdaSig;
@@ -5725,31 +5766,34 @@ async function runBotCycle() {
       openInterest: oiData.currentOIVal,
       openInterestBtc: oiData.currentOI,
       oiChange1h: oiData.oiChange1h,
-      spotCvd1h: cvdVal || 0,
+      oiChange15m: oiData.oiChange15m || 0,
+      spotCvd1h: cvdVal.cvd1h || 0,
+      spotCvd15m: cvdVal.cvd15m || 0,
       spotCvdFutures: 0,
-      spotCvdSpot: cvdVal || 0,
+      spotCvdSpot: cvdVal.cvd1h || 0,
       // JDA MTF engine replaces EMA20/50 — VZO + ZLEMA based trend
-      trend1h: (jdaSig.timeframes['1h']?.state || '').includes('BULL') ? 'BULLISH' : (jdaSig.timeframes['1h']?.state || '').includes('BEAR') ? 'BEARISH' : 'RANGING',
-      trend4h: (jdaSig.timeframes['4h']?.state || '').includes('BULL') ? 'BULLISH' : (jdaSig.timeframes['4h']?.state || '').includes('BEAR') ? 'BEARISH' : 'RANGING',
-      strength1h: (jdaSig.timeframes['1h']?.state === 'BULL+' || jdaSig.timeframes['1h']?.state === 'BEAR+') ? 'STRONG' : jdaSig.timeframes['1h']?.state === 'RANGE' ? 'WEAK' : 'MODERATE',
-      strength4h: (jdaSig.timeframes['4h']?.state === 'BULL+' || jdaSig.timeframes['4h']?.state === 'BEAR+') ? 'STRONG' : jdaSig.timeframes['4h']?.state === 'RANGE' ? 'WEAK' : 'MODERATE',
+      trend1h: (jdaSig?.timeframes?.['1h']?.state || '').includes('BULL') ? 'BULLISH' : (jdaSig?.timeframes?.['1h']?.state || '').includes('BEAR') ? 'BEARISH' : 'RANGING',
+      trend4h: (jdaSig?.timeframes?.['4h']?.state || '').includes('BULL') ? 'BULLISH' : (jdaSig?.timeframes?.['4h']?.state || '').includes('BEAR') ? 'BEARISH' : 'RANGING',
+      strength1h: (jdaSig?.timeframes?.['1h']?.state === 'BULL+' || jdaSig?.timeframes?.['1h']?.state === 'BEAR+') ? 'STRONG' : jdaSig?.timeframes?.['1h']?.state === 'RANGE' ? 'WEAK' : 'MODERATE',
+      strength4h: (jdaSig?.timeframes?.['4h']?.state === 'BULL+' || jdaSig?.timeframes?.['4h']?.state === 'BEAR+') ? 'STRONG' : jdaSig?.timeframes?.['4h']?.state === 'RANGE' ? 'WEAK' : 'MODERATE',
       // Probability score from JDA VZO — normalized ±10 (replaces EMA-based score)
-      score1h: Math.min(10, Math.max(-10, (jdaSig.timeframes['1h']?.vzo || 0) / 10)),
-      score4h: Math.min(10, Math.max(-10, (jdaSig.timeframes['4h']?.vzo || 0) / 10)),
+      score1h: Math.min(10, Math.max(-10, (jdaSig?.timeframes?.['1h']?.vzo || 0) / 10)),
+      score4h: Math.min(10, Math.max(-10, (jdaSig?.timeframes?.['4h']?.vzo || 0) / 10)),
       // JDA-specific fields for HTF filter and display
-      jdaV15m:      jdaSig.timeframes['15m']?.vzo || 0,
-      jdaV1h:       jdaSig.timeframes['1h']?.vzo  || 0,
-      jdaV4h:       jdaSig.timeframes['4h']?.vzo  || 0,
-      jdaV1d:       jdaSig.timeframes['1d']?.vzo  || 0,
-      jdaV1w:       jdaSig.timeframes['1w']?.vzo  || 0,
-      jdaZlema1h:   jdaSig.timeframes['1h']?.trend || 0,
-      jdaZlema4h:   jdaSig.timeframes['4h']?.trend || 0,
-      jdaPhase:     jdaSig.phase,
-      jdaConf:      jdaSig.conf,
-      jdaMarketBias: jdaSig.marketBias,
-      jdaAction:    jdaSig.action,
-      jdaDirScore:  jdaSig.dirScore,
-      fundingRate: fundingRate,
+      jdaV15m:      jdaSig?.timeframes?.['15m']?.vzo || 0,
+      jdaV1h:       jdaSig?.timeframes?.['1h']?.vzo  || 0,
+      jdaV4h:       jdaSig?.timeframes?.['4h']?.vzo  || 0,
+      jdaV1d:       jdaSig?.timeframes?.['1d']?.vzo  || 0,
+      jdaV1w:       jdaSig?.timeframes?.['1w']?.vzo  || 0,
+      jdaZlema1h:   jdaSig?.timeframes?.['1h']?.trend || 0,
+      jdaZlema4h:   jdaSig?.timeframes?.['4h']?.trend || 0,
+      jdaPhase:     jdaSig?.phase,
+      jdaConf:      jdaSig?.conf,
+      jdaMarketBias: jdaSig?.marketBias,
+      jdaAction:    jdaSig?.action,
+      jdaDirScore:  jdaSig?.dirScore,
+      fundingRate: fundingData.fundingRate,
+      premiumRate: fundingData.premiumRate || 0,
       longShortRatio: lsRatioData.ratio,
       longAccount: lsRatioData.long,
       shortAccount: lsRatioData.short,

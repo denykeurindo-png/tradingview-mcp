@@ -81,15 +81,19 @@ async function loadBotStatus() {
       valOiVal.innerText = formatUSD(m.openInterest || 0);
       
       const oiChange = m.oiChange1h || 0;
+      const oiChange15m = m.oiChange15m || 0;
       const oiChangeText = `${oiChange >= 0 ? '+' : ''}${oiChange.toFixed(2)}%`;
+      const oi15mText = `${oiChange15m >= 0 ? '+' : ''}${oiChange15m.toFixed(2)}%`;
       const oiBtcText = m.openInterestBtc ? ` · ${(m.openInterestBtc / 1000).toFixed(1)}K BTC` : '';
-      footOiChange.innerText = `${oiChangeText} (1h Change)${oiBtcText}`;
-      footOiChange.className = `kpi-footer ${oiChange >= 0 ? 'text-positive' : 'text-negative'}`;
+      footOiChange.innerText = `1h: ${oiChangeText} | 15m: ${oi15mText}${oiBtcText}`;
+      footOiChange.className = `kpi-footer ${oiChange15m >= 0 ? 'text-positive' : 'text-negative'}`;
       
-      valSpotCvd.innerText = formatUSD(m.spotCvd1h || 0);
-      const cvdPositive = (m.spotCvd1h || 0) >= 0;
+      const cvd1h = m.spotCvd1h || 0;
+      const cvd15m = m.spotCvd15m || 0;
+      valSpotCvd.innerText = `1h: ${formatUSD(cvd1h)} | 15m: ${formatUSD(cvd15m)}`;
+      const cvdPositive = cvd15m >= 0;
       valSpotCvd.className = `kpi-value select-mono ${cvdPositive ? 'text-positive' : 'text-negative'}`;
-      footSpotCvdStatus.innerText = cvdPositive ? 'Net Futures Accumulation (1h)' : 'Net Futures Distribution (1h)';
+      footSpotCvdStatus.innerText = cvdPositive ? 'Spot Buying (15m)' : 'Spot Selling (15m)';
       footSpotCvdStatus.className = `kpi-footer ${cvdPositive ? 'text-positive' : 'text-negative'}`;
       
       const trend1h = m.trend1h || 'UNKNOWN';
@@ -111,7 +115,8 @@ async function loadBotStatus() {
 
       // Update Funding Rate
       const fundRate = m.fundingRate || 0;
-      valFundingRate.innerText = `${(fundRate * 100).toFixed(4)}%`;
+      const pRate = m.premiumRate || 0;
+      valFundingRate.innerText = `Fnd: ${(fundRate * 100).toFixed(4)}% | Prem: ${pRate.toFixed(4)}%`;
       const fundingPositive = fundRate >= 0;
       valFundingRate.className = `kpi-value select-mono ${fundingPositive ? 'text-positive' : 'text-negative'}`;
       footFundingStatus.innerText = fundingPositive ? 'Longs pay Shorts' : 'Shorts pay Longs';
