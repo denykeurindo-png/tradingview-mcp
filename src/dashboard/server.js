@@ -2737,12 +2737,23 @@ app.post('/api/settings', (req, res) => {
     telegramBotToken: newSettings.telegramBotToken !== undefined ? String(newSettings.telegramBotToken).trim() : current.telegramBotToken,
     telegramChatId: newSettings.telegramChatId !== undefined ? String(newSettings.telegramChatId).trim() : current.telegramChatId,
     disableScraper: newSettings.disableScraper !== undefined ? !!newSettings.disableScraper : current.disableScraper,
-    disableTelegram: newSettings.disableTelegram !== undefined ? !!newSettings.disableTelegram : current.disableTelegram
+    disableTelegram: newSettings.disableTelegram !== undefined ? !!newSettings.disableTelegram : current.disableTelegram,
+    jdaAutoTradeEnabled: newSettings.jdaAutoTradeEnabled !== undefined ? !!newSettings.jdaAutoTradeEnabled : current.jdaAutoTradeEnabled,
+    jdaMinConfidence: parseIntNum(newSettings.jdaMinConfidence, current.jdaMinConfidence || 60),
+    jdaCapital: parseNum(newSettings.jdaCapital, current.jdaCapital || 1000),
+    jdaRiskPercent: parseNum(newSettings.jdaRiskPercent, current.jdaRiskPercent || 1.0),
+    jdaSlTpMethod: newSettings.jdaSlTpMethod !== undefined ? String(newSettings.jdaSlTpMethod).trim() : (current.jdaSlTpMethod || 'HEATMAP'),
+    jdaAtrPeriod: parseIntNum(newSettings.jdaAtrPeriod, current.jdaAtrPeriod || 14),
+    jdaAtrMultiplier: parseNum(newSettings.jdaAtrMultiplier, current.jdaAtrMultiplier || 2.0),
+    jdaRiskRewardRatio: parseNum(newSettings.jdaRiskRewardRatio, current.jdaRiskRewardRatio || 2.0)
   };
 
   saveSettings(updated);
   if (updated.autoTradeEnabled !== current.autoTradeEnabled) {
     sendTelegramAlert(`⚙️ <b>LSR Auto-Trading Toggle</b>\n────────────────────\nAuto-Trading is now: <b>${updated.autoTradeEnabled ? 'ENABLED 🟢' : 'DISABLED 🔴'}</b>`);
+  }
+  if (updated.jdaAutoTradeEnabled !== current.jdaAutoTradeEnabled) {
+    sendTelegramAlert(`⚙️ <b>JDA Auto-Trading Toggle</b>\n────────────────────\nAuto-Trading is now: <b>${updated.jdaAutoTradeEnabled ? 'ENABLED 🟢' : 'DISABLED 🔴'}</b>`);
   }
   res.json({ success: true, data: updated });
 });
@@ -3856,6 +3867,196 @@ function evaluateActiveJdaTradesBackend(heatmapData) {
   }
 }
 
+function autoJdaTradeStrategyBackend(heatmapData, klines15m) {
+  const settings = loadSettings();
+  if (!settings.jdaAutoTradeEnabled) {
+    botJdaPhaseState = { phase: 'DISABLED', message: 'JDA Auto-trade is disabled', lastUpdate: new Date().toISOString() };
+    return;
+  }
+
+  if (!jdaSignalCache) {
+    botJdaPhaseState = { phase: 'NO_DATA', message: 'No JDA signal cache available', lastUpdate: new Date().toISOString() };
+    return;
+  }
+
+  const JdaTrades = loadJdaTrades();
+  const activeJdaTrades = JdaTrades.filter(t => t.status === 'ACTIVE');
+
+  if (activeJdaTrades.length >= (settings.maxActive || 1)) {
+    botJdaPhaseState = { phase: 'MAX_ACTIVE', message: `Max active JDA trades reached (${activeJdaTrades.length}/${settings.maxActive || 1})`, lastUpdate: new Date().toISOString() };
+    return;
+  }
+
+  const currentJdaAction = jdaSignalCache.action;
+  if (!currentJdaAction || currentJdaAction === 'WAIT') {
+    botJdaPhaseState = { phase: 'STANDBY', message: `Monitoring market... (Conf: ${Math.round(jdaSignalCache.conf)}%)`, lastUpdate: new Date().toISOString() };
+    return;
+  }
+
+  // Check confidence threshold
+  if (jdaSignalCache.conf < (settings.jdaMinConfidence || 60)) {
+    botJdaPhaseState = { phase: 'STANDBY', message: `Signal ignored: Confidence too low (${Math.round(jdaSignalCache.conf)}% < ${settings.jdaMinConfidence || 60}%)`, lastUpdate: new Date().toISOString() };
+    return;
+  }
+
+  const direction = (currentJdaAction.includes('LONG')) ? 'LONG' : 'SHORT';
+
+  // Cooldown check
+  const latestTrade = JdaTrades[JdaTrades.length - 1];
+  if (latestTrade) {
+    const elapsedMinutes = (Date.now() - latestTrade.timestamp) / (60 * 1000);
+    const cooldown = settings.cooldownMinutes || 60;
+    if (elapsedMinutes < cooldown && latestTrade.direction === direction) {
+      botJdaPhaseState = { phase: 'COOLDOWN', message: `Cooldown active (${Math.round(cooldown - elapsedMinutes)}m remaining for ${direction})`, lastUpdate: new Date().toISOString() };
+      return;
+    }
+  }
+
+  // Get current price from candlestick series
+  const cs = heatmapData.series.find(s => s.type === 'candlestick');
+  if (!cs || !cs.data || cs.data.length === 0) return;
+  const lastCandle = cs.data[cs.data.length - 1];
+  const entry = parseFloat(lastCandle[1]);
+  if (isNaN(entry)) return;
+
+  let tp = 0;
+  let sl = 0;
+  let calculatedVia = 'HEATMAP';
+
+  if (settings.jdaSlTpMethod === 'HEATMAP') {
+    const yAxisData = heatmapData.yAxis || [];
+    const heatmapSeries = heatmapData.series.find(s => s.type === 'heatmap');
+    if (heatmapSeries && heatmapSeries.data && heatmapSeries.data.length > 0) {
+      const latestXIdx = heatmapData.xAxis.length - 1;
+      const volumeByY = {};
+      heatmapSeries.data.forEach(item => {
+        const v = Array.isArray(item) ? item : (item.value || []);
+        const xIdx = parseInt(v[0], 10);
+        const yIdx = parseInt(v[1], 10);
+        if (!isNaN(yIdx) && xIdx === latestXIdx) {
+          volumeByY[yIdx] = parseFloat(v[2] || 0);
+        }
+      });
+
+      const allVolumes = Object.values(volumeByY).filter(v => v > 0).sort((a, b) => b - a);
+      const volumeRatio = settings.minPoolVolumeRatio || 0.15;
+      const topCutoffIndex = Math.max(1, Math.floor(allVolumes.length * volumeRatio));
+      const minPoolVolume = allVolumes[topCutoffIndex - 1] || 0;
+
+      let nearestAbove = null, nearestBelow = null;
+      yAxisData.forEach((priceStr, idx) => {
+        const p = parseFloat(priceStr);
+        if (isNaN(p)) return;
+        const volume = volumeByY[idx] || 0;
+        if (volume < minPoolVolume) return;
+
+        const distPercent = ((p - entry) / entry) * 100;
+        const absDist = Math.abs(distPercent);
+
+        if (absDist < 0.1 || absDist > (settings.maxDist || 8)) return;
+
+        if (p > entry) {
+          if (!nearestAbove || absDist < Math.abs(nearestAbove.distance)) {
+            nearestAbove = { price: p, distance: distPercent };
+          }
+        } else {
+          if (!nearestBelow || absDist < Math.abs(nearestBelow.distance)) {
+            nearestBelow = { price: p, distance: distPercent };
+          }
+        }
+      });
+
+      if (direction === 'LONG' && nearestAbove && nearestBelow) {
+        tp = nearestAbove.price;
+        sl = nearestBelow.price;
+      } else if (direction === 'SHORT' && nearestAbove && nearestBelow) {
+        tp = nearestBelow.price;
+        sl = nearestAbove.price;
+      }
+    }
+  }
+
+  // Fallback to ATR if heatmap target is zero or method is ATR
+  if (tp === 0 || sl === 0) {
+    calculatedVia = 'ATR';
+    if (klines15m) {
+      const atrValue = calculateATRFromCandles(klines15m, settings.jdaAtrPeriod || 14);
+      if (atrValue) {
+        const slDistanceUsd = atrValue * (settings.jdaAtrMultiplier || 2.0);
+        const tpDistanceUsd = slDistanceUsd * (settings.jdaRiskRewardRatio || 2.0);
+
+        if (direction === 'LONG') {
+          sl = entry - slDistanceUsd;
+          tp = entry + tpDistanceUsd;
+        } else {
+          sl = entry + slDistanceUsd;
+          tp = entry - tpDistanceUsd;
+        }
+      }
+    }
+  }
+
+  // Hard fallback
+  if (tp === 0 || sl === 0) {
+    calculatedVia = 'HARD_FALLBACK';
+    const fallbackSLPercent = 1.5;
+    const fallbackTPPercent = 3.0;
+    if (direction === 'LONG') {
+      sl = entry * (1 - fallbackSLPercent / 100);
+      tp = entry * (1 + fallbackTPPercent / 100);
+    } else {
+      sl = entry * (1 + fallbackSLPercent / 100);
+      tp = entry * (1 - fallbackTPPercent / 100);
+    }
+  }
+
+  const riskUsd = settings.jdaCapital * (settings.jdaRiskPercent / 100);
+  const slDistance = Math.abs(((entry - sl) / entry) * 100);
+  const tpDistance = Math.abs(((tp - entry) / entry) * 100);
+  const positionSizeUsd = riskUsd / (slDistance / 100);
+
+  const timestamp = Date.now();
+  const newTrade = {
+    id: 'T' + timestamp,
+    timestamp,
+    time: new Date(timestamp).toLocaleString('id-ID', { day: '2-digit', month: 'short', hour: '2-digit', minute: '2-digit' }),
+    direction,
+    tf: jdaSignalCache.confLevel ? 'MTF' : '15m',
+    entry,
+    tp: parseFloat(tp.toFixed(2)),
+    sl: parseFloat(sl.toFixed(2)),
+    capital: settings.jdaCapital,
+    riskPercent: settings.jdaRiskPercent,
+    riskUsd,
+    positionSizeUsd,
+    tpDistance,
+    slDistance,
+    status: 'ACTIVE',
+    pnl: 0,
+    note: `Auto-Trade (JDA MTF Signal Engine - ${currentJdaAction} via ${calculatedVia})`
+  };
+
+  JdaTrades.push(newTrade);
+  saveJdaTrades(JdaTrades);
+
+  botJdaPhaseState = {
+    phase: 'TRADE_EXECUTED',
+    lastUpdate: new Date().toISOString(),
+    message: `Executed JDA ${direction} trade at $${entry.toFixed(2)}`
+  };
+
+  sendTelegramAlert(
+    `🔔 <b>New JDA MTF Trade Executed (Auto-Trade Engine)</b>\n` +
+    `Type: <b>${direction}</b>\n` +
+    `Trigger: <b>${currentJdaAction}</b> (Conf: ${jdaSignalCache.conf}%)\n` +
+    `Entry: <code>$${entry.toFixed(2)}</code>\n` +
+    `TP: <code>$${tp.toFixed(2)}</code>\n` +
+    `SL: <code>$${sl.toFixed(2)}</code>\n` +
+    `Size: <code>$${positionSizeUsd.toFixed(0)}</code> (Risk: $${riskUsd.toFixed(2)})\n` +
+    `Note: ${newTrade.note}`
+  );
+}
+
 
 // ─── Global Bot Phase State (for API reporting) ─────────────
 let botPhaseState = {
@@ -3865,6 +4066,12 @@ let botPhaseState = {
   nearestPoolVolume: null,
   nearestPoolSide: null,
   sweepCandidate: null,
+  lastUpdate: new Date().toISOString(),
+  message: 'Bot starting up...'
+};
+
+let botJdaPhaseState = {
+  phase: 'INITIALIZING',
   lastUpdate: new Date().toISOString(),
   message: 'Bot starting up...'
 };
@@ -4059,6 +4266,9 @@ app.get('/api/bot-status', async (req, res) => {
     whaleData,
     data: {
       ...botPhaseState,
+      jdaPhase: botJdaPhaseState.phase,
+      jdaAutoTradeEnabled: settings.jdaAutoTradeEnabled,
+      jdaAction: jdaSignalCache ? jdaSignalCache.action : 'WAIT',
       metrics: botMetrics,
       autoTradeEnabled: settings.autoTradeEnabled,
       strategy: 'Liquidity Sweep Reversal (LSR)',
@@ -5585,6 +5795,7 @@ async function runBotCycle() {
         evaluateActiveJdaTradesBackend(result.data);
         const oldPhase = botPhaseState?.phase;
         autoTradeStrategyBackend(result.data, klines15m);
+        autoJdaTradeStrategyBackend(result.data, klines15m);
         const newPhase = botPhaseState?.phase;
 
         if (lastTelegramPhase === null) {

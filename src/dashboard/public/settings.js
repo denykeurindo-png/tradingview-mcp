@@ -1,5 +1,6 @@
 // JDA Trade Monitor — Settings Controller
 let autoTradeEnabled = true;
+let jdaAutoTradeEnabled = false;
 let botStatusIntervalId = null;
 
 const toast = document.getElementById('save-toast');
@@ -16,6 +17,13 @@ function showToast() {
 
 function updateAutoStatus(state, text) {
   const el = document.getElementById('auto-trade-status');
+  if (!el) return;
+  el.querySelector('.auto-status-dot').className = `auto-status-dot ${state}`;
+  el.querySelector('.auto-status-text').innerText = text;
+}
+
+function updateJdaAutoStatus(state, text) {
+  const el = document.getElementById('jda-auto-trade-status');
   if (!el) return;
   el.querySelector('.auto-status-dot').className = `auto-status-dot ${state}`;
   el.querySelector('.auto-status-text').innerText = text;
@@ -42,12 +50,29 @@ async function loadSettingsFromServer() {
     document.getElementById('tele-bot-token').value = s.telegramBotToken || '';
     document.getElementById('tele-chat-id').value = s.telegramChatId || '';
 
+    // JDA Settings
+    document.getElementById('jda-min-confidence').value = s.jdaMinConfidence || 60;
+    document.getElementById('jda-capital').value = s.jdaCapital || 1000;
+    document.getElementById('jda-risk-percent').value = s.jdaRiskPercent || 1.0;
+    document.getElementById('jda-sltp-method').value = s.jdaSlTpMethod || 'HEATMAP';
+    document.getElementById('jda-atr-period').value = s.jdaAtrPeriod || 14;
+    document.getElementById('jda-atr-multiplier').value = s.jdaAtrMultiplier || 2.0;
+    document.getElementById('jda-rr-ratio').value = s.jdaRiskRewardRatio || 2.0;
+
     autoTradeEnabled = s.autoTradeEnabled;
     if (btnToggle) {
       btnToggle.className = `auto-toggle-btn ${autoTradeEnabled ? 'on' : 'off'}`;
       btnToggle.innerText = autoTradeEnabled ? 'ON' : 'OFF';
     }
     updateAutoStatus(autoTradeEnabled ? 'active' : '', autoTradeEnabled ? 'Bot active (server)' : 'Bot inactive');
+
+    jdaAutoTradeEnabled = s.jdaAutoTradeEnabled || false;
+    const btnJdaToggle = document.getElementById('btn-jda-auto-trade-toggle');
+    if (btnJdaToggle) {
+      btnJdaToggle.className = `auto-toggle-btn ${jdaAutoTradeEnabled ? 'on' : 'off'}`;
+      btnJdaToggle.innerText = jdaAutoTradeEnabled ? 'ON' : 'OFF';
+    }
+    updateJdaAutoStatus(jdaAutoTradeEnabled ? 'active' : '', jdaAutoTradeEnabled ? 'Bot active (server)' : 'Bot inactive');
   } catch (e) {
     console.error('Error loading settings:', e);
   }
@@ -82,7 +107,16 @@ async function saveSettingsToServer() {
         breakevenEnabled: document.getElementById('auto-breakeven-enabled').checked,
         autoTradeEnabled,
         telegramBotToken: document.getElementById('tele-bot-token').value.trim(),
-        telegramChatId: document.getElementById('tele-chat-id').value.trim()
+        telegramChatId: document.getElementById('tele-chat-id').value.trim(),
+        // JDA Settings
+        jdaAutoTradeEnabled,
+        jdaMinConfidence: getInt('jda-min-confidence', 60),
+        jdaCapital: getNum('jda-capital', 1000),
+        jdaRiskPercent: getNum('jda-risk-percent', 1.0),
+        jdaSlTpMethod: document.getElementById('jda-sltp-method').value,
+        jdaAtrPeriod: getInt('jda-atr-period', 14),
+        jdaAtrMultiplier: getNum('jda-atr-multiplier', 2.0),
+        jdaRiskRewardRatio: getNum('jda-rr-ratio', 2.0)
       })
     });
     if (res.ok) {
@@ -125,6 +159,22 @@ async function pollBotStatus() {
 
       const dotMap = { STANDBY:'scanning', ALERT:'active', TRADE_EXECUTED:'active', SWEEP_DETECTED:'active', COOLDOWN:'scanning', DISABLED:'', MAX_ACTIVE:'scanning' };
       updateAutoStatus(dotMap[phase] || 'scanning', data.autoTradeEnabled ? `LSR ${phase}` : 'LSR Bot inactive');
+
+      // JDA Bot Status Update
+      const jdaPhase = data.jdaPhase || 'STANDBY';
+      const jdaPc = phaseColors[jdaPhase] || { bg: 'rgba(152,152,157,0.15)', color: '#636366' };
+      const jdaPhaseBadge = document.getElementById('jda-phase-badge');
+      if (jdaPhaseBadge) {
+        jdaPhaseBadge.innerText = jdaPhase.replace(/_/g, ' ');
+        jdaPhaseBadge.style.background = jdaPc.bg;
+        jdaPhaseBadge.style.color = jdaPc.color;
+      }
+
+      let jdaText = data.jdaAutoTradeEnabled ? `JDA active (server)` : 'JDA Bot inactive';
+      if (data.jdaAutoTradeEnabled && data.jdaAction && data.jdaAction !== 'WAIT') {
+        jdaText = `JDA: ${data.jdaAction}`;
+      }
+      updateJdaAutoStatus(data.jdaAutoTradeEnabled ? 'active' : '', jdaText);
     } catch (e) {
       console.error('Error polling bot status:', e);
     }
@@ -145,7 +195,10 @@ window.addEventListener('DOMContentLoaded', async () => {
     'input-capital', 'input-risk', 'auto-min-rr', 'auto-min-prob', 
     'auto-max-active', 'auto-sweep-candles', 'auto-cooldown', 
     'auto-max-tp-percent', 'auto-cut-dist-threshold', 'auto-breakeven-enabled',
-    'tele-bot-token', 'tele-chat-id'
+    'tele-bot-token', 'tele-chat-id',
+    // JDA Settings
+    'jda-min-confidence', 'jda-capital', 'jda-risk-percent', 'jda-sltp-method',
+    'jda-atr-period', 'jda-atr-multiplier', 'jda-rr-ratio'
   ];
   autoSaveIds.forEach(id => {
     const el = document.getElementById(id);
@@ -154,13 +207,25 @@ window.addEventListener('DOMContentLoaded', async () => {
     }
   });
 
-  // Bot ON/OFF Toggle
+  // LSR Bot ON/OFF Toggle
   if (btnToggle) {
     btnToggle.addEventListener('click', async () => {
       autoTradeEnabled = !autoTradeEnabled;
       btnToggle.className = `auto-toggle-btn ${autoTradeEnabled ? 'on' : 'off'}`;
       btnToggle.innerText = autoTradeEnabled ? 'ON' : 'OFF';
       updateAutoStatus(autoTradeEnabled ? 'active' : '', autoTradeEnabled ? 'Bot active (server)' : 'Bot inactive');
+      await saveSettingsToServer();
+    });
+  }
+
+  // JDA Bot ON/OFF Toggle
+  const btnJdaToggle = document.getElementById('btn-jda-auto-trade-toggle');
+  if (btnJdaToggle) {
+    btnJdaToggle.addEventListener('click', async () => {
+      jdaAutoTradeEnabled = !jdaAutoTradeEnabled;
+      btnJdaToggle.className = `auto-toggle-btn ${jdaAutoTradeEnabled ? 'on' : 'off'}`;
+      btnJdaToggle.innerText = jdaAutoTradeEnabled ? 'ON' : 'OFF';
+      updateJdaAutoStatus(jdaAutoTradeEnabled ? 'active' : '', jdaAutoTradeEnabled ? 'Bot active (server)' : 'Bot inactive');
       await saveSettingsToServer();
     });
   }
