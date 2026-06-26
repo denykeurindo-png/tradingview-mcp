@@ -655,16 +655,24 @@ function renderSingleMiniChart(chartInstance, title, heatmapData, pools) {
     });
   });
 
-  let refPrice = currentBtcPrice || 60000;
+  let visibleMin = Infinity;
+  let visibleMax = -Infinity;
   if (slicedCandles.length > 0) {
-    const latestCandle = slicedCandles[slicedCandles.length - 1];
-    const closePrice = parseFloat(latestCandle[1]);
-    if (!isNaN(closePrice) && closePrice > 0) {
-      refPrice = closePrice;
-    }
+    slicedCandles.forEach(c => {
+      const low = c[2];
+      const high = c[3];
+      if (!isNaN(low) && low < visibleMin) visibleMin = low;
+      if (!isNaN(high) && high > visibleMax) visibleMax = high;
+    });
   }
-  const yAxisMin = Math.round(refPrice - 2000);
-  const yAxisMax = Math.round(refPrice + 2000);
+
+  let centerPrice = currentBtcPrice || 60000;
+  if (visibleMin !== Infinity && visibleMax !== -Infinity) {
+    centerPrice = (visibleMin + visibleMax) / 2;
+  }
+
+  const yAxisMin = Math.round(centerPrice - 2000);
+  const yAxisMax = Math.round(centerPrice + 2000);
 
   const option = {
     backgroundColor: 'transparent',
