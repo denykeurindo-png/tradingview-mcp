@@ -482,7 +482,7 @@
     }
 
     .jda-card-val {
-      font-size: 15px;
+      font-size: 13px;
       font-weight: 700;
       display: flex;
       align-items: center;
@@ -809,6 +809,18 @@
 
       <!-- Column 2: Mini Heatmap & Orderbook -->
       <div class="cockpit-col">
+        <!-- Widget 3: Mini Heatmap -->
+        <div class="cockpit-widget w-mini-heatmap">
+          <div class="widget-title" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <span>Liquidity Sweep Map (24H & 3D)</span>
+            <span style="font-family: var(--font-mono); color: var(--accent-primary); font-size: 14px;" id="live-btc-price">$0.00</span>
+          </div>
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 10px; height: calc(100% - 24px); min-height: 480px;">
+            <div id="chart-mini-heatmap-24h" style="flex: 1; width: 100%; min-height: 220px;"></div>
+            <div id="chart-mini-heatmap-3d" style="flex: 1; width: 100%; min-height: 220px;"></div>
+          </div>
+        </div>
+
         <!-- Widget: JDA MTF Strategy Status -->
         <div class="cockpit-widget w-jda-mtf" style="flex: 0 0 auto; margin-bottom: 0px; padding: 14px;">
           <div class="widget-title" style="margin-bottom: 12px; display: flex; justify-content: space-between; align-items: center;">
@@ -853,28 +865,15 @@
             <div class="jda-card-full">
               <div class="jda-flex-col">
                 <div class="jda-card-label">Final Call</div>
-                <div class="jda-card-val" id="jda-card-final-call" style="font-size: 16px;">--</div>
+                <div class="jda-card-val" id="jda-card-final-call">--</div>
               </div>
               <div class="jda-flex-col-right">
                 <div class="jda-card-label">Aligned Status</div>
-                <div class="jda-card-val" id="jda-card-aligned" style="font-size: 16px;">--</div>
+                <div class="jda-card-val" id="jda-card-aligned">--</div>
               </div>
             </div>
           </div>
         </div>
-
-        <!-- Widget 3: Mini Heatmap -->
-        <div class="cockpit-widget w-mini-heatmap">
-          <div class="widget-title" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-            <span>Liquidity Sweep Map (24H & 3D)</span>
-            <span style="font-family: var(--font-mono); color: var(--accent-primary); font-size: 14px;" id="live-btc-price">$0.00</span>
-          </div>
-          <div style="flex: 1; display: flex; flex-direction: column; gap: 10px; height: calc(100% - 24px); min-height: 480px;">
-            <div id="chart-mini-heatmap-24h" style="flex: 1; width: 100%; min-height: 220px;"></div>
-            <div id="chart-mini-heatmap-3d" style="flex: 1; width: 100%; min-height: 220px;"></div>
-          </div>
-        </div>
-
       </div>
 
       <!-- Column 3: 100pt Factor Grid & Logs -->
