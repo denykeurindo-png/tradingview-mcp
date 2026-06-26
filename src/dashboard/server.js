@@ -2513,6 +2513,183 @@ app.get('/api/top-trader-ls', async (req, res) => {
   }
 });
 
+// REST API for fetching consolidated market summary
+app.get('/api/coinglass-summary', (req, res) => {
+  let score = 0;
+  const metrics = {};
+
+  // 1. Depth Delta
+  try {
+    const inner = depthDeltaCache?.data?.[0] || depthDeltaCache;
+    const deltaSeries = inner?.series?.find(s => s.name?.includes('Delta') || s.name === 'Liquidity Delta');
+    const latestDelta = deltaSeries?.data?.length ? parseFloat(deltaSeries.data[deltaSeries.data.length - 1]) : null;
+    if (latestDelta !== null && !isNaN(latestDelta)) {
+      const isBullish = latestDelta > 0;
+      metrics.depthDelta = {
+        value: latestDelta,
+        formatted: (latestDelta > 0 ? '+' : '') + (latestDelta / 1e6).toFixed(2) + 'M',
+        sentiment: isBullish ? 'bullish' : 'bearish',
+        description: isBullish ? 'Bid depth lebih tebal dari ask depth' : 'Ask depth lebih tebal dari bid depth'
+      };
+      score += isBullish ? 1 : -1;
+    } else {
+      metrics.depthDelta = { sentiment: 'neutral', description: 'Data tidak tersedia', formatted: '--' };
+    }
+  } catch (e) {
+    metrics.depthDelta = { sentiment: 'neutral', description: 'Gagal menganalisis data', formatted: '--' };
+  }
+
+  // 2. Coinbase Premium
+  try {
+    const inner = cbPremiumCache?.data?.[0] || cbPremiumCache;
+    const rateSeries = inner?.series?.find(s => s.name?.includes('Rate') || s.name?.includes('Index') || s.name === 'Premium Rate');
+    const latestPremium = rateSeries?.data?.length ? parseFloat(rateSeries.data[rateSeries.data.length - 1]) : null;
+    if (latestPremium !== null && !isNaN(latestPremium)) {
+      const sentiment = latestPremium > 0.02 ? 'bullish' : (latestPremium < -0.02 ? 'bearish' : 'neutral');
+      metrics.coinbasePremium = {
+        value: latestPremium,
+        formatted: (latestPremium > 0 ? '+' : '') + latestPremium.toFixed(4) + '%',
+        sentiment: sentiment,
+        description: sentiment === 'bullish' ? 'Institusi AS agresif membeli' : (sentiment === 'bearish' ? 'Institusi AS agresif menjual' : 'Tekanan beli/jual institusi seimbang')
+      };
+      if (sentiment === 'bullish') score += 1;
+      else if (sentiment === 'bearish') score -= 1;
+    } else {
+      metrics.coinbasePremium = { sentiment: 'neutral', description: 'Data tidak tersedia', formatted: '--' };
+    }
+  } catch (e) {
+    metrics.coinbasePremium = { sentiment: 'neutral', description: 'Gagal menganalisis data', formatted: '--' };
+  }
+
+  // 3. Whale Orders
+  try {
+    const orders = Array.isArray(whaleOrdersCache) ? whaleOrdersCache : (whaleOrdersCache?.data || []);
+    if (orders.length > 0) {
+      const buyOrders = orders.filter(o => o.side === 'buy');
+      const sellOrders = orders.filter(o => o.side === 'sell');
+      const totalBuyVal = buyOrders.reduce((sum, o) => sum + (o.valueUsd || 0), 0);
+      const totalSellVal = sellOrders.reduce((sum, o) => sum + (o.valueUsd || 0), 0);
+      
+      const isBullish = totalBuyVal > totalSellVal;
+      metrics.whaleOrders = {
+        buyCount: buyOrders.length,
+        sellCount: sellOrders.length,
+        buyVolume: totalBuyVal,
+        sellVolume: totalSellVal,
+        formatted: `Buy: $${(totalBuyVal / 1e6).toFixed(1)}M | Sell: $${(totalSellVal / 1e6).toFixed(1)}M`,
+        sentiment: isBullish ? 'bullish' : 'bearish',
+        description: isBullish ? `Whale dominasi Buy (+$${((totalBuyVal - totalSellVal)/1e6).toFixed(1)}M)` : `Whale dominasi Sell (+$${((totalSellVal - totalBuyVal)/1e6).toFixed(1)}M)`
+      };
+      score += isBullish ? 1 : -1;
+    } else {
+      metrics.whaleOrders = { sentiment: 'neutral', description: 'Tidak ada order aktif terdeteksi', formatted: '--' };
+    }
+  } catch (e) {
+    metrics.whaleOrders = { sentiment: 'neutral', description: 'Gagal menganalisis data', formatted: '--' };
+  }
+
+  // 4. Whale vs Retail
+  try {
+    const inner = whaleRetailDeltaCache?.data?.[0] || whaleRetailDeltaCache;
+    const wrSeries = inner?.series?.find(s => s.name?.includes('Delta') || s.name === 'Whale vs Retail Delta');
+    const latestWRDelta = wrSeries?.data?.length ? parseFloat(wrSeries.data[wrSeries.data.length - 1]) : null;
+    if (latestWRDelta !== null && !isNaN(latestWRDelta)) {
+      const isBullish = latestWRDelta > 0;
+      metrics.whaleRetail = {
+        value: latestWRDelta,
+        formatted: (latestWRDelta > 0 ? '+' : '') + latestWRDelta.toFixed(3),
+        sentiment: isBullish ? 'bullish' : 'bearish',
+        description: isBullish ? 'Whale posisi Long, Retail posisi Short' : 'Whale posisi Short, Retail posisi Long'
+      };
+      score += isBullish ? 1 : -1;
+    } else {
+      metrics.whaleRetail = { sentiment: 'neutral', description: 'Data tidak tersedia', formatted: '--' };
+    }
+  } catch (e) {
+    metrics.whaleRetail = { sentiment: 'neutral', description: 'Gagal menganalisis data', formatted: '--' };
+  }
+
+  // 5. Top Trader L/S
+  try {
+    const inner = topTraderLsCache?.data || topTraderLsCache;
+    const rows = inner?.rows || [];
+    
+    // Binance U (Accounts) is index 8, OKX (Accounts) is index 13
+    const ratios = [];
+    rows.forEach(row => {
+      [8, 13].forEach(idx => {
+        const val = row[idx];
+        if (val && val.trim() !== '' && val.includes('%')) {
+          const longVal = parseFloat(val);
+          if (!isNaN(longVal)) {
+            const shortVal = 100 - longVal;
+            if (shortVal > 0) ratios.push(longVal / shortVal);
+          }
+        }
+      });
+    });
+
+    if (ratios.length > 0) {
+      const avgRatio = ratios.reduce((a, b) => a + b, 0) / ratios.length;
+      const sentiment = avgRatio > 1.05 ? 'bullish' : (avgRatio < 0.95 ? 'bearish' : 'neutral');
+      metrics.topTraderLs = {
+        value: avgRatio,
+        formatted: avgRatio.toFixed(2),
+        sentiment: sentiment,
+        description: sentiment === 'bullish' ? 'Top trader cenderung Long' : (sentiment === 'bearish' ? 'Top trader cenderung Short' : 'Sentimen top trader seimbang')
+      };
+      if (sentiment === 'bullish') score += 1;
+      else if (sentiment === 'bearish') score -= 1;
+    } else {
+      metrics.topTraderLs = { sentiment: 'neutral', description: 'Data tidak tersedia', formatted: '--' };
+    }
+  } catch (e) {
+    metrics.topTraderLs = { sentiment: 'neutral', description: 'Gagal menganalisis data', formatted: '--' };
+  }
+
+  // Sentiment Verdict calculation
+  let verdict = 'NEUTRAL';
+  if (score >= 3) verdict = 'STRONG BULLISH';
+  else if (score >= 1) verdict = 'BULLISH';
+  else if (score <= -3) verdict = 'STRONG BEARISH';
+  else if (score <= -1) verdict = 'BEARISH';
+
+  // Dynamic explanation generation
+  let explanation = `Sentimen pasar keseluruhan saat ini dinilai **${verdict}** berdasarkan analisis 5 indikator utama CoinGlass. `;
+  
+  const bulletPoints = [];
+  if (metrics.depthDelta?.sentiment !== 'neutral') {
+    bulletPoints.push(`Orderbook Depth Delta menunjukkan dominasi ${metrics.depthDelta.sentiment === 'bullish' ? '<b>Dinding Beli (Bid)</b>' : '<b>Dinding Jual (Ask)</b>'} (${metrics.depthDelta.formatted})`);
+  }
+  if (metrics.coinbasePremium?.sentiment !== 'neutral') {
+    bulletPoints.push(`Coinbase Premium Index berada di level ${metrics.coinbasePremium.formatted} (${metrics.coinbasePremium.sentiment.toUpperCase()})`);
+  }
+  if (metrics.whaleOrders?.sentiment !== 'neutral') {
+    bulletPoints.push(`Peta order whale aktif bias ke arah ${metrics.whaleOrders.sentiment === 'bullish' ? '<b>BELI (Buy)</b>' : '<b>JUAL (Sell)</b>'} (${metrics.whaleOrders.formatted})`);
+  }
+  if (metrics.whaleRetail?.sentiment !== 'neutral') {
+    bulletPoints.push(`Whale vs Retail Delta mengindikasikan ${metrics.whaleRetail.sentiment === 'bullish' ? '<b>Whale mendominasi posisi LONG</b> sedangkan retail cenderung Short' : '<b>Whale mendominasi posisi SHORT</b> sedangkan retail cenderung Long'} (${metrics.whaleRetail.formatted})`);
+  }
+  if (metrics.topTraderLs?.sentiment !== 'neutral') {
+    bulletPoints.push(`Rata-rata rasio Long/Short Top Trader di exchange Binance/OKX berada di angka **${metrics.topTraderLs.formatted}**`);
+  }
+
+  if (bulletPoints.length > 0) {
+    explanation += 'Berikut adalah ringkasan indikator saat ini:\n<ul style="margin-top: 5px; margin-bottom: 0; padding-left: 20px;">' + bulletPoints.map(bp => `<li style="margin-bottom: 4px;">${bp}</li>`).join('') + '</ul>';
+  } else {
+    explanation += 'Tidak ada data cache CoinGlass yang cukup untuk menyusun ringkasan indikator saat ini. Silakan jalankan sinkronisasi data.';
+  }
+
+  res.json({
+    success: true,
+    verdict,
+    score,
+    explanation,
+    metrics,
+    timestamp: new Date().toISOString()
+  });
+});
+
 // REST API for fetching HeatMap data (with cache)
 app.get('/api/heatmap-data', async (req, res) => {
   const forceRefresh = req.query.refresh === 'true';
