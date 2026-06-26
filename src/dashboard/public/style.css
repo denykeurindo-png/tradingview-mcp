@@ -1452,7 +1452,7 @@ tr:hover td {
 
 /* Shift all content to the right of sidebar */
 body {
-  padding-left: 220px;
+  padding-left: calc(220px + var(--spacing-md));
   transition: padding-left 0.3s ease;
 }
 
@@ -1495,7 +1495,7 @@ body {
   .sidebar { width: 60px !important; }
   .sidebar-logo-text, .sidebar-item a span, .sidebar-logout span { display: none !important; }
   .sidebar-item a { padding: 12px !important; justify-content: center !important; }
-  body { padding-left: 60px !important; }
+  body { padding-left: calc(60px + var(--spacing-md)) !important; }
   .sidebar-toggle-btn { display: none !important; }
 }
 
@@ -1525,7 +1525,7 @@ body {
 
 /* Sidebar Minimized State (Desktop) */
 body.sidebar-minimized {
-  padding-left: 60px;
+  padding-left: calc(60px + var(--spacing-md));
 }
 body.sidebar-minimized .sidebar {
   width: 60px;
