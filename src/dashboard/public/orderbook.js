@@ -386,6 +386,13 @@ async function loadMarketSummary() {
         </div>
         <div style="font-size: 11px; color: #848E9C; margin-top: 4px;">${m.topTraderLs?.description || ''}</div>
       </div>
+      <div style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.04);">
+        <div style="font-size: 11px; color: #848E9C; margin-bottom: 4px; text-transform: uppercase;">Combined Depth</div>
+        <div class="select-mono" style="font-size: 16px; font-weight: bold; color: ${getSentimentColor(m.combinedDepth?.sentiment)};">
+          ${getSentimentIcon(m.combinedDepth?.sentiment)} ${m.combinedDepth?.formatted || '--'}
+        </div>
+        <div style="font-size: 11px; color: #848E9C; margin-top: 4px;">${m.combinedDepth?.description || ''}</div>
+      </div>
     `;
 
     summaryCard.style.display = 'block';

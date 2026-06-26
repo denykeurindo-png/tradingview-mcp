@@ -2647,6 +2647,44 @@ app.get('/api/coinglass-summary', (req, res) => {
     metrics.topTraderLs = { sentiment: 'neutral', description: 'Gagal menganalisis data', formatted: '--' };
   }
 
+  // 6. Combined Depth
+  try {
+    const bids = orderBookDataCache?.bids || orderBookDataCache?.data?.bids || [];
+    const asks = orderBookDataCache?.asks || orderBookDataCache?.data?.asks || [];
+    if (bids.length > 0 && asks.length > 0) {
+      const sortedBids = [...bids].sort((a, b) => b.price - a.price);
+      const sortedAsks = [...asks].sort((a, b) => a.price - b.price);
+      const midPrice = (sortedBids[0].price + sortedAsks[0].price) / 2;
+
+      const rangeLimit = 0.02;
+      const bidRangeLimit = midPrice * (1 - rangeLimit);
+      const askRangeLimit = midPrice * (1 + rangeLimit);
+
+      const bidsInRange = sortedBids.filter(b => b.price >= bidRangeLimit);
+      const asksInRange = sortedAsks.filter(a => a.price <= askRangeLimit);
+
+      const totalBidsQty = bidsInRange.reduce((sum, b) => sum + b.quantity, 0);
+      const totalAsksQty = asksInRange.reduce((sum, a) => sum + a.quantity, 0);
+
+      const imbalanceRatio = totalAsksQty > 0 ? (totalBidsQty / totalAsksQty) : 1.0;
+      const sentiment = imbalanceRatio > 1.05 ? 'bullish' : (imbalanceRatio < 0.95 ? 'bearish' : 'neutral');
+      
+      metrics.combinedDepth = {
+        value: imbalanceRatio,
+        formatted: imbalanceRatio.toFixed(2),
+        sentiment: sentiment,
+        description: sentiment === 'bullish' ? `Bid mendominasi (${imbalanceRatio.toFixed(2)}x)` : (sentiment === 'bearish' ? `Ask mendominasi (${imbalanceRatio.toFixed(2)}x)` : 'Tekanan bid/ask seimbang')
+      };
+      
+      if (sentiment === 'bullish') score += 1;
+      else if (sentiment === 'bearish') score -= 1;
+    } else {
+      metrics.combinedDepth = { sentiment: 'neutral', description: 'Data tidak tersedia', formatted: '--' };
+    }
+  } catch (e) {
+    metrics.combinedDepth = { sentiment: 'neutral', description: 'Gagal menganalisis data', formatted: '--' };
+  }
+
   // Sentiment Verdict calculation
   let verdict = 'NEUTRAL';
   if (score >= 3) verdict = 'STRONG BULLISH';
@@ -2655,7 +2693,7 @@ app.get('/api/coinglass-summary', (req, res) => {
   else if (score <= -1) verdict = 'BEARISH';
 
   // Dynamic explanation generation
-  let explanation = `Sentimen pasar keseluruhan saat ini dinilai **${verdict}** berdasarkan analisis 5 indikator utama CoinGlass. `;
+  let explanation = `Sentimen pasar keseluruhan saat ini dinilai **${verdict}** berdasarkan analisis 6 indikator utama CoinGlass. `;
   
   const bulletPoints = [];
   if (metrics.depthDelta?.sentiment !== 'neutral') {
@@ -2672,6 +2710,9 @@ app.get('/api/coinglass-summary', (req, res) => {
   }
   if (metrics.topTraderLs?.sentiment !== 'neutral') {
     bulletPoints.push(`Rata-rata rasio Long/Short Top Trader di exchange Binance/OKX berada di angka **${metrics.topTraderLs.formatted}**`);
+  }
+  if (metrics.combinedDepth?.sentiment !== 'neutral') {
+    bulletPoints.push(`Orderbook Combined Depth (2% Range) menunjukkan bias ${metrics.combinedDepth.sentiment === 'bullish' ? '<b>BELI (Bid)</b>' : '<b>JUAL (Ask)</b>'} dengan rasio **${metrics.combinedDepth.formatted}**`);
   }
 
   if (bulletPoints.length > 0) {
