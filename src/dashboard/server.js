@@ -724,13 +724,17 @@ async function scrapeHeatMap3D() {
   const listResp = await fetch('http://127.0.0.1:9222/json', { signal: AbortSignal.timeout(5000) });
   const tabs = await listResp.json();
 
-  // Use existing CoinGlass tab, otherwise fall back to any active tab and navigate
-  let tab = tabs.find(t => t.type === 'page' && t.url && t.url.includes('coinglass.com')) || null;
+  // Use existing CoinGlass LiquidationHeatMap tab specifically to avoid hijacking other tabs
+  let tab = tabs.find(t => t.type === 'page' && t.url && t.url.includes('coinglass.com/pro/futures/LiquidationHeatMap')) || null;
   let navigated = false;
 
   if (!tab) {
-    // Fallback: Try any active http/https tab
-    tab = tabs.find(t => t.type === 'page' && t.url?.startsWith('http') && !t.url?.includes('devtools'));
+    // Fallback 1: Try any other CoinGlass tab
+    tab = tabs.find(t => t.type === 'page' && t.url && t.url.includes('coinglass.com')) || null;
+    if (!tab) {
+      // Fallback 2: Try any active http/https tab
+      tab = tabs.find(t => t.type === 'page' && t.url?.startsWith('http') && !t.url?.includes('devtools'));
+    }
     if (!tab) throw new Error('No suitable tab found for 3D scrape. Please make sure a web page is open in Chrome/TradingView.');
     navigated = true;
   }
@@ -996,16 +1000,17 @@ async function scrapeDepthDelta() {
     }
   }
   
-  let tab = tabs.find(t => t.type === 'page' && t.url?.includes('coinglass.com/pro/depth-delta'));
-  let navigated = true; // Always navigate to ensure fresh page load
+  let tab = tabs.find(t => t.type === 'page' && (t.url?.includes('coinglass.com/pro/depth-delta') || t.url?.includes('coinglass.com/depth-delta')));
+  let navigated = false;
   if (!tab) {
     tab = tabs.find(t => t.type === 'page' && t.url?.includes('coinglass.com'));
     if (!tab) {
       tab = tabs.find(t => t.type === 'page' && t.url?.startsWith('http') && !t.url?.includes('devtools'));
     }
     if (!tab) throw new Error('No suitable tab found.');
+    navigated = true;
   }
-  const savedUrl = tab.url;
+  const savedUrl = navigated ? tab.url : null;
 
   let ws = null;
   retries = 3;
@@ -1129,16 +1134,17 @@ async function scrapeCoinbasePremium() {
     }
   }
   
-  let tab = tabs.find(t => t.type === 'page' && t.url?.includes('coinglass.com/pro/i/coinbase-bitcoin-premium-index'));
-  let navigated = true; // Always navigate to ensure fresh page load
+  let tab = tabs.find(t => t.type === 'page' && (t.url?.includes('coinglass.com/pro/i/coinbase-bitcoin-premium-index') || t.url?.includes('coinglass.com/pro/futures/CoinbasePremium')));
+  let navigated = false;
   if (!tab) {
     tab = tabs.find(t => t.type === 'page' && t.url?.includes('coinglass.com'));
     if (!tab) {
       tab = tabs.find(t => t.type === 'page' && t.url?.startsWith('http') && !t.url?.includes('devtools'));
     }
     if (!tab) throw new Error('No suitable tab found.');
+    navigated = true;
   }
-  const savedUrl = tab.url;
+  const savedUrl = navigated ? tab.url : null;
 
   let ws = null;
   retries = 3;
@@ -1262,16 +1268,17 @@ async function scrapeWhaleOrders() {
     }
   }
   
-  let tab = tabs.find(t => t.type === 'page' && t.url?.includes('coinglass.com/large-orderbook-statistics'));
-  let navigated = true; // Always navigate to ensure fresh page load
+  let tab = tabs.find(t => t.type === 'page' && (t.url?.includes('coinglass.com/large-orderbook-statistics') || t.url?.includes('coinglass.com/pro/orderbook/WhaleOrders')));
+  let navigated = false;
   if (!tab) {
     tab = tabs.find(t => t.type === 'page' && t.url?.includes('coinglass.com'));
     if (!tab) {
       tab = tabs.find(t => t.type === 'page' && t.url?.startsWith('http') && !t.url?.includes('devtools'));
     }
     if (!tab) throw new Error('No suitable tab found.');
+    navigated = true;
   }
-  const savedUrl = tab.url;
+  const savedUrl = navigated ? tab.url : null;
 
   let ws = null;
   retries = 3;
@@ -1795,7 +1802,7 @@ async function scrapeOrderBookCombined(forceRefresh = false) {
     }
   }
 
-  let tab = tabs.find(t => t.type === 'page' && t.url?.includes('coinglass.com/mergev2/BTC-USDT'));
+  let tab = tabs.find(t => t.type === 'page' && (t.url?.includes('coinglass.com/mergev2/BTC-USDT') || t.url?.includes('coinglass.com/mergev2')));
   let navigated = false;
 
   if (!tab) {
@@ -1955,10 +1962,6 @@ async function scrapeOrderBookCombined(forceRefresh = false) {
       console.log('[OrderBook Scraper] Navigating to https://www.coinglass.com/mergev2/BTC-USDT...');
       await cdp('Page.navigate', { url: 'https://www.coinglass.com/mergev2/BTC-USDT' });
       await new Promise(r => setTimeout(r, 10000)); // Wait 10s for React load
-    } else {
-      console.log('[OrderBook Scraper] Reloading page...');
-      await cdp('Page.reload', {});
-      await new Promise(r => setTimeout(r, 8000)); // Wait 8s for reload
     }
 
     console.log('[OrderBook Scraper] Polling DOM for orderbook data...');
@@ -2181,10 +2184,10 @@ app.get('/api/heatmap-data', async (req, res) => {
   try {
     console.log('Starting CoinGlass Heatmap scrape...');
     const result = await runWithCdpLock(() => scrapeHeatMap(forceRefresh));
-    heatmapDataCache = result;
+    heatmapDataCache = cleanSweptLevels(result);
     lastHeatmapFetchTime = Date.now();
     saveCacheToDisk('heatmap24h_cache.json', heatmapDataCache);
-    res.json({ success: true, source: 'live', data: result });
+    res.json({ success: true, source: 'live', data: heatmapDataCache });
   } catch (error) {
     console.error('Heatmap scrape error:', error.message);
     if (heatmapDataCache) {
@@ -2202,12 +2205,14 @@ app.post('/api/heatmap-data/update', (req, res) => {
   const { data, period } = req.body;
   if (!data) return res.status(400).json({ success: false, error: 'No data provided' });
 
+  const cleanedData = cleanSweptLevels(data);
+
   if (period === '3d') {
-    heatmap3DCache = { data, timestamp: new Date().toISOString(), period: '3d' };
+    heatmap3DCache = { data: cleanedData, timestamp: new Date().toISOString(), period: '3d' };
     lastHeatmap3DFetchTime = Date.now();
     console.log('[Bridge API] Received 3D Heatmap update from local client.');
     try {
-      const hd3 = data.data || data;
+      const hd3 = cleanedData.data || cleanedData;
       if (hd3) {
         if (!hd3.series) hd3.series = [];
         if (!hd3.series.some(s => s.type === 'candlestick' || s.type === 'candlestick_raw')) {
@@ -2223,7 +2228,7 @@ app.post('/api/heatmap-data/update', (req, res) => {
     }
     saveCacheToDisk('heatmap3d_cache.json', heatmap3DCache);
   } else {
-    heatmapDataCache = { data, timestamp: new Date().toISOString() };
+    heatmapDataCache = { data: cleanedData, timestamp: new Date().toISOString() };
     lastHeatmapFetchTime = Date.now();
     console.log('[Bridge API] Received 24h Heatmap update from local client.');
     saveCacheToDisk('heatmap24h_cache.json', heatmapDataCache);
@@ -2421,6 +2426,91 @@ function saveJdaTrades(trades) {
   } catch (e) {
     console.error('Error saving jda trades file:', e);
   }
+}function cleanSweptLevels(heatmapData) {
+  if (!heatmapData) return heatmapData;
+  let mainData = heatmapData;
+  let isWrapped = false;
+  if (heatmapData.data && heatmapData.data.series) {
+    mainData = heatmapData.data;
+    isWrapped = true;
+  }
+  if (!mainData.series || !mainData.xAxis || !mainData.yAxis) {
+    return heatmapData;
+  }
+
+  const candleSeries = mainData.series.find(s => s.type === 'candlestick');
+  const heatmapSeries = mainData.series.find(s => s.type === 'heatmap');
+  
+  if (!candleSeries || !heatmapSeries || !Array.isArray(candleSeries.data) || !Array.isArray(heatmapSeries.data)) {
+    return heatmapData;
+  }
+
+  const yAxisData = mainData.yAxis || [];
+  const candles = candleSeries.data;
+  const originalHeatmapData = heatmapSeries.data;
+
+  // Group points by yIdx
+  const pointsByY = new Map();
+  originalHeatmapData.forEach(item => {
+    const v = Array.isArray(item) ? item : (item.value || []);
+    const yIdx = parseInt(v[1], 10);
+    const xIdx = parseInt(v[0], 10);
+    const val = parseFloat(v[2] || 0);
+    
+    if (!pointsByY.has(yIdx)) {
+      pointsByY.set(yIdx, []);
+    }
+    pointsByY.get(yIdx).push({ xIdx, yIdx, val, original: item });
+  });
+
+  const cleanedHeatmapData = [];
+
+  pointsByY.forEach((pts, yIdx) => {
+    const price = parseFloat(yAxisData[yIdx]);
+    if (isNaN(price)) {
+      pts.forEach(p => cleanedHeatmapData.push(p.original));
+      return;
+    }
+
+    // Sort points chronologically
+    pts.sort((a, b) => a.xIdx - b.xIdx);
+
+    let swept = false;
+    let lastXIdx = -1;
+
+    pts.forEach(p => {
+      const xIdx = p.xIdx;
+
+      // Check if there was a gap since the last point at this yIdx.
+      // A gap of more than 1 index resets the swept state because it
+      // indicates a new liquidation pool formed after the old one was cleared.
+      if (lastXIdx !== -1 && xIdx - lastXIdx > 1) {
+        swept = false;
+      }
+      lastXIdx = xIdx;
+
+      // Check if the candle at xIdx sweeps this price level
+      if (!swept && xIdx < candles.length) {
+        const c = candles[xIdx];
+        if (c && c.length >= 4) {
+          const low = parseFloat(c[2]);
+          const high = parseFloat(c[3]);
+          if (!isNaN(low) && !isNaN(high) && price >= low && price <= high) {
+            swept = true;
+          }
+        }
+      }
+
+      if (!swept) {
+        cleanedHeatmapData.push(p.original);
+      }
+    });
+  });
+
+  // Reassign the cleaned data back to the series
+  heatmapSeries.data = cleanedHeatmapData;
+
+  return heatmapData;
 }
 
 function loadSettings() {
@@ -4541,7 +4631,7 @@ function autoTradeStrategyBackend(heatmapData) {
     return;
   }
   // ─── Global Exit Cooldown Check ─────────────────────────────
-  const exitCooldownMs = 180 * 60 * 1000; // 180 minutes (3 hours)
+  const exitCooldownMs = (settings.cooldownMinutes || 60) * 60 * 1000; // Read from settings (default 60m)
   const exitCooldownTrade = trades.find(t => {
     if (t.status === 'ACTIVE') return false;
     if (!t.closeTimestamp) return false;
@@ -5817,7 +5907,7 @@ async function runBotCycle() {
     if (isScraperEnabled) {
       try {
         result = await runWithCdpLock(() => scrapeHeatMap(true)); // force refresh to get latest data from CoinGlass!
-        heatmapDataCache = result;
+        heatmapDataCache = cleanSweptLevels(result);
         lastHeatmapFetchTime = Date.now();
         saveCacheToDisk('heatmap24h_cache.json', heatmapDataCache);
       } catch (scrapeErr) {
@@ -5903,9 +5993,9 @@ async function runBotCycle() {
       try {
         const r3d = await runWithCdpLock(() => scrapeHeatMap3D());
         if (r3d.period === '3d') {
-          heatmap3DCache = r3d;
+          heatmap3DCache = cleanSweptLevels(r3d);
           lastHeatmap3DFetchTime = Date.now();
-          const hd3 = r3d.data;
+          const hd3 = heatmap3DCache.data;
           if (hd3) {
             if (!hd3.series) hd3.series = [];
             if (!hd3.series.some(s => s.type === 'candlestick' || s.type === 'candlestick_raw')) {
@@ -5999,9 +6089,9 @@ async function startBackgroundBot() {
   const isScraperEnabled = !settings.disableScraper && process.env.DISABLE_SCRAPER !== 'true';
 
   if (isScraperEnabled) {
-    console.log('Background bot cycle scheduler started. Running every 3 minutes.');
+    console.log('Background bot cycle scheduler started. Running every 30 seconds.');
   } else {
-    console.log('Background bot cycle scheduler started (Query/REST-only mode). Running every 3 minutes.');
+    console.log('Background bot cycle scheduler started (Query/REST-only mode). Running every 30 seconds.');
   }
   
   // Run once immediately on startup
@@ -6011,7 +6101,7 @@ async function startBackgroundBot() {
 
   setInterval(async () => {
     await runBotCycle();
-  }, 180000); // 3 minutes
+  }, 30000); // 30 seconds
 }
 
 app.listen(PORT, () => {

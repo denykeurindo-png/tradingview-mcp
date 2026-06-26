@@ -10,7 +10,7 @@
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
   <!-- ECharts CDN -->
-  <script src="https://cdn.jsdelivr.net/npm/echarts@5.4.3/dist/echarts.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
   <!-- Style -->
   <link rel="stylesheet" href="style.css?v=2.2.0">
   <style>
@@ -54,6 +54,7 @@
     .w-mini-heatmap {
       flex: 1;
       min-height: 520px;
+      padding: 16px 8px 8px 8px; /* Tighter padding to allow chart to be flush with card borders */
     }
 
     .w-orderbook-depth {
@@ -419,6 +420,94 @@
       margin-bottom: auto;
       font-size: 13px;
     }
+
+    /* Responsive Design / Mobile-friendly Layout overrides */
+    .market-extras-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 16px;
+      flex: 0 0 250px;
+    }
+
+    .top-pools-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      flex: 1;
+      font-size: 11px;
+    }
+
+    .perf-stats-grid {
+      display: grid;
+      grid-template-columns: repeat(6, 1fr);
+      gap: 4px;
+    }
+
+    @media (max-width: 1200px) {
+      .cockpit-grid {
+        grid-template-columns: 1fr;
+        height: auto;
+        min-height: auto;
+        padding-bottom: 32px;
+      }
+
+      .cockpit-col {
+        height: auto;
+        gap: 16px;
+      }
+
+      .cockpit-widget {
+        flex: none !important;
+        height: auto !important;
+      }
+
+      .w-mini-heatmap {
+        min-height: 520px;
+      }
+
+      .w-top-liq-pools {
+        min-height: 420px;
+      }
+    }
+
+    @media (max-width: 768px) {
+      body {
+        padding: 8px;
+        padding-left: 68px; /* account for compact sidebar (60px) + gap */
+      }
+
+      .top-bar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 12px;
+        padding: 12px;
+      }
+
+      .top-bar-controls {
+        width: 100%;
+        justify-content: space-between;
+      }
+
+      .market-extras-row {
+        grid-template-columns: 1fr;
+        gap: 16px;
+        flex: none;
+        height: auto;
+      }
+
+      .top-pools-grid {
+        grid-template-columns: 1fr;
+      }
+
+      .perf-stats-grid {
+        grid-template-columns: repeat(3, 1fr);
+        gap: 6px;
+      }
+
+      .score-breakdown-grid {
+        grid-template-columns: 1fr;
+      }
+    }
   </style>
 </head>
 
@@ -430,6 +519,9 @@
         <path d="M13 10V3L4 14H11V21L20 10H13Z" stroke="#F0B90B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
       <div class="sidebar-logo-text">JDA <span>Monitor</span></div>
+      <button id="btn-sidebar-toggle" class="sidebar-toggle-btn" title="Toggle Sidebar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      </button>
     </div>
     <ul class="sidebar-nav">
       <li class="sidebar-item" id="nav-cockpit">
@@ -550,7 +642,7 @@
       <div class="cockpit-col">
         <!-- Widget 5b: Performance Stats Row -->
         <div class="cockpit-widget" id="widget-perf-stats" style="flex: 0 0 auto; padding: 10px; background: var(--bg-surface); border: 1px solid var(--border-color); border-radius: 8px;">
-          <div style="display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px;">
+          <div class="perf-stats-grid">
             <!-- Tile 1 -->
             <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 4px; text-align: center;">
               <div style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; letter-spacing: 0.3px;">Total Trades</div>
@@ -627,7 +719,7 @@
             <span>Liquidity Sweep Map (24H & 3D)</span>
             <span style="font-family: var(--font-mono); color: var(--accent-primary); font-size: 14px;" id="live-btc-price">$0.00</span>
           </div>
-          <div style="flex: 1; display: flex; flex-direction: column; gap: 16px; height: calc(100% - 24px); min-height: 480px;">
+          <div style="flex: 1; display: flex; flex-direction: column; gap: 10px; height: calc(100% - 24px); min-height: 480px;">
             <div id="chart-mini-heatmap-24h" style="flex: 1; width: 100%; min-height: 220px;"></div>
             <div id="chart-mini-heatmap-3d" style="flex: 1; width: 100%; min-height: 220px;"></div>
           </div>
@@ -736,7 +828,7 @@
 
 
         <!-- Widget 6 & 7: Market Extras (Fear & Greed + ETF Flow) side-by-side -->
-        <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 16px; flex: 0 0 250px;">
+        <div class="market-extras-row">
           <!-- Fear & Greed Index -->
           <div class="cockpit-widget" id="widget-fear-greed" style="display: flex; flex-direction: column; justify-content: space-between; padding: 12px;">
             <div class="widget-title" style="margin-bottom: 8px;">
@@ -812,7 +904,7 @@
           <div class="widget-title" style="margin-bottom: 8px;">
             <span>🔥 Top Liquidation Pools</span>
           </div>
-          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; flex: 1; font-size: 11px;">
+          <div class="top-pools-grid">
             <!-- Left Box: 24H Pools -->
             <div style="display: flex; flex-direction: column; gap: 8px;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
@@ -863,7 +955,7 @@
     </div>
   </div>
 
-  <script src="cockpit.js?v=2.2.3"></script>
+  <script src="cockpit.js?v=2.2.6"></script>
 </body>
 
 </html>

@@ -1398,7 +1398,7 @@ function renderHeatmap3D(data) {
   myChart3D.setOption({
     backgroundColor: '#010409',
     axisPointer: { show: true, type: 'cross', lineStyle: { color: '#F0B90B', width: 1, type: 'dashed' } },
-    grid: { top: '5%', bottom: '10%', left: '8%', right: '4%', show: true, backgroundColor: '#0a0e17', borderColor: 'transparent' },
+    grid: { top: '5%', bottom: '10%', left: '8%', right: '4%', show: true, backgroundColor: '#46035c', borderColor: 'transparent' },
     tooltip: {
       trigger: 'item',
       alwaysShowContent: false,
@@ -1462,13 +1462,13 @@ function renderHeatmap3D(data) {
     },
     xAxis: {
       type: 'category', data: xAxisData, boundaryGap: true,
-      splitLine: { show: true, lineStyle: { color: '#1a2030' } },
-      axisLine: { lineStyle: { color: '#1a2030' } },
+      splitLine: { show: true, lineStyle: { color: '#31235a' } },
+      axisLine: { lineStyle: { color: '#31235a' } },
       axisLabel: { color: '#848E9C', fontSize: 10, formatter: v => (v || '').split(', ')[1] || v }
     },
     yAxis: [
-      { type: 'category', data: yAxisData, splitLine: { show: true, lineStyle: { color: '#1a2030' } },
-        axisLine: { lineStyle: { color: '#1a2030' } },
+      { type: 'category', data: yAxisData, splitLine: { show: true, lineStyle: { color: '#31235a' } },
+        axisLine: { lineStyle: { color: '#31235a' } },
         axisLabel: { color: '#848E9C', fontSize: 10, formatter: v => '$' + parseInt(v).toLocaleString() } },
       { type: 'value', scale: true, min: minPrice, max: maxPrice, show: false }
     ],
@@ -1476,7 +1476,7 @@ function renderHeatmap3D(data) {
       show: true, min: 0, max: maxIntensity, calculable: true, orient: 'horizontal', left: 'center', bottom: '2%',
       itemWidth: 15, itemHeight: 250,
       textStyle: { color: '#848E9C', fontSize: 11 },
-      inRange: { color: ['#0a0e17','#373d77','#28738f','#238c89','#24a480','#3ab56e','#66c751','#F0B90B'] }
+      inRange: { color: ['#46035c','#373d77','#28738f','#238c89','#24a480','#3ab56e','#66c751','#F0B90B'] }
     },
     series: [
       { name: 'Liq 3D', type: 'heatmap', data: heatmapSeries ? heatmapSeries.data : [],

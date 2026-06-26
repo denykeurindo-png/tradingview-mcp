@@ -1361,6 +1361,7 @@ tr:hover td {
   flex-direction: column;
   z-index: 1000;
   overflow: hidden;
+  transition: width 0.3s ease;
 }
 
 .sidebar-logo {
@@ -1369,6 +1370,7 @@ tr:hover td {
   gap: 10px;
   padding: 20px 20px 16px;
   border-bottom: 1px solid var(--border-color);
+  transition: padding 0.3s ease;
 }
 
 .sidebar-logo-text {
@@ -1451,6 +1453,7 @@ tr:hover td {
 /* Shift all content to the right of sidebar */
 body {
   padding-left: 220px;
+  transition: padding-left 0.3s ease;
 }
 
 /* Top bar replaces full app-header */
@@ -1489,10 +1492,62 @@ body {
 .app-header { display: none !important; }
 
 @media (max-width: 768px) {
-  .sidebar { width: 60px; }
-  .sidebar-logo-text, .sidebar-item a span, .sidebar-logout span { display: none; }
-  .sidebar-item a { padding: 12px; justify-content: center; }
-  body { padding-left: 60px; }
+  .sidebar { width: 60px !important; }
+  .sidebar-logo-text, .sidebar-item a span, .sidebar-logout span { display: none !important; }
+  .sidebar-item a { padding: 12px !important; justify-content: center !important; }
+  body { padding-left: 60px !important; }
+  .sidebar-toggle-btn { display: none !important; }
+}
+
+/* Sidebar toggle button */
+.sidebar-toggle-btn {
+  background: transparent;
+  border: none;
+  color: var(--text-muted);
+  cursor: pointer;
+  padding: 4px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-left: auto;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+.sidebar-toggle-btn:hover {
+  color: var(--text-main);
+  background: rgba(255, 255, 255, 0.05);
+}
+.sidebar-toggle-btn svg {
+  width: 16px;
+  height: 16px;
+  transition: transform 0.3s;
+}
+
+/* Sidebar Minimized State (Desktop) */
+body.sidebar-minimized {
+  padding-left: 60px;
+}
+body.sidebar-minimized .sidebar {
+  width: 60px;
+}
+body.sidebar-minimized .sidebar-logo {
+  padding: 20px 12px 16px;
+  justify-content: center;
+}
+body.sidebar-minimized .sidebar-logo-text,
+body.sidebar-minimized .sidebar-item a span,
+body.sidebar-minimized .sidebar-logout span {
+  display: none;
+}
+body.sidebar-minimized .sidebar-item a {
+  padding: 12px;
+  justify-content: center;
+}
+body.sidebar-minimized .sidebar-toggle-btn {
+  margin-left: 0;
+}
+body.sidebar-minimized .sidebar-toggle-btn svg {
+  transform: rotate(180deg);
 }
 
 /* ── KPI Hover Tooltips (Glassmorphism & Sleek Animations) ───────────────── */

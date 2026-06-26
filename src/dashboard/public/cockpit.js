@@ -1,3 +1,8 @@
+// Initial load of sidebar minimize state (runs immediately to prevent flicker)
+if (localStorage.getItem('sidebar-minimized') === 'true') {
+  document.body.classList.add('sidebar-minimized');
+}
+
 const EXCHANGE_RATE = 6.96; // 1 USD = 6.96 Bolivianos (Bs.)
 
 // DOM Elements
@@ -169,11 +174,11 @@ function initCharts() {
 
   const heatmapDom24h = document.getElementById('chart-mini-heatmap-24h');
   if (heatmapDom24h) {
-    miniHeatmapChart24h = echarts.init(heatmapDom24h, 'dark');
+    miniHeatmapChart24h = echarts.init(heatmapDom24h, 'dark', { renderer: 'canvas' });
   }
   const heatmapDom3d = document.getElementById('chart-mini-heatmap-3d');
   if (heatmapDom3d) {
-    miniHeatmapChart3d = echarts.init(heatmapDom3d, 'dark');
+    miniHeatmapChart3d = echarts.init(heatmapDom3d, 'dark', { renderer: 'canvas' });
   }
 }
 
@@ -596,88 +601,18 @@ async function updateMarketExtras() {
   }
 }
 
-function renderSingleMiniChart(chartInstance, title, heatmapData, pools) {
+function renderSingleMiniChart(chartInstance, title, heatmapData, is3d = false) {
   if (!chartInstance) return;
 
+  const xAxisData = heatmapData.xAxis || [];
+  const yAxisData = heatmapData.yAxis || [];
+  const minPrice = yAxisData.length > 0 ? parseFloat(yAxisData[0]) : null;
+  const maxPrice = yAxisData.length > 0 ? parseFloat(yAxisData[yAxisData.length - 1]) : null;
+
   const candlestickSeries = heatmapData.series.find(s => s.type === 'candlestick');
-  if (!candlestickSeries) return;
+  const heatmapSeries = heatmapData.series.find(s => s.type === 'heatmap');
 
-  const slicedX = heatmapData.xAxis.slice(-40);
-  const slicedCandles = candlestickSeries.data.slice(-40).map(c => [
-    parseFloat(c[0]), parseFloat(c[1]), parseFloat(c[2]), parseFloat(c[3])
-  ]);
-
-  const resistancePools = pools.above;
-  const supportPools = pools.below;
-  const maxLeverage = pools.maxLeverage || 1;
-
-  const getIntensityColor = (p) => {
-    if (p.isLiquidated) return '#848E9C';
-    const ratio = p.leverage / maxLeverage;
-    if (ratio >= 0.7) return '#bfdc21'; // High
-    if (ratio >= 0.3) return '#3ab56e'; // Medium
-    return '#3a9db5'; // Low
-  };
-
-  const markLines = [];
-  resistancePools.forEach(p => {
-    const isLiq = p.isLiquidated;
-    const color = getIntensityColor(p);
-    const type = isLiq ? 'dotted' : 'dashed';
-    const labelFormatter = isLiq
-      ? `[LIQ] $${Math.round(p.price).toLocaleString()} ($${formatIntensity(p.leverage)})`
-      : `$${Math.round(p.price).toLocaleString()} ($${formatIntensity(p.leverage)})`;
-    markLines.push({
-      yAxis: p.price,
-      name: `RES $${Math.round(p.price)}`,
-      lineStyle: { color: color, type: type, width: 1.5 },
-      label: {
-        formatter: labelFormatter,
-        position: 'end',
-        color: color,
-        fontSize: 10
-      }
-    });
-  });
-
-  supportPools.forEach(p => {
-    const isLiq = p.isLiquidated;
-    const color = getIntensityColor(p);
-    const type = isLiq ? 'dotted' : 'dashed';
-    const labelFormatter = isLiq
-      ? `[LIQ] $${Math.round(p.price).toLocaleString()} ($${formatIntensity(p.leverage)})`
-      : `$${Math.round(p.price).toLocaleString()} ($${formatIntensity(p.leverage)})`;
-    markLines.push({
-      yAxis: p.price,
-      name: `SUP $${Math.round(p.price)}`,
-      lineStyle: { color: color, type: type, width: 1.5 },
-      label: {
-        formatter: labelFormatter,
-        position: 'end',
-        color: color,
-        fontSize: 10
-      }
-    });
-  });
-
-  let visibleMin = Infinity;
-  let visibleMax = -Infinity;
-  if (slicedCandles.length > 0) {
-    slicedCandles.forEach(c => {
-      const low = c[2];
-      const high = c[3];
-      if (!isNaN(low) && low < visibleMin) visibleMin = low;
-      if (!isNaN(high) && high > visibleMax) visibleMax = high;
-    });
-  }
-
-  let centerPrice = currentBtcPrice || 60000;
-  if (visibleMin !== Infinity && visibleMax !== -Infinity) {
-    centerPrice = (visibleMin + visibleMax) / 2;
-  }
-
-  const yAxisMin = Math.round(centerPrice - 2000);
-  const yAxisMax = Math.round(centerPrice + 2000);
+  const maxIntensity = heatmapData.visualMap ? heatmapData.visualMap.max : 20000000;
 
   const option = {
     backgroundColor: 'transparent',
@@ -687,46 +622,154 @@ function renderSingleMiniChart(chartInstance, title, heatmapData, pools) {
       left: 10,
       top: 0
     },
-    grid: { top: 30, bottom: 24, left: 55, right: 90 },
+    axisPointer: {
+      show: true,
+      type: 'cross',
+      lineStyle: { color: is3d ? '#F0B90B' : '#bfdc21', width: 1, type: 'dashed' }
+    },
     tooltip: {
-      trigger: 'axis',
-      axisPointer: { type: 'cross' }
+      trigger: 'item',
+      alwaysShowContent: false,
+      hideDelay: 0,
+      transitionDuration: 0,
+      backgroundColor: '#121212',
+      borderColor: '#2C2C2E',
+      borderWidth: 1,
+      textStyle: { color: '#FFFFFF', fontFamily: 'Inter' },
+      formatter: function (params) {
+        if (!params || !params.value) return '';
+
+        if (params.seriesName === 'Liquidation Leverage') {
+          const val = params.value;
+          const time = xAxisData[val[0]] || '';
+          const price = yAxisData[val[1]] || 0;
+          const intensity = val[2] || 0;
+          const priceFormatted = parseFloat(price).toFixed(2);
+          const intensityFormatted = formatIntensity(intensity);
+
+          let html = `<div style="font-family: var(--font-sans); padding: 6px 10px; font-size: 13px; min-width: 220px; line-height: 1.6;">`;
+          html += `<strong style="color: #98989D; font-size: 11px; display: block; margin-bottom: 8px;">${time}</strong>`;
+          html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">`;
+          html += `<span style="color: #FFFFFF; font-size: 12px; display: flex; align-items: center;">`;
+          html += `<span style="color: #FFD60A; margin-right: 8px; font-size: 14px;">●</span>Price`;
+          html += `</span>`;
+          html += `<span style="font-family: var(--font-mono); color: #FFFFFF; font-weight: 500; font-size: 12px;">${priceFormatted}</span>`;
+          html += `</div>`;
+          html += `<div style="display: flex; justify-content: space-between; align-items: center;">`;
+          html += `<span style="color: #FFFFFF; font-size: 12px; display: flex; align-items: center;">`;
+          html += `<span style="color: #FFD60A; margin-right: 8px; font-size: 14px;">●</span>Liquidation Leverage`;
+          html += `</span>`;
+          html += `<span style="font-family: var(--font-mono); color: #FFFFFF; font-weight: 500; font-size: 12px;">${intensityFormatted}</span>`;
+          html += `</div></div>`;
+          return html;
+        }
+
+        if (params.seriesName === 'BTC Price') {
+          const time = xAxisData[params.dataIndex] || '';
+          const ohlc = params.value;
+          let open, close, low, high;
+          if (ohlc.length === 5) {
+            open = parseFloat(ohlc[1]); close = parseFloat(ohlc[2]);
+            low = parseFloat(ohlc[3]); high = parseFloat(ohlc[4]);
+          } else {
+            open = parseFloat(ohlc[0]); close = parseFloat(ohlc[1]);
+            low = parseFloat(ohlc[2]); high = parseFloat(ohlc[3]);
+          }
+
+          let html = `<div style="font-family: var(--font-sans); padding: 6px 10px; font-size: 13px; min-width: 180px; line-height: 1.6;">`;
+          html += `<strong style="color: #98989D; font-size: 11px; display: block; margin-bottom: 8px;">${time}</strong>`;
+          html += `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span style="color: #98989D; font-size: 12px;">Open:</span><span style="font-family: var(--font-mono); color: #FFFFFF; font-weight: 500; font-size: 12px;">${formatUSD(open)}</span></div>`;
+          html += `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span style="color: #98989D; font-size: 12px;">Close:</span><span style="font-family: var(--font-mono); color: #FFFFFF; font-weight: 500; font-size: 12px;">${formatUSD(close)}</span></div>`;
+          html += `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span style="color: #98989D; font-size: 12px;">High:</span><span style="font-family: var(--font-mono); color: ${is3d ? '#0ECB81' : '#32D74B'}; font-weight: 500; font-size: 12px;">${formatUSD(high)}</span></div>`;
+          html += `<div style="display: flex; justify-content: space-between;"><span style="color: #98989D; font-size: 12px;">Low:</span><span style="font-family: var(--font-mono); color: ${is3d ? '#F6465D' : '#FF453A'}; font-weight: 500; font-size: 12px;">${formatUSD(low)}</span></div>`;
+          html += `</div>`;
+          return html;
+        }
+        return '';
+      }
+    },
+    grid: {
+      top: 20, bottom: 20, left: 55, right: 10,
+      show: true,
+      backgroundColor: '#46035c',
+      borderColor: 'transparent'
     },
     xAxis: {
       type: 'category',
-      data: slicedX.map(t => t.split(',')[1] || t), // show HH:MM only
-      axisLine: { lineStyle: { color: '#2B3139' } },
-      axisLabel: { color: '#848E9C', fontSize: 10 }
-    },
-    yAxis: {
-      type: 'value',
-      scale: false,
-      min: yAxisMin,
-      max: yAxisMax,
-      axisLine: { lineStyle: { color: '#2B3139' } },
-      axisLabel: { color: '#848E9C', fontSize: 10 },
-      splitLine: { lineStyle: { color: 'rgba(255,255,255,0.03)' } }
-    },
-    series: [{
-      name: 'BTC Price',
-      type: 'candlestick',
-      data: slicedCandles,
-      itemStyle: {
-        color: '#0ECB81',
-        color0: '#F6465D',
-        borderColor: '#0ECB81',
-        borderColor0: '#F6465D'
-      },
-      markLine: {
-        symbol: ['none', 'none'],
-        data: markLines
+      data: xAxisData,
+      boundaryGap: true,
+      splitLine: { show: true, lineStyle: { color: '#31235a' } },
+      axisLine: { lineStyle: { color: '#31235a' } },
+      axisLabel: {
+        color: '#848E9C', fontSize: 10,
+        formatter: function (value) {
+          if (!value) return '';
+          const parts = value.split(', ');
+          return parts[1] || value;
+        }
       }
-    }],
+    },
+    yAxis: [
+      {
+        type: 'category',
+        data: yAxisData,
+        splitArea: { show: false },
+        splitLine: { show: true, lineStyle: { color: '#31235a' } },
+        axisLine: { lineStyle: { color: '#31235a' } },
+        axisLabel: {
+          color: '#848E9C', fontSize: 10,
+          formatter: function (value) { return formatUSD(parseFloat(value)); }
+        }
+      },
+      {
+        type: 'value', scale: true, min: minPrice, max: maxPrice, show: false
+      }
+    ],
+    visualMap: {
+      show: false,
+      seriesIndex: 0,
+      min: 0,
+      max: maxIntensity,
+      inRange: {
+        color: is3d ? [
+          '#46035c', '#373d77', '#28738f', '#238c89',
+          '#24a480', '#3ab56e', '#66c751', '#F0B90B'
+        ] : [
+          '#46035c', '#373d77', '#28738f', '#238c89',
+          '#24a480', '#3ab56e', '#66c751', '#bfdc21'
+        ]
+      }
+    },
+    series: [
+      {
+        name: 'Liquidation Leverage',
+        type: 'heatmap',
+        data: heatmapSeries ? heatmapSeries.data : [],
+        progressive: 0,
+        progressiveThreshold: 3000,
+        label: { show: false },
+        emphasis: { itemStyle: { shadowBlur: 10, shadowColor: 'rgba(0, 0, 0, 0.5)' } }
+      },
+      {
+        name: 'BTC Price',
+        type: 'candlestick',
+        yAxisIndex: 1,
+        data: candlestickSeries ? candlestickSeries.data.map(c => [
+          parseFloat(c[0]), parseFloat(c[1]), parseFloat(c[2]), parseFloat(c[3])
+        ]) : [],
+        itemStyle: {
+          color: is3d ? '#0ECB81' : '#32D74B',
+          color0: is3d ? '#F6465D' : '#FF453A',
+          borderColor: is3d ? '#0ECB81' : '#32D74B',
+          borderColor0: is3d ? '#F6465D' : '#FF453A'
+        }
+      }
+    ],
     dataZoom: [
-      { type: 'inside', xAxisIndex: 0, filterMode: 'filter' },
-      { type: 'inside', yAxisIndex: 0, filterMode: 'empty' }
+      { type: 'inside', xAxisIndex: 0, filterMode: 'filter' }
     ]
   };
+
   chartInstance.setOption(option, true);
 }
 
@@ -862,9 +905,9 @@ async function updateMiniHeatmap() {
     }
 
     // Render both charts stacked
-    renderSingleMiniChart(miniHeatmapChart24h, '24H SWEEP MAP', data, pools24h);
+    renderSingleMiniChart(miniHeatmapChart24h, '24H SWEEP MAP', data, false);
     if (data3d) {
-      renderSingleMiniChart(miniHeatmapChart3d, '3D SWEEP MAP', data3d, pools3d);
+      renderSingleMiniChart(miniHeatmapChart3d, '3D SWEEP MAP', data3d, true);
     }
 
     const renderPoolList = (pools, isAbove, maxLeverage = 1) => {
@@ -1187,6 +1230,23 @@ window.addEventListener('DOMContentLoaded', () => {
   // Add active state to nav-cockpit sidebar item
   const navCockpit = document.getElementById('nav-cockpit');
   if (navCockpit) navCockpit.classList.add('active');
+
+  // Sidebar Minimize Toggle
+  const btnToggle = document.getElementById('btn-sidebar-toggle');
+  if (btnToggle) {
+    btnToggle.addEventListener('click', () => {
+      document.body.classList.toggle('sidebar-minimized');
+      const isMinimized = document.body.classList.contains('sidebar-minimized');
+      localStorage.setItem('sidebar-minimized', isMinimized ? 'true' : 'false');
+      // Resize charts to fit new layout width
+      setTimeout(() => {
+        if (gaugeChart) gaugeChart.resize();
+        if (miniHeatmapChart24h) miniHeatmapChart24h.resize();
+        if (miniHeatmapChart3d) miniHeatmapChart3d.resize();
+        if (equityCurveChart) equityCurveChart.resize();
+      }, 300);
+    });
+  }
 
   initCharts();
 
