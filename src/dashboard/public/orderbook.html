@@ -295,6 +295,23 @@
   </div>
 
   <div class="app-container">
+    <!-- Market Intelligence Summary Card -->
+    <div class="market-summary-card" id="market-summary-card" style="margin-bottom: 24px; background: rgba(30, 35, 41, 0.95); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 20px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15); display: none;">
+      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding-bottom: 10px;">
+        <h3 style="margin: 0; color: #EAECEF; display: flex; align-items: center; gap: 8px; font-size: 16px;">
+          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #F0B90B;"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          CoinGlass Market Summary & Analysis
+        </h3>
+        <span id="summary-verdict" style="font-weight: bold; padding: 6px 12px; border-radius: 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">LOADING...</span>
+      </div>
+      <div id="summary-content" style="color: #EAECEF; font-size: 14px; line-height: 1.6; margin-bottom: 15px;">
+        Mengambil analisis data dari seluruh laporan CoinGlass...
+      </div>
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 15px;" id="summary-metrics-grid">
+        <!-- Dynamic metrics populated via JS -->
+      </div>
+    </div>
+
     <!-- Top KPI Row (cols-4) -->
     <section class="kpi-row cols-4" style="margin-top: 10px;">
       <!-- BTC Price Card -->
