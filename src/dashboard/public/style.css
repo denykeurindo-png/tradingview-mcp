@@ -59,7 +59,7 @@ body {
 }
 
 .app-container {
-  max-width: 1440px;
+  max-width: 100%;
   margin: 0 auto;
   display: flex;
   flex-direction: column;
@@ -375,7 +375,7 @@ body {
 /* Tables */
 .table-container {
   overflow-x: auto;
-  max-height: 380px;
+  max-height: 800px;
 }
 
 table {
