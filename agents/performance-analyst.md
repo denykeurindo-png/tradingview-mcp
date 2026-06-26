@@ -1,7 +1,7 @@
 ---
 name: performance-analyst
 description: Trading strategy performance analyst for tvMonitor. Analyzes local trade logs and correlates results with cached CoinGlass metrics.
-model: sonnet
+model: opus
 tools:
   - "*"
 ---
