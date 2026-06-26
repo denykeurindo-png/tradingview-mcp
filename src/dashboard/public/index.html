@@ -14,7 +14,7 @@
   <!-- Chart.js -->
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
   <!-- Style -->
-  <link rel="stylesheet" href="style.css?v=2.1.0">
+  <link rel="stylesheet" href="style.css?v=2.2.6">
   <style>
     :root {
       --bg-primary: #0B0E11;
@@ -32,7 +32,10 @@
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
         <path d="M13 10V3L4 14H11V21L20 10H13Z" stroke="#F0B90B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
-      <div class="sidebar-logo-text">JDA <span>Monitor</span></div>
+      <div class="sidebar-logo-text">JDA <span>Monitor</span>      <button id="btn-sidebar-toggle" class="sidebar-toggle-btn" title="Toggle Sidebar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      </button>
+    </div>
     </div>
     <ul class="sidebar-nav">
       <li class="sidebar-item" id="nav-cockpit">
@@ -293,6 +296,41 @@
 
   <!-- App logic -->
   <script src="app.js?v=2.1.0"></script>
+  <script>
+    // Initial load of sidebar minimize state (runs immediately to prevent flicker)
+    if (localStorage.getItem('sidebar-minimized') === 'true') {
+      document.body.classList.add('sidebar-minimized');
+    }
+    document.addEventListener('DOMContentLoaded', () => {
+      const btnToggle = document.getElementById('btn-sidebar-toggle');
+      if (btnToggle) {
+        btnToggle.addEventListener('click', () => {
+          document.body.classList.toggle('sidebar-minimized');
+          const isMinimized = document.body.classList.contains('sidebar-minimized');
+          localStorage.setItem('sidebar-minimized', isMinimized ? 'true' : 'false');
+          
+          // Trigger resize for ECharts/Chart.js if present
+          setTimeout(() => {
+            if (typeof myChart !== 'undefined' && myChart && typeof myChart.resize === 'function') {
+              myChart.resize();
+            }
+            if (typeof gaugeChart !== 'undefined' && gaugeChart && typeof gaugeChart.resize === 'function') {
+              gaugeChart.resize();
+            }
+            if (typeof miniHeatmapChart24h !== 'undefined' && miniHeatmapChart24h && typeof miniHeatmapChart24h.resize === 'function') {
+              miniHeatmapChart24h.resize();
+            }
+            if (typeof miniHeatmapChart3d !== 'undefined' && miniHeatmapChart3d && typeof miniHeatmapChart3d.resize === 'function') {
+              miniHeatmapChart3d.resize();
+            }
+            if (typeof equityCurveChart !== 'undefined' && equityCurveChart && typeof equityCurveChart.resize === 'function') {
+              equityCurveChart.resize();
+            }
+          }, 300);
+        });
+      }
+    });
+  </script>
 </body>
 
 </html>
