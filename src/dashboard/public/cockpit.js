@@ -464,6 +464,9 @@ async function renderActivePosition() {
       return;
     }
 
+    const titleEl = document.getElementById('active-position-title');
+    if (titleEl) titleEl.innerText = 'Active Market Position';
+
     // Calculate live floating PnL
     const diff = activeTrade.direction === 'LONG' 
       ? (currentBtcPrice - activeTrade.entry) 
@@ -1142,6 +1145,9 @@ window.addEventListener('resize', () => {
 
 // Render LSR Bot Status when no active positions exist
 function renderLsrBotStatusEmptyState() {
+  const titleEl = document.getElementById('active-position-title');
+  if (titleEl) titleEl.innerText = 'LSR Bot Status & Parameters';
+
   if (!latestBotStatus) {
     activePositionContent.innerHTML = `<div class="no-active-trade">No active trade. Loading bot status...</div>`;
     return;
