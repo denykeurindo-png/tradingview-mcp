@@ -607,28 +607,40 @@ function renderSingleMiniChart(chartInstance, title, heatmapData, pools) {
 
   const markLines = [];
   resistancePools.forEach(p => {
+    const isLiq = p.isLiquidated;
+    const color = isLiq ? '#848E9C' : '#F6465D';
+    const type = isLiq ? 'dotted' : 'dashed';
+    const labelFormatter = isLiq
+      ? `[LIQ] $${Math.round(p.price).toLocaleString()} ($${formatIntensity(p.leverage)})`
+      : `$${Math.round(p.price).toLocaleString()} ($${formatIntensity(p.leverage)})`;
     markLines.push({
       yAxis: p.price,
       name: `RES $${Math.round(p.price)}`,
-      lineStyle: { color: '#F6465D', type: 'dashed', width: 1.5 },
+      lineStyle: { color: color, type: type, width: 1.5 },
       label: {
-        formatter: `$${Math.round(p.price).toLocaleString()} ($${formatIntensity(p.leverage)})`,
+        formatter: labelFormatter,
         position: 'end',
-        color: '#F6465D',
+        color: color,
         fontSize: 10
       }
     });
   });
 
   supportPools.forEach(p => {
+    const isLiq = p.isLiquidated;
+    const color = isLiq ? '#848E9C' : '#0ECB81';
+    const type = isLiq ? 'dotted' : 'dashed';
+    const labelFormatter = isLiq
+      ? `[LIQ] $${Math.round(p.price).toLocaleString()} ($${formatIntensity(p.leverage)})`
+      : `$${Math.round(p.price).toLocaleString()} ($${formatIntensity(p.leverage)})`;
     markLines.push({
       yAxis: p.price,
       name: `SUP $${Math.round(p.price)}`,
-      lineStyle: { color: '#0ECB81', type: 'dashed', width: 1.5 },
+      lineStyle: { color: color, type: type, width: 1.5 },
       label: {
-        formatter: `$${Math.round(p.price).toLocaleString()} ($${formatIntensity(p.leverage)})`,
+        formatter: labelFormatter,
         position: 'end',
-        color: '#0ECB81',
+        color: color,
         fontSize: 10
       }
     });
@@ -733,21 +745,29 @@ async function updateMiniHeatmap() {
         }
       }
 
-      let maxHigh = refPrice, minLow = refPrice;
+      // Calculate recent min/max price bounds from the last 40 candles (matching visible chart)
+      let maxHighRecent = refPrice;
+      let minLowRecent = refPrice;
       if (cs && cs.data) {
-        cs.data.forEach(c => {
+        const recentCandles = cs.data.slice(-40);
+        recentCandles.forEach(c => {
           const low = parseFloat(c[2]), high = parseFloat(c[3]);
-          if (!isNaN(high) && high > maxHigh) maxHigh = high;
-          if (!isNaN(low) && low < minLow) minLow = low;
+          if (!isNaN(high) && high > maxHighRecent) maxHighRecent = high;
+          if (!isNaN(low) && low < minLowRecent) minLowRecent = low;
         });
       }
 
       const yAxisData = heatmapData.yAxis || [];
-      const latestXIdx = heatmapData.xAxis ? heatmapData.xAxis.length - 1 : 0;
-      const leveragePerY = {};
+      const xAxisLength = heatmapData.xAxis ? heatmapData.xAxis.length : 0;
+      const latestXIdx = xAxisLength - 1;
+      const startXIdx = Math.max(0, latestXIdx - 40);
+
+      const leverageLatest = {};
+      const leverageMaxRecent = {};
       
       yAxisData.forEach((_, idx) => {
-        leveragePerY[idx] = 0;
+        leverageLatest[idx] = 0;
+        leverageMaxRecent[idx] = 0;
       });
 
       hs.data.forEach(item => {
@@ -755,24 +775,51 @@ async function updateMiniHeatmap() {
         const yIdx = item[1];
         const val = parseFloat(item[2] || 0);
         if (xIdx === latestXIdx) {
-          leveragePerY[yIdx] = val;
+          leverageLatest[yIdx] = val;
+        }
+        if (xIdx >= startXIdx && xIdx <= latestXIdx) {
+          if (val > leverageMaxRecent[yIdx]) {
+            leverageMaxRecent[yIdx] = val;
+          }
         }
       });
 
       const levels = [];
-      Object.keys(leveragePerY).forEach(yIdxStr => {
+      Object.keys(leverageLatest).forEach(yIdxStr => {
         const yIdx = parseInt(yIdxStr, 10);
         const priceStr = yAxisData[yIdx];
         if (!priceStr) return;
         const price = parseFloat(priceStr);
-        const leverage = leveragePerY[yIdx];
-        const distancePercent = ((price - refPrice) / refPrice) * 100;
+        const latestVal = leverageLatest[yIdx];
+        const maxRecentVal = leverageMaxRecent[yIdx];
         const isAbove = price > refPrice;
-        levels.push({ price, leverage, distance: distancePercent, isAbove, isLiquidated: false });
+
+        // Check if price crossed this level recently
+        let isLiquidated = false;
+        if (isAbove) {
+          if (price <= maxHighRecent) {
+            isLiquidated = true;
+          }
+        } else {
+          if (price >= minLowRecent) {
+            isLiquidated = true;
+          }
+        }
+
+        // Keep displaying the pool if it has active leverage OR if it was liquidated recently (using historical max value)
+        let leverage = latestVal;
+        if (isLiquidated && maxRecentVal > 0) {
+          leverage = maxRecentVal;
+        }
+
+        if (leverage <= 0) return;
+
+        const distancePercent = ((price - refPrice) / refPrice) * 100;
+        levels.push({ price, leverage, distance: distancePercent, isAbove, isLiquidated });
       });
 
-      const aboveLevels = levels.filter(l => l.isAbove && l.leverage > 0).sort((a, b) => b.leverage - a.leverage).slice(0, 5).sort((a, b) => a.price - b.price);
-      const belowLevels = levels.filter(l => !l.isAbove && l.leverage > 0).sort((a, b) => b.leverage - a.leverage).slice(0, 5).sort((a, b) => b.price - a.price);
+      const aboveLevels = levels.filter(l => l.isAbove).sort((a, b) => b.leverage - a.leverage).slice(0, 5).sort((a, b) => a.price - b.price);
+      const belowLevels = levels.filter(l => !l.isAbove).sort((a, b) => b.leverage - a.leverage).slice(0, 5).sort((a, b) => b.price - a.price);
 
       const maxLeverage = Math.max(...levels.map(l => l.leverage), 1);
       return { above: aboveLevels, below: belowLevels, maxLeverage };

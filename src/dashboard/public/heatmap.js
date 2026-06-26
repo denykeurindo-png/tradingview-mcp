@@ -242,11 +242,16 @@ function renderLiquidationTables(data) {
   }
 
   const yAxisData = data.yAxis || [];
-  const latestXIdx = data.xAxis ? data.xAxis.length - 1 : 0;
-  const leveragePerY = {};
+  const xAxisLength = data.xAxis ? data.xAxis.length : 0;
+  const latestXIdx = xAxisLength - 1;
+  const startXIdx = Math.max(0, latestXIdx - 40);
+
+  const leverageLatest = {};
+  const leverageMaxRecent = {};
   
   yAxisData.forEach((_, idx) => {
-    leveragePerY[idx] = 0;
+    leverageLatest[idx] = 0;
+    leverageMaxRecent[idx] = 0;
   });
 
   heatmapSeries.data.forEach(item => {
@@ -254,24 +259,63 @@ function renderLiquidationTables(data) {
     const yIdx = item[1];
     const val = parseFloat(item[2] || 0);
     if (xIdx === latestXIdx) {
-      leveragePerY[yIdx] = val;
+      leverageLatest[yIdx] = val;
+    }
+    if (xIdx >= startXIdx && xIdx <= latestXIdx) {
+      if (val > leverageMaxRecent[yIdx]) {
+        leverageMaxRecent[yIdx] = val;
+      }
     }
   });
 
+  // Calculate recent min/max price bounds from the last 40 candles (matching visible chart)
+  let maxHighRecent = currentPrice;
+  let minLowRecent = currentPrice;
+  if (candlestickSeries && candlestickSeries.data) {
+    const recentCandles = candlestickSeries.data.slice(-40);
+    recentCandles.forEach(c => {
+      const low = parseFloat(c[2]), high = parseFloat(c[3]);
+      if (!isNaN(high) && high > maxHighRecent) maxHighRecent = high;
+      if (!isNaN(low) && low < minLowRecent) minLowRecent = low;
+    });
+  }
+
   const levels = [];
-  Object.keys(leveragePerY).forEach(yIdxStr => {
+  Object.keys(leverageLatest).forEach(yIdxStr => {
     const yIdx = parseInt(yIdxStr, 10);
     const priceStr = yAxisData[yIdx];
     if (!priceStr) return;
     const price = parseFloat(priceStr);
-    const leverage = leveragePerY[yIdx];
-    const distancePercent = ((price - currentPrice) / currentPrice) * 100;
+    const latestVal = leverageLatest[yIdx];
+    const maxRecentVal = leverageMaxRecent[yIdx];
     const isAbove = price > currentPrice;
-    levels.push({ price, leverage, distance: distancePercent, isAbove, isLiquidated: false });
+
+    // Check if price crossed this level recently
+    let isLiquidated = false;
+    if (isAbove) {
+      if (price <= maxHighRecent) {
+        isLiquidated = true;
+      }
+    } else {
+      if (price >= minLowRecent) {
+        isLiquidated = true;
+      }
+    }
+
+    // Keep displaying the pool if it has active leverage OR if it was liquidated recently (using historical max value)
+    let leverage = latestVal;
+    if (isLiquidated && maxRecentVal > 0) {
+      leverage = maxRecentVal;
+    }
+
+    if (leverage <= 0) return;
+
+    const distancePercent = ((price - currentPrice) / currentPrice) * 100;
+    levels.push({ price, leverage, distance: distancePercent, isAbove, isLiquidated });
   });
 
-  const aboveLevels = levels.filter(l => l.isAbove && l.leverage > 0).sort((a, b) => b.leverage - a.leverage).slice(0, 5).sort((a, b) => a.price - b.price);
-  const belowLevels = levels.filter(l => !l.isAbove && l.leverage > 0).sort((a, b) => b.leverage - a.leverage).slice(0, 5).sort((a, b) => b.price - a.price);
+  const aboveLevels = levels.filter(l => l.isAbove).sort((a, b) => b.leverage - a.leverage).slice(0, 5).sort((a, b) => a.price - b.price);
+  const belowLevels = levels.filter(l => !l.isAbove).sort((a, b) => b.leverage - a.leverage).slice(0, 5).sort((a, b) => b.price - a.price);
   const maxLeverage = Math.max(...levels.map(l => l.leverage), 1);
 
   const renderTableHtml = (pools, isAbove) => {
@@ -1217,11 +1261,16 @@ function renderLiquidationTables3D(data) {
   }
 
   const yAxisData = data.yAxis || [];
-  const latestXIdx = data.xAxis ? data.xAxis.length - 1 : 0;
-  const leveragePerY = {};
+  const xAxisLength = data.xAxis ? data.xAxis.length : 0;
+  const latestXIdx = xAxisLength - 1;
+  const startXIdx = Math.max(0, latestXIdx - 40);
+
+  const leverageLatest = {};
+  const leverageMaxRecent = {};
   
   yAxisData.forEach((_, idx) => {
-    leveragePerY[idx] = 0;
+    leverageLatest[idx] = 0;
+    leverageMaxRecent[idx] = 0;
   });
 
   heatmapSeries.data.forEach(item => {
@@ -1229,24 +1278,63 @@ function renderLiquidationTables3D(data) {
     const yIdx = item[1];
     const val = parseFloat(item[2] || 0);
     if (xIdx === latestXIdx) {
-      leveragePerY[yIdx] = val;
+      leverageLatest[yIdx] = val;
+    }
+    if (xIdx >= startXIdx && xIdx <= latestXIdx) {
+      if (val > leverageMaxRecent[yIdx]) {
+        leverageMaxRecent[yIdx] = val;
+      }
     }
   });
 
+  // Calculate recent min/max price bounds from the last 40 candles (matching visible chart)
+  let maxHighRecent = currentPrice;
+  let minLowRecent = currentPrice;
+  if (candleSeries && candleSeries.data) {
+    const recentCandles = candleSeries.data.slice(-40);
+    recentCandles.forEach(c => {
+      const low = parseFloat(c[2]), high = parseFloat(c[3]);
+      if (!isNaN(high) && high > maxHighRecent) maxHighRecent = high;
+      if (!isNaN(low) && low < minLowRecent) minLowRecent = low;
+    });
+  }
+
   const levels = [];
-  Object.keys(leveragePerY).forEach(yIdxStr => {
+  Object.keys(leverageLatest).forEach(yIdxStr => {
     const yIdx = parseInt(yIdxStr, 10);
     const priceStr = yAxisData[yIdx];
     if (!priceStr) return;
     const price = parseFloat(priceStr);
-    const leverage = leveragePerY[yIdx];
-    const distPct = ((price - currentPrice) / currentPrice) * 100;
+    const latestVal = leverageLatest[yIdx];
+    const maxRecentVal = leverageMaxRecent[yIdx];
     const isAbove = price > currentPrice;
-    levels.push({ price, leverage, distance: distPct, isAbove, isLiquidated: false });
+
+    // Check if price crossed this level recently
+    let isLiquidated = false;
+    if (isAbove) {
+      if (price <= maxHighRecent) {
+        isLiquidated = true;
+      }
+    } else {
+      if (price >= minLowRecent) {
+        isLiquidated = true;
+      }
+    }
+
+    // Keep displaying the pool if it has active leverage OR if it was liquidated recently (using historical max value)
+    let leverage = latestVal;
+    if (isLiquidated && maxRecentVal > 0) {
+      leverage = maxRecentVal;
+    }
+
+    if (leverage <= 0) return;
+
+    const distPct = ((price - currentPrice) / currentPrice) * 100;
+    levels.push({ price, leverage, distance: distPct, isAbove, isLiquidated });
   });
 
-  const aboveLevels = levels.filter(l => l.isAbove && l.leverage > 0).sort((a,b) => b.leverage - a.leverage).slice(0,5).sort((a,b) => a.price - b.price);
-  const belowLevels = levels.filter(l => !l.isAbove && l.leverage > 0).sort((a,b) => b.leverage - a.leverage).slice(0,5).sort((a,b) => b.price - a.price);
+  const aboveLevels = levels.filter(l => l.isAbove).sort((a,b) => b.leverage - a.leverage).slice(0,5).sort((a,b) => a.price - b.price);
+  const belowLevels = levels.filter(l => !l.isAbove).sort((a,b) => b.leverage - a.leverage).slice(0,5).sort((a,b) => b.price - a.price);
   const maxLev = Math.max(...levels.map(l => l.leverage), 1);
 
   const buildTable = (pools, isAbove) => {
