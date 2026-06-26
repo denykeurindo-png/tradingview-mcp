@@ -641,6 +641,11 @@ function loadCacheFromDisk(filename) {
 }
 
 // Load caches on startup
+etfDataCache = loadCacheFromDisk('etf_cache.json');
+if (etfDataCache) {
+  lastFetchTime = Date.now();
+}
+
 heatmapDataCache = loadCacheFromDisk('heatmap24h_cache.json');
 if (heatmapDataCache) {
   lastHeatmapFetchTime = Date.now();
@@ -2304,6 +2309,10 @@ app.get('/api/etf-data', async (req, res) => {
 
     res.json({ success: true, source: 'live', data: result, btcPrice });
   } catch (error) {
+    console.warn(`[ETF Scrape Error] Scrape failed: ${error.message}. Falling back to cached data.`);
+    if (etfDataCache) {
+      return res.json({ success: true, source: 'cache', data: etfDataCache, btcPrice });
+    }
     sendTelegramAlert(`⚠️ <b>ETF Scrape Error</b>\n${error.message}`);
     res.status(500).json({ success: false, error: error.message });
   } finally {
