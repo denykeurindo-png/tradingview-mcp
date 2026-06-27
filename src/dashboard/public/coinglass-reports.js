@@ -707,6 +707,40 @@ document.addEventListener('DOMContentLoaded', () => {
         sentimentEl.style.color = getSentimentColor(m.whaleRetail.sentiment);
         wrCard.style.borderLeft = `4px solid ${getSentimentColor(m.whaleRetail.sentiment)}`;
         wrCard.querySelector('.summary-val').innerText = m.whaleRetail.formatted || '--';
+        
+        // Visual Gauge Update
+        const gaugeFill = document.getElementById('whale-retail-gauge-fill');
+        const gaugeLabel = document.getElementById('whale-retail-gauge-label');
+        const actionText = document.getElementById('whale-retail-action-text');
+        
+        if (gaugeFill && gaugeLabel && actionText) {
+          const deltaVal = parseFloat(m.whaleRetail.value || 0);
+          // Standardize expected max delta for visual rendering (e.g. 0.05 corresponds to 100% full bar side)
+          const maxExpectedDelta = 0.05;
+          let percentage = Math.min(100, Math.max(-100, (deltaVal / maxExpectedDelta) * 100));
+          
+          gaugeLabel.innerText = (deltaVal > 0 ? '+' : '') + (deltaVal * 100).toFixed(2) + '%';
+          
+          if (percentage >= 0) {
+            gaugeFill.style.left = '50%';
+            gaugeFill.style.width = (percentage / 2) + '%';
+            gaugeFill.style.background = '#0ECB81'; // Green
+          } else {
+            gaugeFill.style.left = (50 + percentage / 2) + '%';
+            gaugeFill.style.width = (Math.abs(percentage) / 2) + '%';
+            gaugeFill.style.background = '#F6465D'; // Red
+          }
+          
+          // Set Indonesian Action Recommendation text
+          if (m.whaleRetail.sentiment === 'bullish') {
+            actionText.innerHTML = '<span style="color: #0ECB81; font-weight: bold;">BULLISH BIAS.</span> Whales sedang aktif membeli, sedangkan ritel sedang dominan menjual. Rekomendasi aksi: <strong>Fokus mencari konfirmasi entri LONG</strong> pada level likuidasi support utama. Hindari entri Short saat momentum ini.';
+          } else if (m.whaleRetail.sentiment === 'bearish') {
+            actionText.innerHTML = '<span style="color: #F6465D; font-weight: bold;">BEARISH BIAS.</span> Investor ritel terjebak membeli (catching the falling knife) sedangkan Whales sedang gencar menjual/distribusi. Rekomendasi aksi: <strong>Fokus mencari konfirmasi entri SHORT</strong> pada level resistance utama. Jangan tergiur beli LONG.';
+          } else {
+            actionText.innerHTML = '<span style="color: #F0B90B; font-weight: bold;">NETRAL / SIDEWAYS.</span> Sentimen posisi bandar (Whale) dan ritel berimbang. Rekomendasi aksi: <strong>Wait and See</strong> (tunggu dan amati) hingga muncul divergensi sentimen yang lebih jelas.';
+          }
+        }
+        
         wrCard.style.display = 'block';
       }
 
