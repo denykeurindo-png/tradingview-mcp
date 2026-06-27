@@ -164,8 +164,8 @@ function initCharts() {
         axisLabel: { color: '#848E9C', fontSize: 10, distance: -35 },
         title: { offsetCenter: [0, '-35%'], fontSize: 11, color: '#848E9C' },
         detail: {
-          fontSize: 22,
-          offsetCenter: [0, '20%'],
+          fontSize: 15,
+          offsetCenter: [0, '10%'],
           valueAnimation: true,
           formatter: '{value}%',
           color: 'auto'

@@ -18,16 +18,16 @@
     .cockpit-grid {
       display: grid;
       grid-template-columns: 380px 1fr 380px;
-      gap: 16px;
-      margin-top: 16px;
-      height: calc(100vh - 120px);
-      min-height: 720px;
+      gap: 10px;
+      margin-top: 8px;
+      height: calc(100vh - 90px);
+      min-height: 650px;
     }
 
     .cockpit-col {
       display: flex;
       flex-direction: column;
-      gap: 16px;
+      gap: 10px;
       height: 100%;
     }
 
@@ -35,7 +35,7 @@
       background: var(--bg-surface);
       border: 1px solid var(--border-color);
       border-radius: 8px;
-      padding: 16px;
+      padding: 10px 12px;
       display: flex;
       flex-direction: column;
       position: relative;
@@ -43,18 +43,18 @@
 
     /* Widget Heights to fit screen exactly without scrolling */
     .w-bot-control {
-      flex: 0 0 340px;
+      flex: 0 0 270px;
     }
 
     .w-active-position {
       flex: 1;
-      min-height: 200px;
+      min-height: 140px;
     }
 
     .w-mini-heatmap-24h, .w-mini-heatmap-3d {
-      flex: 0 0 290px;
-      padding: 16px 8px 8px 8px; /* Tighter padding to allow chart to be flush with card borders */
-      margin-bottom: 12px;
+      flex: 0 0 225px;
+      padding: 10px 8px 6px 8px; /* Tighter padding to allow chart to be flush with card borders */
+      margin-bottom: 0px;
     }
 
     .w-orderbook-depth {
@@ -62,19 +62,19 @@
     }
 
     .w-factor-grid {
-      flex: 0 0 360px;
+      flex: 0 0 275px;
     }
 
     .w-recent-trades {
       flex: 1;
-      min-height: 200px;
+      min-height: 140px;
     }
 
     .widget-title {
-      font-size: 14px;
+      font-size: 11.5px;
       font-weight: 600;
       color: var(--text-muted);
-      margin-bottom: 12px;
+      margin-bottom: 6px;
       display: flex;
       justify-content: space-between;
       align-items: center;
@@ -314,7 +314,7 @@
       background: rgba(255, 255, 255, 0.01);
       border: 1px solid var(--border-color);
       border-radius: 6px;
-      padding: 8px 10px;
+      padding: 4px 6px;
       display: flex;
       flex-direction: column;
       justify-content: space-between;
@@ -324,20 +324,20 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      font-size: 11px;
+      font-size: 9px;
       color: var(--text-muted);
     }
 
     .factor-pts {
-      font-size: 12px;
+      font-size: 9.5px;
       font-weight: 600;
       color: var(--accent-primary);
     }
 
     .factor-val {
-      font-size: 14px;
+      font-size: 11px;
       font-weight: 700;
-      margin-top: 4px;
+      margin-top: 2px;
     }
 
     /* Orderbook Depth Bar */
@@ -824,7 +824,7 @@
             </div>
           </div>
 
-          <div style="height: 140px; width: 100%; margin-top: 8px;" id="chart-gauge-probability"></div>
+          <div style="height: 105px; width: 100%; margin-top: 4px;" id="chart-gauge-probability"></div>
           <!-- Probability Breakdown details -->
           <div id="prob-breakdown-details" style="font-size: 10px; color: #848E9C; text-align: center; margin-top: -10px; margin-bottom: 12px; font-family: 'JetBrains Mono', monospace; display: none; background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.04); border-radius: 4px; padding: 6px; line-height: 1.45;"></div>
 
@@ -875,13 +875,13 @@
             <span>24H Liquidity Sweep Map</span>
             <span style="font-family: var(--font-mono); color: var(--accent-primary); font-size: 14px;" id="live-btc-price">$0.00</span>
           </div>
-          <div id="chart-mini-heatmap-24h" style="width: 100%; height: 240px;"></div>
+          <div id="chart-mini-heatmap-24h" style="width: 100%; height: 180px;"></div>
         </div>
 
         <!-- Widget 3b: Mini Heatmap 3D -->
         <div class="cockpit-widget w-mini-heatmap-3d">
           <div class="widget-title">3D Liquidity Sweep Map</div>
-          <div id="chart-mini-heatmap-3d" style="width: 100%; height: 240px;"></div>
+          <div id="chart-mini-heatmap-3d" style="width: 100%; height: 180px;"></div>
         </div>
 
         <!-- Widget: JDA MTF Strategy Status -->
