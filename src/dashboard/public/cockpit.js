@@ -227,6 +227,27 @@ async function updateBotStatus() {
     // Factors update
     updateFactorScoring(data);
 
+    // Probability Breakdown details
+    const breakdownEl = document.getElementById('prob-breakdown-details');
+    if (breakdownEl && data.metrics?.probabilityBreakdown) {
+      const b = data.metrics.probabilityBreakdown;
+      const items = [];
+      if (b.baseScore !== undefined) items.push(`Base: ${b.baseScore}`);
+      if (b.poolVolume !== undefined) items.push(`Pool: +${b.poolVolume}`);
+      if (b.rejection !== undefined) items.push(`Reject: ${b.rejection >= 0 ? '+' : ''}${b.rejection}`);
+      if (b.oiChange !== undefined) items.push(`OI: ${b.oiChange >= 0 ? '+' : ''}${b.oiChange}`);
+      if (b.spotCvd !== undefined) items.push(`CVD: ${b.spotCvd >= 0 ? '+' : ''}${b.spotCvd}`);
+      if (b.trend !== undefined) items.push(`Trend: ${b.trend >= 0 ? '+' : ''}${b.trend}`);
+      if (b.funding !== undefined) items.push(`FR: ${b.funding >= 0 ? '+' : ''}${b.funding}`);
+      if (b.lsRatio !== undefined) items.push(`LSR: ${b.lsRatio >= 0 ? '+' : ''}${b.lsRatio}`);
+      if (b.coinbasePremium !== undefined) items.push(`CB: ${b.coinbasePremium >= 0 ? '+' : ''}${b.coinbasePremium}`);
+      if (b.depthDelta !== undefined) items.push(`Delta: ${b.depthDelta >= 0 ? '+' : ''}${b.depthDelta}`);
+      if (b.whaleWall !== undefined) items.push(`Whale: ${b.whaleWall >= 0 ? '+' : ''}${b.whaleWall}`);
+      if (b.liquidations !== undefined) items.push(`Liq: ${b.liquidations >= 0 ? '+' : ''}${b.liquidations}`);
+      breakdownEl.innerText = 'Prob Breakdown Score:\n' + items.join(' | ');
+      breakdownEl.style.display = 'block';
+    }
+
     // Orderbook update (or from endpoint /api/orderbook-data)
     fetchOrderbookRatio();
 
@@ -356,6 +377,32 @@ async function updateJdaMtfStatus() {
       } else {
         alignedEl.className = 'jda-card-val text-squeeze';
       }
+    }
+
+    // Timeframe trend details rendering
+    const tfDetailsEl = document.getElementById('jda-tf-details');
+    if (tfDetailsEl && d.timeframes) {
+      let html = '';
+      const intervals = ['15m', '1h', '4h', '1d', '1w'];
+      intervals.forEach(tf => {
+        const tData = d.timeframes[tf];
+        if (!tData) return;
+        const state = tData.state || 'RANGE';
+        let color = 'var(--text-muted)';
+        if (state.includes('BULL')) color = 'var(--accent-success)';
+        else if (state.includes('BEAR')) color = 'var(--accent-alert)';
+        
+        const scoreVal = latestBotStatus?.metrics?.[`jdaV${tf}`] || tData.trend || 0;
+        
+        html += `
+          <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 2px;">
+            <div style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">${tf}</div>
+            <div style="font-size: 10px; font-weight: 700; color: ${color}; margin-top: 2px;">${state}</div>
+            <div style="font-size: 8px; color: var(--text-muted); font-family: var(--font-mono); margin-top: 1px;">${scoreVal >= 0 ? '+' : ''}${scoreVal.toFixed(0)}</div>
+          </div>
+        `;
+      });
+      tfDetailsEl.innerHTML = html;
     }
 
     // Update Market Bias widget
@@ -1602,6 +1649,7 @@ window.addEventListener('DOMContentLoaded', () => {
   updateBotStatus();
   updateConnectionStatus();
   updateMarketExtras();
+  updateCoinGlassSummary();
   setTimeout(updateMiniHeatmap, 500); // slight delay to let ECharts initialize size
 
   // Polling Schedulers
@@ -1609,4 +1657,83 @@ window.addEventListener('DOMContentLoaded', () => {
   setInterval(updateMarketExtras, 5000);
   setInterval(updateConnectionStatus, 10000);
   setInterval(updateMiniHeatmap, 30000);
+  setInterval(updateCoinGlassSummary, 30000);
 });
+
+// Fetch and display CoinGlass verdict, narrative and walls inside cockpit
+async function updateCoinGlassSummary() {
+  const verdictBadge = document.getElementById('cockpit-summary-verdict');
+  const explanationEl = document.getElementById('cockpit-summary-explanation');
+  const summaryContainer = document.getElementById('cockpit-coinglass-summary');
+  const wallsEl = document.getElementById('cockpit-summary-walls');
+
+  if (!summaryContainer) return;
+
+  try {
+    const res = await fetch('/api/coinglass-summary');
+    if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+    const body = await res.json();
+
+    if (body.success) {
+      // 1. Verdict Badge
+      if (verdictBadge) {
+        verdictBadge.innerText = body.verdict.toUpperCase();
+        let color = '#F0B90B';
+        let bg = 'rgba(240, 185, 11, 0.15)';
+        if (body.verdict.includes('BULLISH')) {
+          color = '#0ECB81';
+          bg = 'rgba(14, 203, 129, 0.15)';
+        } else if (body.verdict.includes('BEARISH')) {
+          color = '#F6465D';
+          bg = 'rgba(246, 70, 93, 0.15)';
+        }
+        verdictBadge.style.color = color;
+        verdictBadge.style.borderColor = color;
+        verdictBadge.style.background = bg;
+        verdictBadge.style.display = 'inline-block';
+      }
+
+      // 2. Explanation
+      if (explanationEl) {
+        explanationEl.innerHTML = body.explanation || 'Tidak ada analisis deskriptif saat ini.';
+      }
+
+      // 3. Render Top Walls & Whale Orders summary lists in card
+      if (wallsEl && body.metrics) {
+        const topBids = body.metrics.topWalls?.bids || [];
+        const topAsks = body.metrics.topWalls?.asks || [];
+        
+        if (topBids.length > 0 || topAsks.length > 0) {
+          const renderWallRow = (wall, isBid) => {
+            const color = isBid ? '#0ECB81' : '#F6465D';
+            return `<div style="display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 2px;">
+              <span style="color: ${color}; font-weight: 700;">$${Math.round(wall.price).toLocaleString()}</span>
+              <span style="color: #fff;">${parseFloat(wall.quantity).toFixed(1)} BTC</span>
+            </div>`;
+          };
+          
+          const bidsHtml = topBids.slice(0, 2).map(b => renderWallRow(b, true)).join('');
+          const asksHtml = topAsks.slice(0, 2).map(a => renderWallRow(a, false)).join('');
+
+          wallsEl.innerHTML = `
+            <div>
+              <div style="font-size: 8px; color: #0ECB81; font-weight: 700; margin-bottom: 4px;">🟢 BIDS WALLS</div>
+              ${bidsHtml || '<div style="color:var(--text-muted);font-size:9px;">None</div>'}
+            </div>
+            <div>
+              <div style="font-size: 8px; color: #F6465D; font-weight: 700; margin-bottom: 4px;">🔴 ASKS WALLS</div>
+              ${asksHtml || '<div style="color:var(--text-muted);font-size:9px;">None</div>'}
+            </div>
+          `;
+          wallsEl.style.display = 'grid';
+        } else {
+          wallsEl.style.display = 'none';
+        }
+      }
+
+      summaryContainer.style.display = 'block';
+    }
+  } catch (e) {
+    console.error('[Cockpit] Failed to load CoinGlass summary:', e.message);
+  }
+}
