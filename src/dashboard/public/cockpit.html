@@ -847,22 +847,12 @@
         </div>
 
         <!-- Widget: Market Bias Conclusion -->
-        <div class="cockpit-widget" id="widget-market-bias-conclusion" style="flex: 0 0 auto; padding: 16px; margin-top: 0px;">
-          <div class="widget-title" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding-bottom: 8px; margin-bottom: 10px;">
-            <span>Market Direction Bias / Kesimpulan Arah Pasar</span>
-            <span id="cockpit-summary-verdict" style="font-size: 9px; font-weight: 700; padding: 2px 8px; border-radius: 4px; border: 1px solid transparent; display: none;">--</span>
+        <div class="cockpit-widget" id="widget-market-bias-conclusion" style="flex: 0 0 165px; padding: 10px 12px; margin-top: 0px;">
+          <div class="widget-title" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding-bottom: 4px; margin-bottom: 6px;">
+            <span>Market Direction Bias</span>
           </div>
-          <div id="market-bias-conclusion-content" style="display: flex; flex-direction: column; gap: 8px;">
-            <div style="color: var(--text-muted); font-size: 11px;">Menghitung arah pasar...</div>
-          </div>
-          <!-- CoinGlass Summary & Narrative section -->
-          <div id="cockpit-coinglass-summary" style="margin-top: 14px; padding-top: 10px; border-top: 1px solid rgba(255,255,255,0.05); display: none;">
-            <div style="font-size: 10px; color: #848E9C; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px;">📢 CoinGlass Consensus Explanation</div>
-            <div id="cockpit-summary-explanation" style="font-size: 12px; color: #EAECEF; line-height: 1.55;">
-              Loading explanation...
-            </div>
-            <!-- Dynamic Whale & Walls status inside cockpit -->
-            <div id="cockpit-summary-walls" style="margin-top: 10px; display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-family: 'JetBrains Mono', monospace; display: none;"></div>
+          <div id="market-bias-conclusion-content" style="display: flex; flex-direction: column; gap: 4px; font-size: 10.5px;">
+            <div style="color: var(--text-muted); font-size: 10px;">Menghitung arah pasar...</div>
           </div>
         </div>
       </div>
@@ -938,6 +928,17 @@
           </div>
           <!-- Timeframe trend details -->
           <div id="jda-tf-details" style="margin-top: 14px; padding-top: 10px; border-top: 1px dashed rgba(255,255,255,0.06); display: grid; grid-template-columns: repeat(5, 1fr); gap: 6px; text-align: center;"></div>
+        </div>
+
+        <!-- Widget: CoinGlass Consensus Explanation -->
+        <div class="cockpit-widget" id="cockpit-coinglass-summary" style="flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 120px;">
+          <div class="widget-title" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding-bottom: 4px; margin-bottom: 6px;">
+            <span>📢 CoinGlass Consensus Explanation</span>
+            <span id="cockpit-summary-verdict" style="font-size: 8.5px; font-weight: 700; padding: 2px 6px; border-radius: 4px; border: 1px solid transparent; text-transform: uppercase;">--</span>
+          </div>
+          <div id="cockpit-summary-explanation" style="font-size: 10.5px; color: #EAECEF; line-height: 1.45; overflow-y: auto; flex: 1;">
+            Loading explanation...
+          </div>
         </div>
       </div>
 
@@ -1100,7 +1101,7 @@
         </div>
 
         <!-- Widget 8: Top Liquidation Pools (24H / 3D) -->
-        <div class="cockpit-widget w-top-liq-pools" style="flex: 0 0 340px; display: flex; flex-direction: column;">
+        <div class="cockpit-widget w-top-liq-pools" style="flex: 0 0 295px; display: flex; flex-direction: column;">
           <div class="widget-title" style="margin-bottom: 8px;">
             <span>🔥 Top Liquidation Pools</span>
           </div>
@@ -1147,6 +1148,24 @@
                   <div style="color: var(--text-muted); text-align: center; padding: 10px; font-size: 10px;">Loading 3D...</div>
                 </div>
               </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- Widget: Whale Order Walls -->
+        <div class="cockpit-widget" id="widget-whale-walls" style="flex: 0 0 160px; display: flex; flex-direction: column; overflow: hidden; padding: 10px 12px; margin-top: 0px;">
+          <div class="widget-title" style="border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding-bottom: 4px; margin-bottom: 6px;">
+            <span>🐳 Whale Order Walls</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px; font-size: 9.5px; flex: 1; overflow-y: auto;">
+            <!-- Top Whale Orders text -->
+            <div id="cockpit-summary-orders" style="display: flex; flex-direction: column; gap: 3px; border-bottom: 1px dashed rgba(255,255,255,0.06); padding-bottom: 4px;">
+              <div id="whale-buy-orders-text" style="color: #EAECEF; line-height: 1.35;">Loading buy orders...</div>
+              <div id="whale-sell-orders-text" style="color: #EAECEF; line-height: 1.35;">Loading sell orders...</div>
+            </div>
+            <!-- Bids & Asks Walls table -->
+            <div id="cockpit-summary-walls" style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px; font-family: 'JetBrains Mono', monospace;">
+              <!-- Bids Walls / Asks Walls loaded dynamically -->
             </div>
           </div>
         </div>

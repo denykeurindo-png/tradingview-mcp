@@ -1693,12 +1693,35 @@ async function updateCoinGlassSummary() {
         verdictBadge.style.display = 'inline-block';
       }
 
-      // 2. Explanation
+      // 2. Explanation (bullet points only, strip the whale orders div)
       if (explanationEl) {
-        explanationEl.innerHTML = body.explanation || 'Tidak ada analisis deskriptif saat ini.';
+        let expHtml = body.explanation || 'Tidak ada analisis deskriptif saat ini.';
+        const splitIdx = expHtml.indexOf('<div style="margin-top: 10px;');
+        if (splitIdx !== -1) {
+          expHtml = expHtml.substring(0, splitIdx);
+        }
+        explanationEl.innerHTML = expHtml;
       }
 
-      // 3. Render Top Walls & Whale Orders summary lists in card
+      // 3. Whale Orders Text (Column 3)
+      if (body.metrics?.whaleOrders) {
+        const wo = body.metrics.whaleOrders;
+        const buyListStr = wo.top3Buy && wo.top3Buy.length > 0 
+          ? wo.top3Buy.map(o => `<b>$${o.price.toLocaleString()}</b> (${o.valueUsdFormatted} di ${o.exchange})`).join(', ')
+          : 'Tidak ada';
+        
+        const sellListStr = wo.top3Sell && wo.top3Sell.length > 0 
+          ? wo.top3Sell.map(o => `<b>$${o.price.toLocaleString()}</b> (${o.valueUsdFormatted} di ${o.exchange})`).join(', ')
+          : 'Tidak ada';
+          
+        const buyOrdersTextEl = document.getElementById('whale-buy-orders-text');
+        const sellOrdersTextEl = document.getElementById('whale-sell-orders-text');
+        
+        if (buyOrdersTextEl) buyOrdersTextEl.innerHTML = `📢 <b>Top 3 Whale Buy (Bid):</b> ${buyListStr}`;
+        if (sellOrdersTextEl) sellOrdersTextEl.innerHTML = `📢 <b>Top 3 Whale Sell (Ask):</b> ${sellListStr}`;
+      }
+
+      // 4. Render Bids & Asks Walls (Column 3)
       if (wallsEl && body.metrics) {
         const topBids = body.metrics.topWalls?.bids || [];
         const topAsks = body.metrics.topWalls?.asks || [];
@@ -1706,7 +1729,7 @@ async function updateCoinGlassSummary() {
         if (topBids.length > 0 || topAsks.length > 0) {
           const renderWallRow = (wall, isBid) => {
             const color = isBid ? '#0ECB81' : '#F6465D';
-            return `<div style="display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 2px;">
+            return `<div style="display: flex; justify-content: space-between; font-size: 9.5px; margin-bottom: 2px;">
               <span style="color: ${color}; font-weight: 700;">$${Math.round(wall.price).toLocaleString()}</span>
               <span style="color: #fff;">${parseFloat(wall.quantity).toFixed(1)} BTC</span>
             </div>`;
