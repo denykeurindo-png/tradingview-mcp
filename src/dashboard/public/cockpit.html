@@ -51,10 +51,11 @@
       min-height: 200px;
     }
 
-    .w-mini-heatmap {
+    .w-mini-heatmap-24h, .w-mini-heatmap-3d {
       flex: 1;
-      min-height: 520px;
+      min-height: 250px;
       padding: 16px 8px 8px 8px; /* Tighter padding to allow chart to be flush with card borders */
+      margin-bottom: 12px;
     }
 
     .w-orderbook-depth {
@@ -544,8 +545,8 @@
         height: auto !important;
       }
 
-      .w-mini-heatmap {
-        min-height: 520px;
+      .w-mini-heatmap-24h, .w-mini-heatmap-3d {
+        min-height: 250px;
       }
 
       .w-top-liq-pools {
@@ -868,16 +869,19 @@
 
       <!-- Column 2: Mini Heatmap & Orderbook -->
       <div class="cockpit-col">
-        <!-- Widget 3: Mini Heatmap -->
-        <div class="cockpit-widget w-mini-heatmap">
+        <!-- Widget 3: Mini Heatmap 24H -->
+        <div class="cockpit-widget w-mini-heatmap-24h">
           <div class="widget-title" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-            <span>Liquidity Sweep Map (24H & 3D)</span>
+            <span>24H Liquidity Sweep Map</span>
             <span style="font-family: var(--font-mono); color: var(--accent-primary); font-size: 14px;" id="live-btc-price">$0.00</span>
           </div>
-          <div style="flex: 1; display: flex; flex-direction: column; gap: 10px; height: calc(100% - 24px); min-height: 480px;">
-            <div id="chart-mini-heatmap-24h" style="flex: 1; width: 100%; min-height: 220px;"></div>
-            <div id="chart-mini-heatmap-3d" style="flex: 1; width: 100%; min-height: 220px;"></div>
-          </div>
+          <div id="chart-mini-heatmap-24h" style="flex: 1; width: 100%; min-height: 200px;"></div>
+        </div>
+
+        <!-- Widget 3b: Mini Heatmap 3D -->
+        <div class="cockpit-widget w-mini-heatmap-3d">
+          <div class="widget-title">3D Liquidity Sweep Map</div>
+          <div id="chart-mini-heatmap-3d" style="flex: 1; width: 100%; min-height: 200px;"></div>
         </div>
 
         <!-- Widget: JDA MTF Strategy Status -->
