@@ -183,7 +183,7 @@ function renderTradeTable() {
   const npUsd = document.getElementById('stat-net-profit-usd');
   const npIDR  = document.getElementById('stat-net-profit-idr');
   if (npUsd) { npUsd.innerText = formatUSD(netPnl); npUsd.className = 'backtest-stat-value ' + (netPnl >= 0 ? 'profit-positive' : 'profit-negative'); }
-  if (npIDR)  { npRpinnerText  = formatIDR(netPnl);  npRpclassName  = 'backtest-stat-value ' + (netPnl >= 0 ? 'profit-positive' : 'profit-negative'); }
+  if (npIDR) { npIDR.innerText = formatIDR(netPnl); npIDR.className = 'backtest-stat-value ' + (netPnl >= 0 ? 'profit-positive' : 'profit-negative'); }
 
   if (!total) {
     tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--text-muted);padding:20px;">No trades logged yet.</td></tr>';

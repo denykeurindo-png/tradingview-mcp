@@ -719,9 +719,7 @@ function renderBacktestTable() {
   const npUsd = document.getElementById('stat-net-profit-usd');
   const npIDR = document.getElementById('stat-net-profit-idr');
   npUsd.innerText = formatUSD(netPnl);
-  npRpinnerText = formatIDR(netPnl);
-  npUsd.className = 'backtest-stat-value ' + (netPnl >= 0 ? 'profit-positive' : 'profit-negative');
-  npRpclassName = 'backtest-stat-value ' + (netPnl >= 0 ? 'profit-positive' : 'profit-negative');
+  if (npIDR) { npIDR.innerText = formatIDR(netPnl); npIDR.className = 'backtest-stat-value ' + (netPnl >= 0 ? 'profit-positive' : 'profit-negative'); }
 
   if (!total) {
     tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; color:var(--text-muted); padding:20px;">No trades logged. Use the form above or click E / TP in tables.</td></tr>`;
