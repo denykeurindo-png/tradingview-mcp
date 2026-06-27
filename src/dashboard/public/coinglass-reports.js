@@ -649,6 +649,40 @@ document.addEventListener('DOMContentLoaded', () => {
         sentimentEl.style.color = getSentimentColor(m.coinbasePremium.sentiment);
         cbCard.style.borderLeft = `4px solid ${getSentimentColor(m.coinbasePremium.sentiment)}`;
         cbCard.querySelector('.summary-val').innerText = m.coinbasePremium.formatted || '--';
+        
+        // Visual Gauge Update
+        const gaugeFill = document.getElementById('coinbase-premium-gauge-fill');
+        const gaugeLabel = document.getElementById('coinbase-premium-gauge-label');
+        const actionText = document.getElementById('coinbase-premium-action-text');
+        
+        if (gaugeFill && gaugeLabel && actionText) {
+          const premiumVal = parseFloat(m.coinbasePremium.value || 0);
+          // Standardize expected max premium for visual rendering (e.g. 0.05% corresponds to 100% full bar side)
+          const maxExpectedPremium = 0.05;
+          let percentage = Math.min(100, Math.max(-100, (premiumVal / maxExpectedPremium) * 100));
+          
+          gaugeLabel.innerText = (premiumVal > 0 ? '+' : '') + premiumVal.toFixed(4) + '%';
+          
+          if (percentage >= 0) {
+            gaugeFill.style.left = '50%';
+            gaugeFill.style.width = (percentage / 2) + '%';
+            gaugeFill.style.background = '#0ECB81'; // Green
+          } else {
+            gaugeFill.style.left = (50 + percentage / 2) + '%';
+            gaugeFill.style.width = (Math.abs(percentage) / 2) + '%';
+            gaugeFill.style.background = '#F6465D'; // Red
+          }
+          
+          // Set Indonesian Action Recommendation text
+          if (m.coinbasePremium.sentiment === 'bullish') {
+            actionText.innerHTML = '<span style="color: #0ECB81; font-weight: bold;">BULLISH BIAS.</span> Institusi keuangan AS sedang agresif membeli BTC di Coinbase Pro. Ini adalah dorongan spot kuat yang menopang kenaikan harga. Rekomendasi aksi: <strong>Fokus mencari konfirmasi entri LONG</strong> di level likuidasi terdekat.';
+          } else if (m.coinbasePremium.sentiment === 'bearish') {
+            actionText.innerHTML = '<span style="color: #F6465D; font-weight: bold;">BEARISH BIAS.</span> Institusi keuangan AS sedang gencar melepas/menjual barang (spot distribution). Risiko penurunan tajam tinggi. Rekomendasi aksi: <strong>Fokus mencari konfirmasi entri SHORT</strong> pada level resistance utama.';
+          } else {
+            actionText.innerHTML = '<span style="color: #F0B90B; font-weight: bold;">NETRAL / TENANG.</span> Tekanan beli dan jual dari institusi AS seimbang atau sangat minim. Rekomendasi aksi: <strong>Wait and See</strong> (tunggu rilis sentimen), atau gunakan indikator volume pasar global untuk mencari arah entri.';
+          }
+        }
+        
         cbCard.style.display = 'block';
       }
 
