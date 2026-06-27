@@ -637,6 +637,40 @@ document.addEventListener('DOMContentLoaded', () => {
         sentimentEl.style.color = getSentimentColor(m.depthDelta.sentiment);
         ddCard.style.borderLeft = `4px solid ${getSentimentColor(m.depthDelta.sentiment)}`;
         ddCard.querySelector('.summary-val').innerText = m.depthDelta.formatted || '--';
+        
+        // Visual Gauge Update
+        const gaugeFill = document.getElementById('depth-delta-gauge-fill');
+        const gaugeLabel = document.getElementById('depth-delta-gauge-label');
+        const actionText = document.getElementById('depth-delta-action-text');
+        
+        if (gaugeFill && gaugeLabel && actionText) {
+          const deltaVal = parseFloat(m.depthDelta.value || 0);
+          // Standardize expected max depth delta for visual rendering (e.g. 5.0M corresponds to 100% full bar side)
+          const maxExpectedDelta = 5000000;
+          let percentage = Math.min(100, Math.max(-100, (deltaVal / maxExpectedDelta) * 100));
+          
+          gaugeLabel.innerText = m.depthDelta.formatted || '--';
+          
+          if (percentage >= 0) {
+            gaugeFill.style.left = '50%';
+            gaugeFill.style.width = (percentage / 2) + '%';
+            gaugeFill.style.background = '#0ECB81'; // Green
+          } else {
+            gaugeFill.style.left = (50 + percentage / 2) + '%';
+            gaugeFill.style.width = (Math.abs(percentage) / 2) + '%';
+            gaugeFill.style.background = '#F6465D'; // Red
+          }
+          
+          // Set Indonesian Action Recommendation text
+          if (m.depthDelta.sentiment === 'bullish') {
+            actionText.innerHTML = '<span style="color: #0ECB81; font-weight: bold;">BULLISH BIAS (SUPORT KUAT).</span> Dinding beli (bids) jauh lebih tebal daripada dinding jual (asks). Ini menciptakan bantalan harga di bawah yang menyulitkan harga untuk turun. Rekomendasi aksi: <strong>Sangat kondusif untuk mencari entri LONG</strong> di level support likuidasi.';
+          } else if (m.depthDelta.sentiment === 'bearish') {
+            actionText.innerHTML = '<span style="color: #F6465D; font-weight: bold;">BEARISH BIAS (RESISTANCE KUAT).</span> Dinding jual (asks) jauh lebih tebal daripada dinding beli (bids). Ini menjadi plafon berat di atas yang membatasi kenaikan harga. Rekomendasi aksi: <strong>Sangat kondusif untuk mencari entri SHORT</strong> saat harga mendekati resistance likuidasi.';
+          } else {
+            actionText.innerHTML = '<span style="color: #F0B90B; font-weight: bold;">NETRAL / SEIMBANG.</span> Ketebalan antrean beli dan jual di order book seimbang. Rekomendasi aksi: <strong>Wait and See</strong>, tunggu akumulasi order book di salah satu sisi sebelum memutuskan entri.';
+          }
+        }
+        
         ddCard.style.display = 'block';
       }
 
