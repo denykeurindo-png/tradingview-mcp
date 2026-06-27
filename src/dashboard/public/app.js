@@ -1,5 +1,5 @@
 // JDA Trade Monitor — CoinGlass ETF Monitor App Logic
-const EXCHANGE_RATE = 6.96; // 1 USD = 6.96 Bolivianos (Bs.)
+const EXCHANGE_RATE = 16300; // 1 USD = 16300 IDR (Rp)
 
 // DOM Elements
 const statusIndicator = document.getElementById('connection-status');
@@ -76,8 +76,8 @@ const formatUSD = (valUsd) => {
   return `${isNegative ? '-' : '+'}$${formatted}`;
 };
 
-const formatBs = (valUsd) => {
-  if (valUsd === 0 || valUsd === undefined || valUsd === null) return 'Bs. 0.00';
+const formatIDR = (valUsd) => {
+  if (valUsd === 0 || valUsd === undefined || valUsd === null) return 'Rp 0';
   const valBs = valUsd * EXCHANGE_RATE;
   const isNegative = valBs < 0;
   const absVal = Math.abs(valBs);
@@ -91,7 +91,7 @@ const formatBs = (valUsd) => {
   } else {
     formatted = absVal.toFixed(2);
   }
-  return `${isNegative ? '-' : '+'}Bs. ${formatted}`;
+  return `${isNegative ? '-' : '+'}Rp ${formatted}`;
 };
 
 function updateStatus(state, message) {
@@ -165,7 +165,7 @@ function renderKPIs(kpis, data, btcPrice) {
     subTotalInflow.className = `kpi-sub-value select-mono ${(kpis.totalNetInflow.btc || '').includes('-') ? 'text-negative' : 'text-positive'}`;
     
     const totalInflowUsd = parseUSDStringToNumber(kpis.totalNetInflow.usd);
-    footTotalInflow.innerText = `${formatBs(totalInflowUsd)} (Equiv.)`;
+    footTotalInflow.innerText = `${formatIDR(totalInflowUsd)} (Equiv.)`;
     timeTotalInflow.innerText = kpis.totalNetInflow.time;
 
     // Card 2: Daily Total Net Inflow
@@ -175,19 +175,19 @@ function renderKPIs(kpis, data, btcPrice) {
     subDailyInflow.className = `kpi-sub-value select-mono ${(kpis.dailyTotalNetInflow.btc || '').includes('-') ? 'text-negative' : 'text-positive'}`;
     
     const dailyInflowUsd = parseUSDStringToNumber(kpis.dailyTotalNetInflow.usd);
-    footDailyInflow.innerText = `${formatBs(dailyInflowUsd)} (Equiv.)`;
+    footDailyInflow.innerText = `${formatIDR(dailyInflowUsd)} (Equiv.)`;
     timeDailyInflow.innerText = kpis.dailyTotalNetInflow.time;
 
     // Card 3: Daily Trading Volume
     valTradingVolume.innerText = kpis.dailyTradingVolume.usd;
     const volUsd = parseUSDStringToNumber(kpis.dailyTradingVolume.usd);
-    footTradingVolume.innerText = `${formatBs(volUsd)} (Equiv.)`;
+    footTradingVolume.innerText = `${formatIDR(volUsd)} (Equiv.)`;
     timeTradingVolume.innerText = kpis.dailyTradingVolume.time;
 
     // Card 4: Total Net Assets
     valNetAssets.innerText = kpis.totalNetAssets.usd;
     const assetsUsd = parseUSDStringToNumber(kpis.totalNetAssets.usd);
-    footNetAssets.innerText = `${formatBs(assetsUsd)} (Equiv.)`;
+    footNetAssets.innerText = `${formatIDR(assetsUsd)} (Equiv.)`;
     timeNetAssets.innerText = kpis.totalNetAssets.time;
     return;
   }
@@ -200,22 +200,22 @@ function renderKPIs(kpis, data, btcPrice) {
 
   valTotalInflow.innerText = formatUSD(totalNetUsd * 300); // Mock cumulative
   subTotalInflow.innerText = formatBTC(totalNet * 300);
-  footTotalInflow.innerText = `${formatBs(totalNetUsd * 300)} (Equiv.)`;
+  footTotalInflow.innerText = `${formatIDR(totalNetUsd * 300)} (Equiv.)`;
   timeTotalInflow.innerText = 'Last update: Fallback Calculation';
 
   valDailyInflow.innerText = formatUSD(totalNetUsd);
   valDailyInflow.className = `kpi-value select-mono ${totalNet >= 0 ? 'text-positive' : 'text-negative'}`;
   subDailyInflow.innerText = formatBTC(totalNet);
   subDailyInflow.className = `kpi-sub-value select-mono ${totalNet >= 0 ? 'text-positive' : 'text-negative'}`;
-  footDailyInflow.innerText = `${formatBs(totalNetUsd)} (Equiv.)`;
+  footDailyInflow.innerText = `${formatIDR(totalNetUsd)} (Equiv.)`;
   timeDailyInflow.innerText = 'Last update: Fallback Calculation';
 
   valTradingVolume.innerText = '$5.17B'; // hardcoded mock fallback
-  footTradingVolume.innerText = 'Bs. 35.98B (Equiv.)';
+  footTradingVolume.innerText = 'Rp 35.98B (Equiv.)';
   timeTradingVolume.innerText = 'Last update: Fallback Calculation';
 
   valNetAssets.innerText = '$82.94B'; // hardcoded mock fallback
-  footNetAssets.innerText = 'Bs. 577.26B (Equiv.)';
+  footNetAssets.innerText = 'Rp 577.26B (Equiv.)';
   timeNetAssets.innerText = 'Last update: Fallback Calculation';
 }
 
@@ -287,7 +287,7 @@ function renderChart(data, btcPrice) {
               return [
                 `Net Flow BTC: ${formatBTC(btc)}`,
                 `Equiv. USD: ${formatUSD(usd)}`,
-                `Equiv. Bs: ${formatBs(usd)}`
+                `Equiv. Bs: ${formatIDR(usd)}`
               ];
             }
           }
@@ -392,7 +392,7 @@ function renderAlerts(data, btcPrice) {
         </svg>
         <div class="alert-content">
           <div class="alert-title">Capital Outflow Detected (Net Outflow)</div>
-          <div class="alert-desc">Net daily outflow of ${formatBTC(total)} (equiv. ${formatUSD(totalUsd)} / ${formatBs(totalUsd)}) in the recent session.</div>
+          <div class="alert-desc">Net daily outflow of ${formatBTC(total)} (equiv. ${formatUSD(totalUsd)} / ${formatIDR(totalUsd)}) in the recent session.</div>
         </div>
       </div>
     `;
@@ -410,7 +410,7 @@ function renderAlerts(data, btcPrice) {
         </svg>
         <div class="alert-content">
           <div class="alert-title">Massive GBTC Drain (Vampire Alert)</div>
-          <div class="alert-desc">Grayscale registered an outflow of ${formatBTC(gbtc)} (equiv. ${formatUSD(gbtcUsd)} / ${formatBs(gbtcUsd)}).</div>
+          <div class="alert-desc">Grayscale registered an outflow of ${formatBTC(gbtc)} (equiv. ${formatUSD(gbtcUsd)} / ${formatIDR(gbtcUsd)}).</div>
         </div>
       </div>
     `;

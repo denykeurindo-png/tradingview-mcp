@@ -3,7 +3,7 @@ if (localStorage.getItem('sidebar-minimized') === 'true') {
   document.body.classList.add('sidebar-minimized');
 }
 
-const EXCHANGE_RATE = 6.96; // 1 USD = 6.96 Bolivianos (Bs.)
+const EXCHANGE_RATE = 16300; // 1 USD = 16300 IDR (Rp)
 
 // DOM Elements
 const actionSignal = document.getElementById('action-signal');
@@ -70,8 +70,8 @@ const formatUSD = (val) => {
   return `${val < 0 ? '-' : ''}$${formatted}`;
 };
 
-const formatBs = (val) => {
-  if (!val) return 'Bs. 0.00';
+const formatIDR = (val) => {
+  if (!val) return 'Rp 0';
   const valBs = val * EXCHANGE_RATE;
   const abs = Math.abs(valBs);
   let formatted = '';
@@ -79,7 +79,7 @@ const formatBs = (val) => {
   else if (abs >= 1e6) formatted = (abs / 1e6).toFixed(2) + 'M';
   else if (abs >= 1e3) formatted = (abs / 1e3).toFixed(2) + 'K';
   else formatted = abs.toFixed(2);
-  return `${valBs < 0 ? '-' : ''}Bs. ${formatted}`;
+  return `${valBs < 0 ? '-' : ''}Rp ${formatted}`;
 };
 
 const formatIntensity = (val) => {

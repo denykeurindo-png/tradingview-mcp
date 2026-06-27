@@ -1,5 +1,5 @@
 // JDA Trade Monitor — Live Trade Journal
-const EXCHANGE_RATE = 6.96;
+const EXCHANGE_RATE = 16300;
 
 const statusIndicator = document.getElementById('connection-status');
 const btnRefresh = document.getElementById('btn-refresh');
@@ -16,11 +16,11 @@ const formatUSD = (v) => {
   let f = abs >= 1e9 ? (abs/1e9).toFixed(2)+'B' : abs >= 1e6 ? (abs/1e6).toFixed(2)+'M' : abs >= 1e3 ? (abs/1e3).toFixed(2)+'K' : abs.toFixed(2);
   return `${neg ? '-' : ''}$${f}`;
 };
-const formatBs = (v) => {
-  if (!v && v !== 0) return 'Bs. 0.00';
+const formatIDR = (v) => {
+  if (!v && v !== 0) return 'Rp 0';
   const bs = v * EXCHANGE_RATE; const neg = bs < 0; const abs = Math.abs(bs);
   let f = abs >= 1e9 ? (abs/1e9).toFixed(2)+'B' : abs >= 1e6 ? (abs/1e6).toFixed(2)+'M' : abs >= 1e3 ? (abs/1e3).toFixed(2)+'K' : abs.toFixed(2);
-  return `${neg ? '-' : ''}Bs. ${f}`;
+  return `${neg ? '-' : ''}Rp ${f}`;
 };
 
 function updateStatus(state, message) {
@@ -145,6 +145,21 @@ window.clearTradeLog = async () => {
   }
 };
 
+function getSignalSource(trade) {
+  if (trade.id && (trade.id.startsWith('T_BT_heatmap24h') || trade.id.includes('24h') || trade.id.includes('24H'))) return 'Heatmap 24H';
+  if (trade.id && (trade.id.startsWith('T_BT_heatmap3d') || trade.id.includes('3d') || trade.id.includes('3D'))) return 'Heatmap 3D';
+  if (trade.note && trade.note.toLowerCase().includes('backtest')) {
+    if (trade.note.includes('24H')) return 'Heatmap 24H';
+    if (trade.note.includes('3D')) return 'Heatmap 3D';
+  }
+  if (trade.note && trade.note.toLowerCase().includes('jda')) return 'JDA Signal';
+  if (trade.tf) {
+    if (trade.tf === '15m') return '15m Heatmap';
+    return `${trade.tf} Chart`;
+  }
+  return 'Manual / Live';
+}
+
 // ─── Render Trade Table ──────────────────────────────────────
 function renderTradeTable() {
   const tbody = document.getElementById('backtest-log-tbody');
@@ -166,9 +181,9 @@ function renderTradeTable() {
   set('stat-hit-sl', hitSl.length);
   set('stat-cut-loss', cutLoss.length);
   const npUsd = document.getElementById('stat-net-profit-usd');
-  const npBs  = document.getElementById('stat-net-profit-bs');
+  const npIDR  = document.getElementById('stat-net-profit-idr');
   if (npUsd) { npUsd.innerText = formatUSD(netPnl); npUsd.className = 'backtest-stat-value ' + (netPnl >= 0 ? 'profit-positive' : 'profit-negative'); }
-  if (npBs)  { npBs.innerText  = formatBs(netPnl);  npBs.className  = 'backtest-stat-value ' + (netPnl >= 0 ? 'profit-positive' : 'profit-negative'); }
+  if (npIDR)  { npRpinnerText  = formatIDR(netPnl);  npRpclassName  = 'backtest-stat-value ' + (netPnl >= 0 ? 'profit-positive' : 'profit-negative'); }
 
   if (!total) {
     tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--text-muted);padding:20px;">No trades logged yet.</td></tr>';
@@ -220,7 +235,7 @@ function renderTradeTable() {
     html += `<tr ${rowOpacity}>
       <td>${displayTime}</td>
       <td style="font-weight:700;color:${trade.direction === 'LONG' ? '#32D74B' : '#FF453A'};">${trade.direction}</td>
-      <td style="font-family:var(--font-mono);color:#98989D;">${trade.tf || '15m'}</td>
+      <td style="font-family:var(--font-mono);color:#98989D;">${getSignalSource(trade)}</td>
       <td class="mono">$${trade.entry.toLocaleString(undefined,{minimumFractionDigits:2})}${entrySubtext}</td>
       <td class="mono" style="color:#32D74B;">$${trade.tp.toLocaleString(undefined,{minimumFractionDigits:2})}${tpSubtext}</td>
       <td class="mono" style="color:#FF453A;">$${trade.sl.toLocaleString(undefined,{minimumFractionDigits:2})}${slSubtext}</td>
@@ -229,7 +244,7 @@ function renderTradeTable() {
       <td>${statusHtml[trade.status] || ''}${trade.note ? `<br><span style="font-size:9px;color:var(--text-muted);">${trade.note}</span>` : ''}</td>
       <td class="mono">$${markPrice.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
       <td class="mono ${pnlClass}" style="font-weight:600;">${formatUSD(trade.pnl)}</td>
-      <td class="mono ${pnlClass}">${formatBs(trade.pnl)}</td>
+      <td class="mono ${pnlClass}">${formatIDR(trade.pnl)}</td>
       <td>${actionBtn}<button class="btn-action-sm danger" onclick="deleteTrade('${trade.id}')">Del</button></td>
     </tr>`;
   });
@@ -256,7 +271,7 @@ function renderKpiStats() {
 
   const pnlEl = document.getElementById('val-net-pnl');
   if (pnlEl) { pnlEl.innerText = formatUSD(netPnl); pnlEl.className = `kpi-value select-mono ${netPnl >= 0 ? 'text-positive' : 'text-negative'}`; }
-  set('foot-net-pnl-bs', formatBs(netPnl));
+  set('foot-net-pnl-idr', formatIDR(netPnl));
 
   set('val-total-trades', total);
   set('foot-active-trades', `${active} Active`);

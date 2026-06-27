@@ -1,5 +1,5 @@
 // JDA Trade Monitor — CoinGlass Liquidation HeatMap Logic (Simplified Backtest Grid)
-const EXCHANGE_RATE = 6.96; // 1 USD = 6.96 Bolivianos (Bs.)
+const EXCHANGE_RATE = 16300; // 1 USD = 16300 IDR (Rp)
 
 // DOM Elements
 const statusIndicator = document.getElementById('connection-status');
@@ -48,8 +48,8 @@ const formatUSD = (valUsd) => {
   return `${isNeg ? '-' : ''}$${f}`;
 };
 
-const formatBs = (valUsd) => {
-  if (valUsd === 0 || valUsd === undefined || valUsd === null) return 'Bs. 0.00';
+const formatIDR = (valUsd) => {
+  if (valUsd === 0 || valUsd === undefined || valUsd === null) return 'Rp 0';
   const valBs = valUsd * EXCHANGE_RATE;
   const isNeg = valBs < 0;
   const abs = Math.abs(valBs);
@@ -58,7 +58,7 @@ const formatBs = (valUsd) => {
   else if (abs >= 1e6) f = (abs / 1e6).toFixed(2) + 'M';
   else if (abs >= 1e3) f = (abs / 1e3).toFixed(2) + 'K';
   else f = abs.toFixed(2);
-  return `${isNeg ? '-' : ''}Bs. ${f}`;
+  return `${isNeg ? '-' : ''}Rp ${f}`;
 };
 
 const formatIntensity = (val) => {
@@ -179,7 +179,7 @@ function renderKPIs(data, updateTime) {
     currentBtcPriceGlobal = currentPrice;
 
     valBtcPrice.innerText = formatUSD(currentPrice);
-    footBtcPrice.innerText = `${formatBs(currentPrice)} (Equiv.)`;
+    footBtcPrice.innerText = `${formatIDR(currentPrice)} (Equiv.)`;
     timeBtcPrice.innerText = `Last update: ${updateTime}`;
 
     const highs = candlestickSeries.data.map(c => parseFloat(c[3]));
@@ -188,11 +188,11 @@ function renderKPIs(data, updateTime) {
     const minLow = Math.min(...lows);
 
     val24hHigh.innerText = formatUSD(maxHigh);
-    foot24hHigh.innerText = `${formatBs(maxHigh)} (Equiv.)`;
+    foot24hHigh.innerText = `${formatIDR(maxHigh)} (Equiv.)`;
     time24hHigh.innerText = `Last update: ${updateTime}`;
 
     val24hLow.innerText = formatUSD(minLow);
-    foot24hLow.innerText = `${formatBs(minLow)} (Equiv.)`;
+    foot24hLow.innerText = `${formatIDR(minLow)} (Equiv.)`;
     time24hLow.innerText = `Last update: ${updateTime}`;
   }
 
@@ -203,7 +203,7 @@ function renderKPIs(data, updateTime) {
     });
 
     valLiqVol.innerText = formatUSD(totalLiq);
-    footLiqVol.innerText = `${formatBs(totalLiq)} (Equiv.)`;
+    footLiqVol.innerText = `${formatIDR(totalLiq)} (Equiv.)`;
     timeLiqVol.innerText = `Last update: ${updateTime}`;
   }
 }
@@ -717,11 +717,11 @@ function renderBacktestTable() {
   document.getElementById('stat-cut-loss').innerText = cutLoss.length;
 
   const npUsd = document.getElementById('stat-net-profit-usd');
-  const npBs = document.getElementById('stat-net-profit-bs');
+  const npIDR = document.getElementById('stat-net-profit-idr');
   npUsd.innerText = formatUSD(netPnl);
-  npBs.innerText = formatBs(netPnl);
+  npRpinnerText = formatIDR(netPnl);
   npUsd.className = 'backtest-stat-value ' + (netPnl >= 0 ? 'profit-positive' : 'profit-negative');
-  npBs.className = 'backtest-stat-value ' + (netPnl >= 0 ? 'profit-positive' : 'profit-negative');
+  npRpclassName = 'backtest-stat-value ' + (netPnl >= 0 ? 'profit-positive' : 'profit-negative');
 
   if (!total) {
     tbody.innerHTML = `<tr><td colspan="12" style="text-align:center; color:var(--text-muted); padding:20px;">No trades logged. Use the form above or click E / TP in tables.</td></tr>`;
@@ -743,7 +743,7 @@ function renderBacktestTable() {
     const rr = (trade.tpDistance / trade.slDistance).toFixed(2);
     const pnlClass = trade.pnl > 0 ? 'text-positive' : (trade.pnl < 0 ? 'text-negative' : '');
     const pnlUsd = formatUSD(trade.pnl);
-    const pnlBs = formatBs(trade.pnl);
+    const pnlBs = formatIDR(trade.pnl);
 
     const actionBtn = trade.status === 'ACTIVE'
       ? `<button class="btn-action-sm warning" onclick="manualCutLoss('${trade.id}')">Cut</button> `

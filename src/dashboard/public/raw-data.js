@@ -1,4 +1,4 @@
-const EXCHANGE_RATE = 6.96; // 1 USD = 6.96 Bolivianos (Bs.)
+const EXCHANGE_RATE = 16300; // 1 USD = 16300 IDR (Rp)
 let currentBtcPrice = null;
 
 // DOM Elements
@@ -39,8 +39,8 @@ const formatUSD = (valUsd) => {
   return `${isNeg ? '-' : ''}$${f}`;
 };
 
-const formatBs = (valUsd) => {
-  if (valUsd === 0 || valUsd === undefined || valUsd === null) return 'Bs. 0.00';
+const formatIDR = (valUsd) => {
+  if (valUsd === 0 || valUsd === undefined || valUsd === null) return 'Rp 0';
   const valBs = valUsd * EXCHANGE_RATE;
   const isNeg = valBs < 0;
   const abs = Math.abs(valBs);
@@ -49,7 +49,7 @@ const formatBs = (valUsd) => {
   else if (abs >= 1e6) f = (abs / 1e6).toFixed(2) + 'M';
   else if (abs >= 1e3) f = (abs / 1e3).toFixed(2) + 'K';
   else f = abs.toFixed(2);
-  return `${isNeg ? '-' : ''}Bs. ${f}`;
+  return `${isNeg ? '-' : ''}Rp ${f}`;
 };
 
 function updateStatus(state, message) {
@@ -72,7 +72,7 @@ async function loadBotStatus() {
     if (resObj.btcPrice) {
       currentBtcPrice = resObj.btcPrice;
       valBtcPrice.innerText = formatUSD(resObj.btcPrice);
-      footBtcPrice.innerText = formatBs(resObj.btcPrice) + ' (Equiv.)';
+      footBtcPrice.innerText = formatIDR(resObj.btcPrice) + ' (Equiv.)';
     }
     
     // Update KPI panels
@@ -776,9 +776,9 @@ function renderTradeTable() {
   set('stat-hit-sl', hitSl.length);
   set('stat-cut-loss', cutLoss.length);
   const npUsd = document.getElementById('stat-net-profit-usd');
-  const npBs  = document.getElementById('stat-net-profit-bs');
+  const npIDR  = document.getElementById('stat-net-profit-idr');
   if (npUsd) { npUsd.innerText = formatUSD(netPnl); npUsd.className = 'backtest-stat-value ' + (netPnl >= 0 ? 'profit-positive' : 'profit-negative'); }
-  if (npBs)  { npBs.innerText  = formatBs(netPnl);  npBs.className  = 'backtest-stat-value ' + (netPnl >= 0 ? 'profit-positive' : 'profit-negative'); }
+  if (npIDR)  { npRpinnerText  = formatIDR(netPnl);  npRpclassName  = 'backtest-stat-value ' + (netPnl >= 0 ? 'profit-positive' : 'profit-negative'); }
 
   if (!total) {
     tbody.innerHTML = '<tr><td colspan="13" style="text-align:center;color:var(--text-muted);padding:20px;">No trades logged yet.</td></tr>';
@@ -839,7 +839,7 @@ function renderTradeTable() {
       <td>${statusHtml[trade.status] || ''}${trade.note ? `<br><span style="font-size:9px;color:var(--text-muted);">${trade.note}</span>` : ''}</td>
       <td class="mono">$${markPrice.toLocaleString(undefined,{minimumFractionDigits:2})}</td>
       <td class="mono ${pnlClass}" style="font-weight:600;">${formatUSD(trade.pnl)}</td>
-      <td class="mono ${pnlClass}">${formatBs(trade.pnl)}</td>
+      <td class="mono ${pnlClass}">${formatIDR(trade.pnl)}</td>
       <td>${actionBtn}<button class="btn-action-sm danger" onclick="deleteTrade('${trade.id}')">Del</button></td>
     </tr>`;
   });

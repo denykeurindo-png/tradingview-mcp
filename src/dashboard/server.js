@@ -3608,7 +3608,7 @@ app.post('/api/trades/cut', (req, res) => {
       `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
       `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
       `Close: <code>$${parseFloat(closePrice).toFixed(2)}</code>\n` +
-      `PnL: <code>${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(2)}</code> (${trade.pnl >= 0 ? '+' : ''}Bs. ${(trade.pnl * 6.96).toFixed(2)})\n` +
+      `PnL: <code>${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(2)}</code> (${trade.pnl >= 0 ? '+' : ''}Rp ${(trade.pnl * 16300).toFixed(0)})\n` +
       `Note: ${trade.note}`
     );
     return;
@@ -3716,7 +3716,7 @@ app.post('/api/jda-trades/cut', (req, res) => {
       `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
       `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
       `Close: <code>$${parseFloat(closePrice).toFixed(2)}</code>\n` +
-      `PnL: <code>${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(2)}</code> (${trade.pnl >= 0 ? '+' : ''}Bs. ${(trade.pnl * 6.96).toFixed(2)})\n` +
+      `PnL: <code>${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(2)}</code> (${trade.pnl >= 0 ? '+' : ''}Rp ${(trade.pnl * 16300).toFixed(0)})\n` +
       `Note: ${trade.note}`
     );
     return;
@@ -3988,7 +3988,7 @@ app.post('/api/tradingview/webhook', (req, res) => {
         `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
         `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
         `Close: <code>$${trade.closePrice.toFixed(2)}</code>\n` +
-        `PnL: <code>${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(2)}</code> (${trade.pnl >= 0 ? '+' : ''}Bs. ${(trade.pnl * 6.96).toFixed(2)})\n` +
+        `PnL: <code>${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(2)}</code> (${trade.pnl >= 0 ? '+' : ''}Rp ${(trade.pnl * 16300).toFixed(0)})\n` +
         `Note: ${trade.note}`
       );
     } else {
@@ -4107,7 +4107,7 @@ app.post('/api/jda-trades/webhook', (req, res) => {
         `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
         `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
         `Close: <code>$${trade.closePrice.toFixed(2)}</code>\n` +
-        `PnL: <code>${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(2)}</code> (${trade.pnl >= 0 ? '+' : ''}Bs. ${(trade.pnl * 6.96).toFixed(2)})\n` +
+        `PnL: <code>${trade.pnl >= 0 ? '+' : ''}$${trade.pnl.toFixed(2)}</code> (${trade.pnl >= 0 ? '+' : ''}Rp ${(trade.pnl * 16300).toFixed(0)})\n` +
         `Note: ${trade.note}`
       );
     } else {
@@ -4559,7 +4559,7 @@ function evaluateActiveTradesBackend(heatmapData) {
         updated = true;
 
         const pnlText = pnl === 0 ? `$0.00 (Breakeven)` : `-$${trade.riskUsd.toFixed(2)}`;
-        const pnlBsText = pnl === 0 ? `Bs. 0.00` : `-Bs. ${(trade.riskUsd * 6.96).toFixed(2)}`;
+        const pnlBsText = pnl === 0 ? `Rp 0` : `-Rp ${(trade.riskUsd * 16300).toFixed(0)}`;
         const alertIcon = trade.isBreakeven ? `🛡️` : `🚨`;
         const alertTitle = trade.isBreakeven ? `Trade Closed (Hit Breakeven)` : `Trade Closed (Hit SL)`;
 
@@ -4595,7 +4595,7 @@ function evaluateActiveTradesBackend(heatmapData) {
           `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
           `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
           `TP Hit: <code>$${trade.tp.toFixed(2)}</code>\n` +
-          `PnL: <code>+$${profit.toFixed(2)}</code> (+Bs. ${(profit * 6.96).toFixed(2)})\n` +
+          `PnL: <code>+$${profit.toFixed(2)}</code> (+Rp ${(profit * 16300).toFixed(0)})\n` +
           `Note: ${trade.note}`
         );
         return;
@@ -4612,7 +4612,7 @@ function evaluateActiveTradesBackend(heatmapData) {
         updated = true;
 
         const pnlText = pnl === 0 ? `$0.00 (Breakeven)` : `-$${trade.riskUsd.toFixed(2)}`;
-        const pnlBsText = pnl === 0 ? `Bs. 0.00` : `-Bs. ${(trade.riskUsd * 6.96).toFixed(2)}`;
+        const pnlBsText = pnl === 0 ? `Rp 0` : `-Rp ${(trade.riskUsd * 16300).toFixed(0)}`;
         const alertIcon = trade.isBreakeven ? `🛡️` : `🚨`;
         const alertTitle = trade.isBreakeven ? `Trade Closed (Hit Breakeven)` : `Trade Closed (Hit SL)`;
 
@@ -4648,7 +4648,7 @@ function evaluateActiveTradesBackend(heatmapData) {
           `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
           `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
           `TP Hit: <code>$${trade.tp.toFixed(2)}</code>\n` +
-          `PnL: <code>+$${profit.toFixed(2)}</code> (+Bs. ${(profit * 6.96).toFixed(2)})\n` +
+          `PnL: <code>+$${profit.toFixed(2)}</code> (+Rp ${(profit * 16300).toFixed(0)})\n` +
           `Note: ${trade.note}`
         );
         return;
@@ -4790,7 +4790,7 @@ function evaluateActiveTradesBackend(heatmapData) {
             `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
             `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
             `Close: <code>$${lastClose.toFixed(2)}</code>\n` +
-            `PnL: <code>${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}</code> (${profit >= 0 ? '+' : ''}Bs. ${(profit * 6.96).toFixed(2)})\n` +
+            `PnL: <code>${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}</code> (${profit >= 0 ? '+' : ''}Rp ${(profit * 16300).toFixed(0)})\n` +
             `Note: ${trade.note}`
           );
           return;
@@ -4841,7 +4841,7 @@ function evaluateActiveJdaTradesBackend(heatmapData) {
         updated = true;
 
         const pnlText = `-$${trade.riskUsd.toFixed(2)}`;
-        const pnlBsText = `-Bs. ${(trade.riskUsd * 6.96).toFixed(2)}`;
+        const pnlBsText = `-Rp ${(trade.riskUsd * 16300).toFixed(0)}`;
         console.log(`[JDA Bot] LONG Hit SL at $${trade.sl.toFixed(2)} (Last Low: $${lastLow.toFixed(2)}), PnL: ${pnlText}`);
         sendTelegramAlert(
           `🚨 <b>JDA MTF Trade Closed (Hit SL)</b>\n` +
@@ -4874,7 +4874,7 @@ function evaluateActiveJdaTradesBackend(heatmapData) {
           `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
           `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
           `TP Hit: <code>$${trade.tp.toFixed(2)}</code>\n` +
-          `PnL: <code>+$${profit.toFixed(2)}</code> (+Bs. ${(profit * 6.96).toFixed(2)})\n` +
+          `PnL: <code>+$${profit.toFixed(2)}</code> (+Rp ${(profit * 16300).toFixed(0)})\n` +
           `Note: ${trade.note}`
         );
         return;
@@ -4891,7 +4891,7 @@ function evaluateActiveJdaTradesBackend(heatmapData) {
         updated = true;
 
         const pnlText = `-$${trade.riskUsd.toFixed(2)}`;
-        const pnlBsText = `-Bs. ${(trade.riskUsd * 6.96).toFixed(2)}`;
+        const pnlBsText = `-Rp ${(trade.riskUsd * 16300).toFixed(0)}`;
         console.log(`[JDA Bot] SHORT Hit SL at $${trade.sl.toFixed(2)} (Last High: $${lastHigh.toFixed(2)}), PnL: ${pnlText}`);
         sendTelegramAlert(
           `🚨 <b>JDA MTF Trade Closed (Hit SL)</b>\n` +
@@ -4924,7 +4924,7 @@ function evaluateActiveJdaTradesBackend(heatmapData) {
           `SL: <code>$${trade.sl.toFixed(2)}</code>\n` +
           `Size: <code>$${trade.positionSizeUsd.toFixed(0)}</code>\n` +
           `TP Hit: <code>$${trade.tp.toFixed(2)}</code>\n` +
-          `PnL: <code>+$${profit.toFixed(2)}</code> (+Bs. ${(profit * 6.96).toFixed(2)})\n` +
+          `PnL: <code>+$${profit.toFixed(2)}</code> (+Rp ${(profit * 16300).toFixed(0)})\n` +
           `Note: ${trade.note}`
         );
         return;
@@ -5435,6 +5435,18 @@ app.get('/api/market-extras', async (req, res) => {
   res.json({ success: true, fng, etfSummary });
 });
 
+function isTrendFilterActive(settings, botMetrics) {
+  const mode = settings.htfTrendFilterMode || "OFF";
+  if (mode === "ON") return true;
+  if (mode === "OFF") return false;
+  if (mode === "AUTO") {
+    const isStrong1h = botMetrics && botMetrics.strength1h === "STRONG";
+    const isStrong4h = botMetrics && botMetrics.strength4h === "STRONG";
+    return isStrong1h || isStrong4h;
+  }
+  return false;
+}
+
 function autoTradeStrategyBackend(heatmapData) {
   const settings = loadSettings();
   
@@ -5890,7 +5902,7 @@ function autoTradeStrategyBackend(heatmapData) {
   }
 
   // ─── Step 10d: Strict HTF Trend Filter Override ────────────
-  if (direction === 'LONG' && botMetrics.trend1h === 'BEARISH' && botMetrics.trend4h === 'BEARISH') {
+  if (isTrendFilterActive(settings, botMetrics) && direction === 'LONG' && botMetrics.trend1h === 'BEARISH' && botMetrics.trend4h === 'BEARISH') {
     botPhaseState = {
       phase: 'SWEEP_REJECTED',
       nearestPool: bestSweep.price,
@@ -5904,7 +5916,7 @@ function autoTradeStrategyBackend(heatmapData) {
     console.log(`[LSR Bot] SWEEP_REJECTED — LONG blocked by bearish HTF trend for LONG at $${entry.toFixed(0)}`);
     return;
   }
-  if (direction === 'SHORT' && botMetrics.trend1h === 'BULLISH' && botMetrics.trend4h === 'BULLISH') {
+  if (isTrendFilterActive(settings, botMetrics) && direction === 'SHORT' && botMetrics.trend1h === 'BULLISH' && botMetrics.trend4h === 'BULLISH') {
     botPhaseState = {
       phase: 'SWEEP_REJECTED',
       nearestPool: bestSweep.price,

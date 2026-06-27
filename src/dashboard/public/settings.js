@@ -47,6 +47,9 @@ async function loadSettingsFromServer() {
     document.getElementById('auto-max-tp-percent').value = s.maxTPPercent !== undefined ? s.maxTPPercent : 1.5;
     document.getElementById('auto-cut-dist-threshold').value = s.autoCutDistanceThreshold !== undefined ? s.autoCutDistanceThreshold : 1.0;
     document.getElementById('auto-breakeven-enabled').checked = s.breakevenEnabled !== false;
+    document.getElementById('auto-min-cb-premium-long').value = s.minCoinbasePremiumForLongs !== undefined ? s.minCoinbasePremiumForLongs : -0.05;
+    document.getElementById('auto-max-cb-premium-short').value = s.maxCoinbasePremiumForShorts !== undefined ? s.maxCoinbasePremiumForShorts : 0.05;
+    document.getElementById('auto-htf-trend-mode').value = s.htfTrendFilterMode || 'AUTO';
     document.getElementById('tele-bot-token').value = s.telegramBotToken || '';
     document.getElementById('tele-chat-id').value = s.telegramChatId || '';
 
@@ -105,6 +108,9 @@ async function saveSettingsToServer() {
         maxTPPercent: getNum('auto-max-tp-percent', 1.5),
         autoCutDistanceThreshold: getNum('auto-cut-dist-threshold', 1.0),
         breakevenEnabled: document.getElementById('auto-breakeven-enabled').checked,
+        minCoinbasePremiumForLongs: getNum('auto-min-cb-premium-long', -0.05),
+        maxCoinbasePremiumForShorts: getNum('auto-max-cb-premium-short', 0.05),
+        htfTrendFilterMode: document.getElementById('auto-htf-trend-mode').value,
         autoTradeEnabled,
         telegramBotToken: document.getElementById('tele-bot-token').value.trim(),
         telegramChatId: document.getElementById('tele-chat-id').value.trim(),
@@ -195,6 +201,7 @@ window.addEventListener('DOMContentLoaded', async () => {
     'input-capital', 'input-risk', 'auto-min-rr', 'auto-min-prob', 
     'auto-max-active', 'auto-sweep-candles', 'auto-cooldown', 
     'auto-max-tp-percent', 'auto-cut-dist-threshold', 'auto-breakeven-enabled',
+    'auto-min-cb-premium-long', 'auto-max-cb-premium-short', 'auto-htf-trend-mode',
     'tele-bot-token', 'tele-chat-id',
     // JDA Settings
     'jda-min-confidence', 'jda-capital', 'jda-risk-percent', 'jda-sltp-method',
