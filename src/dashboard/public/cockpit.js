@@ -834,65 +834,7 @@ function renderSingleMiniChart(chartInstance, title, heatmapData, is3d = false) 
       lineStyle: { color: is3d ? '#F0B90B' : '#bfdc21', width: 1, type: 'dashed' }
     },
     tooltip: {
-      trigger: 'item',
-      alwaysShowContent: false,
-      hideDelay: 0,
-      transitionDuration: 0,
-      backgroundColor: '#121212',
-      borderColor: '#2C2C2E',
-      borderWidth: 1,
-      textStyle: { color: '#FFFFFF', fontFamily: 'Inter' },
-      formatter: function (params) {
-        if (!params || !params.value) return '';
-
-        if (params.seriesName === 'Liquidation Leverage') {
-          const val = params.value;
-          const time = xAxisData[val[0]] || '';
-          const price = yAxisData[val[1]] || 0;
-          const intensity = val[2] || 0;
-          const priceFormatted = parseFloat(price).toFixed(2);
-          const intensityFormatted = formatIntensity(intensity);
-
-          let html = `<div style="font-family: var(--font-sans); padding: 6px 10px; font-size: 13px; min-width: 220px; line-height: 1.6;">`;
-          html += `<strong style="color: #98989D; font-size: 11px; display: block; margin-bottom: 8px;">${time}</strong>`;
-          html += `<div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 6px;">`;
-          html += `<span style="color: #FFFFFF; font-size: 12px; display: flex; align-items: center;">`;
-          html += `<span style="color: #FFD60A; margin-right: 8px; font-size: 14px;">●</span>Price`;
-          html += `</span>`;
-          html += `<span style="font-family: var(--font-mono); color: #FFFFFF; font-weight: 500; font-size: 12px;">${priceFormatted}</span>`;
-          html += `</div>`;
-          html += `<div style="display: flex; justify-content: space-between; align-items: center;">`;
-          html += `<span style="color: #FFFFFF; font-size: 12px; display: flex; align-items: center;">`;
-          html += `<span style="color: #FFD60A; margin-right: 8px; font-size: 14px;">●</span>Liquidation Leverage`;
-          html += `</span>`;
-          html += `<span style="font-family: var(--font-mono); color: #FFFFFF; font-weight: 500; font-size: 12px;">${intensityFormatted}</span>`;
-          html += `</div></div>`;
-          return html;
-        }
-
-        if (params.seriesName === 'BTC Price') {
-          const time = xAxisData[params.dataIndex] || '';
-          const ohlc = params.value;
-          let open, close, low, high;
-          if (ohlc.length === 5) {
-            open = parseFloat(ohlc[1]); close = parseFloat(ohlc[2]);
-            low = parseFloat(ohlc[3]); high = parseFloat(ohlc[4]);
-          } else {
-            open = parseFloat(ohlc[0]); close = parseFloat(ohlc[1]);
-            low = parseFloat(ohlc[2]); high = parseFloat(ohlc[3]);
-          }
-
-          let html = `<div style="font-family: var(--font-sans); padding: 6px 10px; font-size: 13px; min-width: 180px; line-height: 1.6;">`;
-          html += `<strong style="color: #98989D; font-size: 11px; display: block; margin-bottom: 8px;">${time}</strong>`;
-          html += `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span style="color: #98989D; font-size: 12px;">Open:</span><span style="font-family: var(--font-mono); color: #FFFFFF; font-weight: 500; font-size: 12px;">${formatUSD(open)}</span></div>`;
-          html += `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span style="color: #98989D; font-size: 12px;">Close:</span><span style="font-family: var(--font-mono); color: #FFFFFF; font-weight: 500; font-size: 12px;">${formatUSD(close)}</span></div>`;
-          html += `<div style="display: flex; justify-content: space-between; margin-bottom: 4px;"><span style="color: #98989D; font-size: 12px;">High:</span><span style="font-family: var(--font-mono); color: ${is3d ? '#0ECB81' : '#32D74B'}; font-weight: 500; font-size: 12px;">${formatUSD(high)}</span></div>`;
-          html += `<div style="display: flex; justify-content: space-between;"><span style="color: #98989D; font-size: 12px;">Low:</span><span style="font-family: var(--font-mono); color: ${is3d ? '#F6465D' : '#FF453A'}; font-weight: 500; font-size: 12px;">${formatUSD(low)}</span></div>`;
-          html += `</div>`;
-          return html;
-        }
-        return '';
-      }
+      show: false
     },
     grid: {
       top: 20, bottom: 20, left: 55, right: 10,
