@@ -821,6 +821,39 @@ document.addEventListener('DOMContentLoaded', () => {
         sentimentEl.style.color = getSentimentColor(m.topTraderLs.sentiment);
         lsCard.style.borderLeft = `4px solid ${getSentimentColor(m.topTraderLs.sentiment)}`;
         lsCard.querySelector('.summary-val').innerText = m.topTraderLs.formatted || '--';
+        
+        // Visual Gauge Update
+        const gaugeFill = document.getElementById('top-trader-ls-gauge-fill');
+        const gaugeLabel = document.getElementById('top-trader-ls-gauge-label');
+        const actionText = document.getElementById('top-trader-ls-action-text');
+        
+        if (gaugeFill && gaugeLabel && actionText) {
+          const ratioVal = parseFloat(m.topTraderLs.value || 1.0);
+          // Map ratio between 0.5 (max bearish) and 1.5 (max bullish) to -100% and +100%
+          let percentage = Math.min(100, Math.max(-100, (ratioVal - 1.0) / 0.5 * 100));
+          
+          gaugeLabel.innerText = ratioVal.toFixed(2);
+          
+          if (percentage >= 0) {
+            gaugeFill.style.left = '50%';
+            gaugeFill.style.width = (percentage / 2) + '%';
+            gaugeFill.style.background = '#0ECB81'; // Green
+          } else {
+            gaugeFill.style.left = (50 + percentage / 2) + '%';
+            gaugeFill.style.width = (Math.abs(percentage) / 2) + '%';
+            gaugeFill.style.background = '#F6465D'; // Red
+          }
+          
+          // Set Indonesian Action Recommendation text
+          if (m.topTraderLs.sentiment === 'bullish') {
+            actionText.innerHTML = '<span style="color: #0ECB81; font-weight: bold;">BULLISH BIAS.</span> Mayoritas akun elit (Top Traders/Whales) di Binance dan OKX sedang membuka posisi LONG. Rekomendasi aksi: <strong>Fokus mencari konfirmasi entri LONG</strong> di support level. Momentum dominan naik.';
+          } else if (m.topTraderLs.sentiment === 'bearish') {
+            actionText.innerHTML = '<span style="color: #F6465D; font-weight: bold;">BEARISH BIAS.</span> Mayoritas akun elit (Top Traders/Whales) sedang membuka posisi SHORT. Rekomendasi aksi: <strong>Fokus mencari konfirmasi entri SHORT</strong> di resistance level. Risiko penurunan dominan tinggi.';
+          } else {
+            actionText.innerHTML = '<span style="color: #F0B90B; font-weight: bold;">NETRAL / SIDEWAYS.</span> Proporsi posisi LONG dan SHORT akun-akun pro sangat berimbang. Rekomendasi aksi: <strong>Wait and See</strong>, tunggu hingga salah satu arah mulai mendominasi perbandingan posisi pro.';
+          }
+        }
+        
         lsCard.style.display = 'block';
       }
 
