@@ -256,7 +256,7 @@ app.use(basicAuth);
 // Dynamic VPS route middleware to hide settings menu and block settings page access
 app.use((req, res, next) => {
   const urlPath = req.path;
-  const isHtml = urlPath === '/' || urlPath === '/cockpit' || urlPath.endsWith('.html') || urlPath === '/settings';
+  const isHtml = urlPath === '/' || urlPath === '/cockpit' || urlPath === '/cockpit2' || urlPath.endsWith('.html') || urlPath === '/settings';
   
   if (isHtml) {
     const settings = loadSettings();
@@ -270,6 +270,7 @@ app.use((req, res, next) => {
       let filename = urlPath;
       if (filename === '/') filename = 'index.html';
       if (filename === '/cockpit') filename = 'cockpit.html';
+      if (filename === '/cockpit2') filename = 'cockpit2.html';
       if (filename.startsWith('/')) filename = filename.substring(1);
       
       const filePath = path.join(__dirname, 'public', filename);
@@ -297,6 +298,11 @@ app.get('/login', (req, res) => {
 app.get('/cockpit', (req, res) => {
   res.sendFile(path.join(__dirname, 'public', 'cockpit.html'));
 });
+
+app.get('/cockpit2', (req, res) => {
+  res.sendFile(path.join(__dirname, 'public', 'cockpit2.html'));
+});
+
 
 // Serve static frontend files with cache-control headers to prevent caching issues
 app.use((req, res, next) => {

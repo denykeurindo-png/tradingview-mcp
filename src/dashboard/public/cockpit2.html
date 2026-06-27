@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>JDA Reversal Cockpit 2</title>
+  <!-- Google Fonts -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
+  <!-- ECharts CDN -->
+  <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
+  <!-- Style -->
+  <link rel="stylesheet" href="style.css?v=2.2.0">
+</head>
+<body>
+
+  <!-- Navigation Sidebar -->
+  <nav class="sidebar">
+    <div class="sidebar-logo">
+      <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
+        <path d="M13 10V3L4 14H11V21L20 10H13Z" stroke="#F0B90B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
+      </svg>
+      <div class="sidebar-logo-text">JDA <span>Monitor</span></div>
+      <button id="btn-sidebar-toggle" class="sidebar-toggle-btn" title="Toggle Sidebar">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
+      </button>
+    </div>
+    <ul class="sidebar-nav">
+      <li class="sidebar-item">
+        <a href="cockpit.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><line x1="9" y1="3" x2="9" y2="21"></line><line x1="15" y1="3" x2="15" y2="21"></line><line x1="3" y1="9" x2="21" y2="9"></line><line x1="3" y1="15" x2="21" y2="15"></line></svg>
+          <span>Trading Cockpit</span>
+        </a>
+      </li>
+      <li class="sidebar-item active" id="nav-cockpit2">
+        <a href="cockpit2.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="#F0B90B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="5 3 19 12 5 21 5 3"></polygon></svg>
+          <span style="color: #F0B90B;">Cockpit 2 (Reversal)</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a href="index.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
+          <span>ETF Monitor</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a href="heatmap.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 22 22 22"></polygon><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+          <span>Liquidation Heatmap</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a href="orderbook.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          <span>Combined Depth</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a href="coinglass-summary.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+          <span>Market Summary</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a href="coinglass-reports.html?tab=depth-delta">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+          <span>Depth Delta</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a href="coinglass-reports.html?tab=coinbase-premium">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+          <span>Coinbase Premium</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a href="tv-charts.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect><polyline points="17 2 12 7 7 2"></polyline></svg>
+          <span>CoinGlass TV</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a href="trades.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
+          <span>Live Trade Journal</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a href="raw-data.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+          <span>Raw Data</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a href="status.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
+          <span>System Status</span>
+        </a>
+      </li>
+      <li class="sidebar-item">
+        <a href="settings.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="3"></circle><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"></path></svg>
+          <span>Bot Settings</span>
+        </a>
+      </li>
+    </ul>
+  </nav>
+
+  <!-- Main Content Container -->
+  <div class="app-container" style="padding-left: 70px;">
+    <!-- Top Header Bar -->
+    <header class="app-header">
+      <div style="display: flex; align-items: center; gap: 15px;">
+        <h2 style="font-weight: 700; color: #EAECEF; margin: 0;">COCKPIT 2: HEATMAP & WHALES</h2>
+        <span id="market-price-badge" style="font-family: var(--font-mono); font-size: 16px; font-weight: 700; color: var(--accent-success); background: rgba(14,203,129,0.1); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(14,203,129,0.2);">BTC $--,---.--</span>
+      </div>
+      <div style="display: flex; align-items: center; gap: 20px;">
+        <div class="system-lights">
+          <div class="light-item">
+            <span class="light-dot ok" id="light-ws"></span>
+            <span>DATA FEED</span>
+          </div>
+          <div class="light-item">
+            <span class="light-dot ok" id="light-strategy"></span>
+            <span>STRATEGY ENGINE</span>
+          </div>
+        </div>
+        <div style="text-align: right;">
+          <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">JDA Bias</div>
+          <div id="jda-bias-header" style="font-size: 13px; font-weight: 700; color: var(--accent-primary);">LOADING...</div>
+        </div>
+      </div>
+    </header>
+
+    <!-- Cockpit 2 Grid Layout -->
+    <div class="cockpit2-grid">
+      <!-- COLUMN 1: Heatmap Liquidity Map (Left) -->
+      <div class="cockpit2-col">
+        <div class="cockpit2-card w-full-heatmap">
+          <div class="widget-title">
+            <span>🔥 PETA PANAS LIKUIDASI (LIQUIDATION HEATMAP)</span>
+            <div style="display: flex; gap: 8px;">
+              <button class="btn-primary" id="btn-period-24h" style="padding: 2px 8px; font-size: 10px; border-radius: 4px; background: var(--accent-primary); color: #000; cursor: pointer; border: none;">24H</button>
+              <button class="btn-primary" id="btn-period-3d" style="padding: 2px 8px; font-size: 10px; border-radius: 4px; background: rgba(255,255,255,0.05); color: var(--text-muted); cursor: pointer; border: none;">3D</button>
+            </div>
+          </div>
+          <div id="heatmap-canvas-container" style="flex: 1; min-height: 0; position: relative;">
+            <!-- Main ECharts Liquidation Heatmap rendered here -->
+            <div style="display:flex; justify-content:center; align-items:center; height:100%; color:var(--text-muted);">Memuat grafik heatmap...</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- COLUMN 2: Reversal Strategy & Control Center (Center) -->
+      <div class="cockpit2-col">
+        <!-- Reversal Score Widget -->
+        <div class="cockpit2-card w-strategy-reversal">
+          <div class="widget-title">
+            <span>🎯 METERAN KONVERGENSI REVERSAL</span>
+            <span style="font-size: 10px; color: var(--text-muted);" id="strategy-last-update">--:--:--</span>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: center; justify-content: center; flex: 1;">
+            <div class="trigger-percent-display" id="reversal-trigger-percent" style="color: var(--text-muted);">0%</div>
+            <div style="font-size: 11px; color: var(--text-muted); font-weight: 500; text-transform: uppercase; letter-spacing: 0.5px;" id="reversal-status-label">MEMINDAI LIKUIDITAS...</div>
+            
+            <div class="gauge-track">
+              <div class="gauge-fill-c2" id="reversal-gauge-fill" style="width: 0%;"></div>
+            </div>
+            <div style="display: flex; justify-content: space-between; width: 100%; font-size: 9px; color: var(--text-muted);">
+              <span>0% (Sideways)</span>
+              <span>100% (Konfirmasi Mutlak)</span>
+            </div>
+          </div>
+
+          <div class="action-box-c2" id="reversal-action-container" style="margin-top: 14px;">
+            <strong>💡 Analisis Reversal:</strong> <span id="reversal-action-text" style="color: var(--text-muted);">Menunggu konvergensi sapuan kolam dan serapan volume paus...</span>
+          </div>
+
+          <!-- Active Order Signal Box -->
+          <div class="action-signal-container" style="margin-top: 14px;">
+            <div class="action-badge action-WAIT" id="strategy-signal-badge">WAIT</div>
+          </div>
+
+          <!-- Auto-Trade Toggle -->
+          <div class="toggle-row" style="margin-top: 14px;">
+            <div>
+              <div style="font-weight: 600; font-size: 12px;">Auto-Trade Reversal</div>
+              <div style="font-size: 10px; color: var(--text-muted); margin-top: 2px;">Eksekusi otomatis saat probabilitas &ge; 70%</div>
+            </div>
+            <label class="switch">
+              <input type="checkbox" id="auto-trade-toggle">
+              <span class="slider"></span>
+            </label>
+          </div>
+        </div>
+
+        <!-- Active Position Panel -->
+        <div class="cockpit2-card w-active-position-c2">
+          <div class="widget-title">
+            <span>💼 POSISI AKTIF RIIL (BOT & WEBHOOK)</span>
+          </div>
+          <div id="active-position-details" style="display: flex; flex-direction: column; height: 100%; min-height: 180px;">
+            <div class="no-active-trade" id="no-active-position-text">Tidak ada posisi aktif berjalan saat ini.</div>
+            <div id="active-position-content" style="display: none; flex-direction: column; gap: 10px; flex: 1;">
+              <div class="position-info-grid">
+                <div class="info-tile">
+                  <div class="info-tile-label">Arah Posisi</div>
+                  <div class="info-tile-val" id="pos-direction" style="font-weight: 700;">--</div>
+                </div>
+                <div class="info-tile">
+                  <div class="info-tile-label">Size (USD)</div>
+                  <div class="info-tile-val" id="pos-size" style="font-family: var(--font-mono);">$--</div>
+                </div>
+                <div class="info-tile">
+                  <div class="info-tile-label">Harga Entri</div>
+                  <div class="info-tile-val" id="pos-entry" style="font-family: var(--font-mono);">$--</div>
+                </div>
+                <div class="info-tile">
+                  <div class="info-tile-label">Target TP</div>
+                  <div class="info-tile-val" id="pos-tp" style="font-family: var(--font-mono); color: var(--accent-success);">$--</div>
+                </div>
+              </div>
+              <div class="floating-pnl-box pnl-none" id="pos-pnl-box">
+                <span>Floating PnL</span>
+                <span id="pos-pnl-val" style="font-family: var(--font-mono); font-weight: 700;">$0.00 (0.00%)</span>
+              </div>
+              <button class="btn-emergency" id="btn-emergency-close-c2" style="margin-top: auto;">EMERGENCY CLOSE POSITION</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- COLUMN 3: Whale footprint, CVD & Orderbook Depth (Right) -->
+      <div class="cockpit2-col">
+        <!-- Whale Spot CVD Flow -->
+        <div class="cockpit2-card w-whales-cvd">
+          <div class="widget-title">
+            <span>🐳 SPOT CVD FLOW (ALIRAN DANA PAUS)</span>
+            <span style="font-size: 10px; color: var(--text-muted);" id="cvd-update-time">--:--:--</span>
+          </div>
+          <div id="cvd-chart-container" style="flex: 1; min-height: 0;">
+            <!-- Mini Area chart showing spot CVD movement -->
+            <div style="display:flex; justify-content:center; align-items:center; height:100%; color:var(--text-muted);">Memuat grafik CVD Paus...</div>
+          </div>
+        </div>
+
+        <!-- Whale Large Orders & OB Depth -->
+        <div class="cockpit2-card w-whales-orders">
+          <div class="widget-title">
+            <span>📦 ANTRIAN ORDER BUKU & WHALE WALLS</span>
+            <span style="font-size: 10px; color: var(--text-muted);" id="ob-update-time">--:--:--</span>
+          </div>
+          
+          <div style="display: flex; flex-direction: column; gap: 10px; flex: 1;">
+            <!-- OB Depth Bid/Ask Ratio Bar -->
+            <div>
+              <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted); margin-bottom: 4px;">
+                <span>Antrean Beli (Bids)</span>
+                <span style="font-weight: 600;" id="depth-ratio-label">50% / 50%</span>
+                <span>Antrean Jual (Asks)</span>
+              </div>
+              <div class="depth-bar-container" style="margin-top: 0; height: 18px;">
+                <div class="depth-bar-bid" id="ob-depth-bid" style="width: 50%;">50%</div>
+                <div class="depth-bar-ask" id="ob-depth-ask" style="width: 50%;">50%</div>
+              </div>
+            </div>
+
+            <div style="border-bottom: 1px dashed rgba(255,255,255,0.06); margin: 4px 0;"></div>
+
+            <!-- Whale Order Book Walls list -->
+            <div style="display: flex; flex-direction: column; gap: 6px; flex: 1; overflow-y: auto;">
+              <div style="font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Dinding Limit Order Terbesar (Whale Walls)</div>
+              
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-family: 'JetBrains Mono', monospace; font-size: 11px;" id="whale-walls-grid-c2">
+                <!-- Bid walls and ask walls generated dynamically -->
+                <div style="color: var(--text-muted); text-align: center; grid-column: span 2; padding: 15px;">Loading whale orderbook walls...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script src="cockpit2.js?v=2.2.0"></script>
+</body>
+</html>
