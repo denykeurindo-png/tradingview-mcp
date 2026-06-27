@@ -1154,11 +1154,7 @@ autoTradeToggle.addEventListener('change', async (e) => {
     await updateBotStatus();
     
     // Trigger charts resize after layout adjustments
-    setTimeout(() => {
-      if (gaugeChart) gaugeChart.resize();
-      if (miniHeatmapChart24h) miniHeatmapChart24h.resize();
-      if (miniHeatmapChart3d) miniHeatmapChart3d.resize();
-    }, 100);
+    triggerChartsResize();
   } catch (err) {
     alert(`Failed to save settings: ${err.message}`);
     autoTradeToggle.checked = !newValue;
@@ -1167,13 +1163,40 @@ autoTradeToggle.addEventListener('change', async (e) => {
   }
 });
 
+// Trigger all charts to resize to fit their containers perfectly under layout changes
+function triggerChartsResize() {
+  const charts = [gaugeChart, miniHeatmapChart24h, miniHeatmapChart3d, equityCurveChart];
+  charts.forEach(c => {
+    if (c && typeof c.resize === 'function') {
+      try { c.resize(); } catch (e) {}
+    }
+  });
+  // Multiple timeouts to handle dynamic browser layout reflow/transitions
+  setTimeout(() => {
+    charts.forEach(c => {
+      if (c && typeof c.resize === 'function') {
+        try { c.resize(); } catch (e) {}
+      }
+    });
+  }, 100);
+  setTimeout(() => {
+    charts.forEach(c => {
+      if (c && typeof c.resize === 'function') {
+        try { c.resize(); } catch (e) {}
+      }
+    });
+  }, 300);
+  setTimeout(() => {
+    charts.forEach(c => {
+      if (c && typeof c.resize === 'function') {
+        try { c.resize(); } catch (e) {}
+      }
+    });
+  }, 600);
+}
+
 // Window resize handler
-window.addEventListener('resize', () => {
-  if (gaugeChart) gaugeChart.resize();
-  if (miniHeatmapChart24h) miniHeatmapChart24h.resize();
-  if (miniHeatmapChart3d) miniHeatmapChart3d.resize();
-  if (equityCurveChart) equityCurveChart.resize();
-});
+window.addEventListener('resize', triggerChartsResize);
 
 // Render LSR Bot Status when no active positions exist
 function renderLsrBotStatusEmptyState() {
@@ -1570,12 +1593,7 @@ window.addEventListener('DOMContentLoaded', () => {
       const isMinimized = document.body.classList.contains('sidebar-minimized');
       localStorage.setItem('sidebar-minimized', isMinimized ? 'true' : 'false');
       // Resize charts to fit new layout width
-      setTimeout(() => {
-        if (gaugeChart) gaugeChart.resize();
-        if (miniHeatmapChart24h) miniHeatmapChart24h.resize();
-        if (miniHeatmapChart3d) miniHeatmapChart3d.resize();
-        if (equityCurveChart) equityCurveChart.resize();
-      }, 300);
+      triggerChartsResize();
     });
   }
 
