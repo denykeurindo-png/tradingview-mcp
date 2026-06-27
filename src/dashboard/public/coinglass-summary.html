@@ -3,7 +3,7 @@
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>JDA Trade Monitor — Connection Status</title>
+  <title>JDA Trade Monitor — CoinGlass Market Summary</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=JetBrains+Mono:wght@700&display=swap" rel="stylesheet">
@@ -12,127 +12,128 @@
     :root {
       --bg-primary: #0B0E11;
       --bg-surface: #1E2026;
-      --bg-card-hover: #252930;
       --border-color: #2B3139;
     }
 
-    .status-grid {
-      display: grid;
-      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
-      gap: 16px;
-      margin-top: 8px;
-    }
-
-    .conn-card {
-      background: var(--bg-surface);
-      border: 1px solid var(--border-color);
-      border-radius: 10px;
-      padding: 20px;
+    .summary-page-container {
       display: flex;
       flex-direction: column;
-      gap: 10px;
-      transition: border-color 0.2s, box-shadow 0.2s;
+      gap: 20px;
+      padding-bottom: 30px;
     }
-    .conn-card:hover {
-      border-color: #3C4554;
-      box-shadow: 0 4px 20px rgba(0,0,0,0.3);
-    }
-    .conn-card.status-ok    { border-left: 3px solid #0ECB81; }
-    .conn-card.status-error { border-left: 3px solid #F6465D; }
-    .conn-card.status-warning     { border-left: 3px solid #F0B90B; }
-    .conn-card.status-unconfigured { border-left: 3px solid #848E9C; }
 
-    .conn-card-header {
+    .verdict-header {
       display: flex;
+      justify-content: space-between;
       align-items: center;
-      gap: 12px;
+      background: rgba(30, 35, 41, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 16px 20px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
     }
 
-    .conn-icon {
-      width: 40px;
-      height: 40px;
-      border-radius: 10px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      flex-shrink: 0;
-    }
-    .conn-icon.ok            { background: rgba(14,203,129,0.12); }
-    .conn-icon.error         { background: rgba(246,70,93,0.12); }
-    .conn-icon.warning       { background: rgba(240,185,11,0.12); }
-    .conn-icon.unconfigured  { background: rgba(132,142,156,0.12); }
-
-    .conn-icon svg { width: 20px; height: 20px; }
-    .conn-icon.ok svg         { color: #0ECB81; stroke: #0ECB81; }
-    .conn-icon.error svg      { color: #F6465D; stroke: #F6465D; }
-    .conn-icon.warning svg    { color: #F0B90B; stroke: #F0B90B; }
-    .conn-icon.unconfigured svg { color: #848E9C; stroke: #848E9C; }
-
-    .conn-name {
-      font-size: 14px;
-      font-weight: 600;
-      color: #EAECEF;
-    }
-
-    .conn-badge {
-      margin-left: auto;
-      font-size: 11px;
+    .verdict-title {
+      font-size: 18px;
       font-weight: 700;
-      letter-spacing: 0.05em;
-      padding: 3px 10px;
-      border-radius: 20px;
-      text-transform: uppercase;
+      color: #EAECEF;
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 10px;
     }
-    .badge-ok            { background: rgba(14,203,129,0.15); color: #0ECB81; }
-    .badge-error         { background: rgba(246,70,93,0.15);  color: #F6465D; }
-    .badge-warning       { background: rgba(240,185,11,0.15); color: #F0B90B; }
-    .badge-unconfigured  { background: rgba(132,142,156,0.12); color: #848E9C; }
 
-    .conn-detail {
+    .verdict-badge {
+      font-weight: 700;
+      padding: 8px 16px;
+      border-radius: 6px;
+      font-size: 14px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-family: 'JetBrains Mono', monospace;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+    }
+
+    .explanation-card {
+      background: rgba(30, 35, 41, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+    }
+
+    .explanation-title {
+      font-size: 14px;
+      color: #848E9C;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      margin-bottom: 12px;
+      font-weight: 600;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+
+    .explanation-content {
+      color: #EAECEF;
+      font-size: 15px;
+      line-height: 1.7;
+    }
+
+    .metrics-grid-container {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
+      gap: 20px;
+    }
+
+    .metric-card {
+      background: rgba(30, 35, 41, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 20px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+      transition: transform 0.2s ease, border-color 0.2s ease;
+    }
+
+    .metric-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(255, 255, 255, 0.15);
+    }
+
+    .metric-header {
+      font-size: 11px;
+      color: #848E9C;
+      margin-bottom: 8px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      font-weight: 600;
+    }
+
+    .metric-value {
+      font-size: 22px;
+      font-weight: 700;
+      font-family: 'JetBrains Mono', monospace;
+      margin-bottom: 8px;
+    }
+
+    .metric-desc {
       font-size: 12px;
       color: #848E9C;
-      line-height: 1.5;
-      padding: 8px 10px;
-      background: rgba(255,255,255,0.03);
-      border-radius: 6px;
-      border: 1px solid var(--border-color);
-      font-family: var(--font-mono);
+      line-height: 1.4;
     }
 
-    .conn-latency {
-      font-size: 11px;
-      color: #5A6478;
-      text-align: right;
+    .details-box {
+      background: rgba(30, 35, 41, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 8px;
+      padding: 24px;
+      box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
     }
-
-    .summary-bar {
-      display: flex;
-      align-items: center;
-      gap: 16px;
-      padding: 14px 20px;
-      background: var(--bg-surface);
-      border: 1px solid var(--border-color);
-      border-radius: 10px;
-      margin-bottom: 4px;
-    }
-    .summary-bar .sum-label { color: #848E9C; font-size: 13px; }
-    .summary-bar .sum-ok    { color: #0ECB81; font-weight: 600; }
-    .summary-bar .sum-err   { color: #F6465D; font-weight: 600; }
-    .summary-bar .sum-warn  { color: #F0B90B; font-weight: 600; }
-    .summary-bar .sum-ts    { margin-left: auto; color: #5A6478; font-size: 12px; font-family: var(--font-mono); }
-
-    .skeleton {
-      background: linear-gradient(90deg, #1E2026 25%, #252930 50%, #1E2026 75%);
-      background-size: 200% 100%;
-      animation: shimmer 1.4s infinite;
-      border-radius: 6px;
-      height: 16px;
-    }
-    @keyframes shimmer { to { background-position: -200% 0; } }
   </style>
 </head>
 <body>
 
+  <!-- Navigation Sidebar -->
   <nav class="sidebar">
     <div class="sidebar-logo">
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
@@ -150,25 +151,25 @@
           <span>Trading Cockpit</span>
         </a>
       </li>
-      <li class="sidebar-item">
+      <li class="sidebar-item" id="nav-etf">
         <a href="index.html">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"></path><polyline points="9 22 9 12 15 12 15 22"></polyline></svg>
           <span>ETF Monitor</span>
         </a>
       </li>
-      <li class="sidebar-item">
+      <li class="sidebar-item" id="nav-heatmap">
         <a href="heatmap.html">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 22 22 22"></polygon><line x1="12" y1="9" x2="12" y2="13"></line><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
           <span>Liquidation Heatmap</span>
         </a>
       </li>
-      <li class="sidebar-item">
+      <li class="sidebar-item" id="nav-orderbook">
         <a href="orderbook.html">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
           <span>Combined Depth</span>
         </a>
       </li>
-      <li class="sidebar-item" id="nav-coinglass-summary">
+      <li class="sidebar-item active" id="nav-coinglass-summary">
         <a href="coinglass-summary.html">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
           <span>Market Summary</span>
@@ -204,43 +205,34 @@
           <span>Top Trader L/S</span>
         </a>
       </li>
-
       <li class="sidebar-item" id="nav-coinglass-tv">
-
         <a href="tv-charts.html">
-
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-
             <rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect>
-
             <polyline points="17 2 12 7 7 2"></polyline>
-
           </svg>
-
           <span>CoinGlass TV</span>
-
         </a>
-
       </li>
-      <li class="sidebar-item">
+      <li class="sidebar-item" id="nav-trades">
         <a href="trades.html">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline><line x1="16" y1="13" x2="8" y2="13"></line><line x1="16" y1="17" x2="8" y2="17"></line></svg>
           <span>Live Trade Journal</span>
         </a>
       </li>
-      <li class="sidebar-item">
+      <li class="sidebar-item" id="nav-raw">
         <a href="raw-data.html">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
           <span>Raw Data</span>
         </a>
       </li>
-      <li class="sidebar-item active">
+      <li class="sidebar-item">
         <a href="status.html">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><polyline points="12 6 12 12 16 14"></polyline></svg>
           <span>Connection Status</span>
         </a>
       </li>
-      <li class="sidebar-item">
+      <li class="sidebar-item" id="nav-settings">
         <a href="settings.html">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <circle cx="12" cy="12" r="3"></circle>
@@ -262,77 +254,60 @@
     </div>
   </nav>
 
+  <!-- Top Bar Control -->
   <div class="top-bar">
-    <div class="top-bar-title">Connection Status<span>All required services</span></div>
+    <div class="top-bar-title">Market Summary<span>Aggregate CoinGlass Market Intelligence Analysis</span></div>
     <div class="top-bar-controls">
       <div id="connection-status" class="status-indicator normal">
         <span class="status-dot"></span>
-        <span class="status-text">Checking...</span>
+        <span class="status-text">Connected</span>
       </div>
       <button id="btn-refresh" class="btn btn-primary">
         <svg class="icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
           <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
         </svg>
-        Check Now
+        Sync Data Now
       </button>
     </div>
   </div>
 
   <div class="app-container">
-    <div id="summary-bar" class="summary-bar" style="display:none;">
-      <span class="sum-label">Status:</span>
-      <span id="sum-ok" class="sum-ok"></span>
-      <span id="sum-err" class="sum-err"></span>
-      <span id="sum-warn" class="sum-warn"></span>
-      <span id="sum-ts" class="sum-ts"></span>
-    </div>
+    <div class="summary-page-container">
+      
+      <!-- Verdict Header Card -->
+      <div class="verdict-header">
+        <div class="verdict-title">
+          <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #F0B90B;"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+          CoinGlass Consensus Verdict
+        </div>
+        <span id="summary-verdict" class="verdict-badge">LOADING...</span>
+      </div>
 
-    <div id="status-grid" class="status-grid">
-      <!-- skeleton placeholders -->
-      <div class="conn-card" style="height:120px;"><div class="skeleton" style="width:60%;margin-top:8px"></div><div class="skeleton" style="width:40%;margin-top:12px"></div></div>
-      <div class="conn-card" style="height:120px;"><div class="skeleton" style="width:60%;margin-top:8px"></div><div class="skeleton" style="width:40%;margin-top:12px"></div></div>
-      <div class="conn-card" style="height:120px;"><div class="skeleton" style="width:60%;margin-top:8px"></div><div class="skeleton" style="width:40%;margin-top:12px"></div></div>
-      <div class="conn-card" style="height:120px;"><div class="skeleton" style="width:60%;margin-top:8px"></div><div class="skeleton" style="width:40%;margin-top:12px"></div></div>
-      <div class="conn-card" style="height:120px;"><div class="skeleton" style="width:60%;margin-top:8px"></div><div class="skeleton" style="width:40%;margin-top:12px"></div></div>
-      <div class="conn-card" style="height:120px;"><div class="skeleton" style="width:60%;margin-top:8px"></div><div class="skeleton" style="width:40%;margin-top:12px"></div></div>
+      <!-- Text Explanation Card -->
+      <div class="explanation-card">
+        <div class="explanation-title">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #F0B90B;"><path d="M12 20h.01M12 4h.01M4 12h.01M20 12h.01M12 8a4 4 0 1 0 0 8 4 4 0 0 0 0-8z"/></svg>
+          Consolidated Analysis
+        </div>
+        <div id="summary-content" class="explanation-content">
+          Mengambil analisis data dari seluruh laporan CoinGlass...
+        </div>
+      </div>
+
+      <!-- Metrics Grid (6 Indicators) -->
+      <div class="metrics-grid-container" id="summary-metrics-grid">
+        <!-- Dynamic metrics populated via JS -->
+      </div>
+
+      <!-- Detail Walls & Whale Orders Box -->
+      <div class="details-box" id="summary-walls-container" style="display: none;">
+        <!-- Filled dynamically via JS -->
+      </div>
+
     </div>
   </div>
 
-  <script src="status.js?v=2.1.0"></script>
-  <script>
-    // Initial load of sidebar minimize state (runs immediately to prevent flicker)
-    if (localStorage.getItem('sidebar-minimized') === 'true') {
-      document.body.classList.add('sidebar-minimized');
-    }
-    document.addEventListener('DOMContentLoaded', () => {
-      const btnToggle = document.getElementById('btn-sidebar-toggle');
-      if (btnToggle) {
-        btnToggle.addEventListener('click', () => {
-          document.body.classList.toggle('sidebar-minimized');
-          const isMinimized = document.body.classList.contains('sidebar-minimized');
-          localStorage.setItem('sidebar-minimized', isMinimized ? 'true' : 'false');
-          
-          // Trigger resize for ECharts/Chart.js if present
-          setTimeout(() => {
-            if (typeof myChart !== 'undefined' && myChart && typeof myChart.resize === 'function') {
-              myChart.resize();
-            }
-            if (typeof gaugeChart !== 'undefined' && gaugeChart && typeof gaugeChart.resize === 'function') {
-              gaugeChart.resize();
-            }
-            if (typeof miniHeatmapChart24h !== 'undefined' && miniHeatmapChart24h && typeof miniHeatmapChart24h.resize === 'function') {
-              miniHeatmapChart24h.resize();
-            }
-            if (typeof miniHeatmapChart3d !== 'undefined' && miniHeatmapChart3d && typeof miniHeatmapChart3d.resize === 'function') {
-              miniHeatmapChart3d.resize();
-            }
-            if (typeof equityCurveChart !== 'undefined' && equityCurveChart && typeof equityCurveChart.resize === 'function') {
-              equityCurveChart.resize();
-            }
-          }, 300);
-        });
-      }
-    });
-  </script>
+  <script src="app.js?v=2.2.6"></script>
+  <script src="coinglass-summary.js?v=2.2.6"></script>
 </body>
 </html>

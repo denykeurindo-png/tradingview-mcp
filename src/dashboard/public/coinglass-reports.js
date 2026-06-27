@@ -12,13 +12,17 @@ document.addEventListener('DOMContentLoaded', () => {
   // Parse URL tab parameter on load
   const urlParams = new URLSearchParams(window.location.search);
   const tabParam = urlParams.get('tab');
+  if (tabParam === 'coinglass-tv') {
+    window.location.href = 'tv-charts.html';
+    return;
+  }
   if (tabParam && ['depth-delta', 'coinbase-premium', 'whale-orders', 'whale-retail-delta', 'top-trader-ls'].includes(tabParam)) {
     activeTab = tabParam;
   }
 
   // Set initial active tab and load summary
   switchTab(activeTab);
-  loadMarketSummary();
+  loadPanelSummaries();
 
   // Tab click handlers
   tabButtons.forEach(btn => {
@@ -34,7 +38,7 @@ document.addEventListener('DOMContentLoaded', () => {
   // Refresh button handler
   if (refreshBtn) {
     refreshBtn.addEventListener('click', () => {
-      loadMarketSummary();
+      loadPanelSummaries();
       loadTabData(activeTab, true);
     });
   }
@@ -108,6 +112,8 @@ document.addEventListener('DOMContentLoaded', () => {
         renderWhaleOrdersTable(res.data, res.btcPrice || 65000);
       } else if (tabId === 'top-trader-ls') {
         renderTopTraderLsTable(res.data);
+      } else if (tabId === 'coinglass-tv') {
+        renderCoinGlassTvChart(res.data);
       } else {
         renderEChart(tabId, res.data);
       }
@@ -476,114 +482,249 @@ document.addEventListener('DOMContentLoaded', () => {
     }).join('');
   }
 
-  async function loadMarketSummary() {
-    const summaryCard = document.getElementById('market-summary-card');
-    const summaryVerdict = document.getElementById('summary-verdict');
-    const summaryContent = document.getElementById('summary-content');
-    const summaryGrid = document.getElementById('summary-metrics-grid');
+  function renderCoinGlassTvChart(cacheData) {
+    const tabId = 'coinglass-tv';
+    const container = document.getElementById(`chart-${tabId}`);
+    
+    if (!cacheData || !cacheData.price || !cacheData.price.length) {
+      throw new Error('Data price kosong. Tunggu hingga scraper menyelesaikan scrape pertamanya.');
+    }
 
-    if (!summaryCard) return;
+    const { price, cvd, oi, fundingRate } = cacheData;
 
+    const formatTime = (ts) => {
+      const d = new Date(ts * 1000);
+      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + 
+             d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    };
+
+    const xAxisData = price.map(p => formatTime(p[0]));
+
+    const priceData = price.map(p => [
+      parseFloat(p[1]), 
+      parseFloat(p[4]), 
+      parseFloat(p[3]), 
+      parseFloat(p[2])
+    ]);
+
+    const cvdData = cvd ? cvd.map(c => parseFloat(c[4])) : [];
+    const oiData = oi ? oi.map(o => parseFloat(o[4])) : [];
+    const frData = fundingRate ? fundingRate.map(f => parseFloat(f[4])) : [];
+
+    if (!charts[tabId]) {
+      container.innerHTML = '';
+      charts[tabId] = echarts.init(container, 'dark');
+    }
+
+    const option = {
+      backgroundColor: 'transparent',
+      tooltip: {
+        trigger: 'axis',
+        axisPointer: { type: 'cross' },
+        backgroundColor: '#1E2026',
+        borderColor: '#2B3139',
+        textStyle: { color: '#EAECEF' },
+        formatter: function(params) {
+          let res = params[0].name + '<br/>';
+          params.forEach(p => {
+            let val = p.value;
+            if (p.seriesName === 'Price') {
+              val = `O: $${p.value[1]} | C: $${p.value[2]} | L: $${p.value[3]} | H: $${p.value[4]}`;
+            } else if (p.seriesName === 'Open Interest') {
+              val = '$' + (parseFloat(p.value) / 1e6).toFixed(2) + 'M';
+            } else if (p.seriesName === 'Funding Rate') {
+              val = (parseFloat(p.value) * 100).toFixed(4) + '%';
+            } else if (p.seriesName === 'Futures CVD') {
+              val = parseFloat(p.value).toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' BTC';
+            }
+            res += `<span style="display:inline-block;margin-right:5px;border-radius:10px;width:9px;height:9px;background-color:${p.color}"></span> ${p.seriesName}: <b>${val}</b><br/>`;
+          });
+          return res;
+        }
+      },
+      axisPointer: {
+        link: [{ xAxisIndex: 'all' }]
+      },
+      grid: [
+        { left: '3%', right: '3%', height: '38%', top: '5%' },
+        { left: '3%', right: '3%', height: '15%', top: '48%' },
+        { left: '3%', right: '3%', height: '15%', top: '67%' },
+        { left: '3%', right: '3%', height: '10%', top: '86%' }
+      ],
+      xAxis: [
+        { type: 'category', data: xAxisData, gridIndex: 0, scale: true, axisLine: { lineStyle: { color: '#2B3139' } }, axisLabel: { show: false }, axisTick: { show: false } },
+        { type: 'category', data: xAxisData, gridIndex: 1, scale: true, axisLine: { lineStyle: { color: '#2B3139' } }, axisLabel: { show: false }, axisTick: { show: false } },
+        { type: 'category', data: xAxisData, gridIndex: 2, scale: true, axisLine: { lineStyle: { color: '#2B3139' } }, axisLabel: { show: false }, axisTick: { show: false } },
+        { type: 'category', data: xAxisData, gridIndex: 3, scale: true, axisLine: { lineStyle: { color: '#2B3139' } }, axisLabel: { color: '#848E9C', fontSize: 10 } }
+      ],
+      yAxis: [
+        { scale: true, gridIndex: 0, axisLine: { lineStyle: { color: '#2B3139' } }, axisLabel: { color: '#848E9C', fontSize: 10, formatter: '${value}' }, splitLine: { lineStyle: { color: '#2B3139', type: 'dashed' } } },
+        { scale: true, gridIndex: 1, axisLine: { lineStyle: { color: '#2B3139' } }, axisLabel: { color: '#848E9C', fontSize: 10, formatter: '{value} BTC' }, splitLine: { lineStyle: { color: '#2B3139', type: 'dashed' } } },
+        { scale: true, gridIndex: 2, axisLine: { lineStyle: { color: '#2B3139' } }, axisLabel: { color: '#848E9C', fontSize: 10, formatter: v => '$' + (v / 1e6).toFixed(0) + 'M' }, splitLine: { lineStyle: { color: '#2B3139', type: 'dashed' } } },
+        { scale: true, gridIndex: 3, axisLine: { lineStyle: { color: '#2B3139' } }, axisLabel: { color: '#848E9C', fontSize: 10, formatter: v => (v * 100).toFixed(4) + '%' }, splitLine: { lineStyle: { color: '#2B3139', type: 'dashed' } } }
+      ],
+      series: [
+        {
+          name: 'Price',
+          type: 'candlestick',
+          xAxisIndex: 0,
+          yAxisIndex: 0,
+          data: priceData,
+          itemStyle: {
+            color: '#0ECB81',
+            color0: '#F6465D',
+            borderColor: '#0ECB81',
+            borderColor0: '#F6465D'
+          }
+        },
+        {
+          name: 'Futures CVD',
+          type: 'line',
+          xAxisIndex: 1,
+          yAxisIndex: 1,
+          data: cvdData,
+          showSymbol: false,
+          lineStyle: { width: 1.5, color: '#F0B90B' }
+        },
+        {
+          name: 'Open Interest',
+          type: 'line',
+          xAxisIndex: 2,
+          yAxisIndex: 2,
+          data: oiData,
+          showSymbol: false,
+          lineStyle: { width: 1.5, color: '#00C0FF' }
+        },
+        {
+          name: 'Funding Rate',
+          type: 'line',
+          xAxisIndex: 3,
+          yAxisIndex: 3,
+          data: frData,
+          showSymbol: false,
+          lineStyle: { width: 1.5, color: '#FF3B30' },
+          areaStyle: {
+            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
+              { offset: 0, color: 'rgba(255, 59, 48, 0.2)' },
+              { offset: 1, color: 'rgba(255, 59, 48, 0)' }
+            ])
+          }
+        }
+      ]
+    };
+
+    charts[tabId].setOption(option);
+  }
+
+  async function loadPanelSummaries() {
     try {
       const response = await fetch('/api/coinglass-summary');
-      if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
       const res = await response.json();
       if (!res.success) throw new Error(res.error || 'Failed to fetch summary');
 
-      // Update Verdict Badge
-      summaryVerdict.innerText = res.verdict;
-      
-      // Styling according to verdict
-      let badgeBg = '#2B3139';
-      let badgeColor = '#EAECEF';
-      if (res.verdict.includes('STRONG BULLISH')) {
-        badgeBg = 'rgba(14, 203, 129, 0.2)';
-        badgeColor = '#0ECB81';
-        summaryCard.style.border = '1px solid rgba(14, 203, 129, 0.3)';
-        summaryCard.style.boxShadow = '0 0 15px rgba(14, 203, 129, 0.05)';
-      } else if (res.verdict.includes('BULLISH')) {
-        badgeBg = 'rgba(14, 203, 129, 0.15)';
-        badgeColor = '#0ECB81';
-        summaryCard.style.border = '1px solid rgba(14, 203, 129, 0.2)';
-        summaryCard.style.boxShadow = 'none';
-      } else if (res.verdict.includes('STRONG BEARISH')) {
-        badgeBg = 'rgba(246, 70, 93, 0.2)';
-        badgeColor = '#F6465D';
-        summaryCard.style.border = '1px solid rgba(246, 70, 93, 0.3)';
-        summaryCard.style.boxShadow = '0 0 15px rgba(246, 70, 93, 0.05)';
-      } else if (res.verdict.includes('BEARISH')) {
-        badgeBg = 'rgba(246, 70, 93, 0.15)';
-        badgeColor = '#F6465D';
-        summaryCard.style.border = '1px solid rgba(246, 70, 93, 0.2)';
-        summaryCard.style.boxShadow = 'none';
-      } else {
-        badgeBg = 'rgba(240, 185, 11, 0.15)';
-        badgeColor = '#F0B90B';
-        summaryCard.style.border = '1px solid rgba(255, 255, 255, 0.08)';
-        summaryCard.style.boxShadow = 'none';
+      const m = res.metrics;
+      if (!m) return;
+
+      const getSentimentColor = (s) => s === 'bullish' ? '#0ECB81' : (s === 'bearish' ? '#F6465D' : '#F0B90B');
+
+      // 1. Depth Delta
+      const ddCard = document.getElementById('summary-card-depth-delta');
+      if (ddCard && m.depthDelta) {
+        ddCard.querySelector('.summary-desc').innerHTML = m.depthDelta.description || '';
+        const sentimentEl = ddCard.querySelector('.summary-sentiment');
+        sentimentEl.innerText = (m.depthDelta.sentiment || 'neutral').toUpperCase();
+        sentimentEl.style.color = getSentimentColor(m.depthDelta.sentiment);
+        ddCard.style.borderLeft = `4px solid ${getSentimentColor(m.depthDelta.sentiment)}`;
+        ddCard.querySelector('.summary-val').innerText = m.depthDelta.formatted || '--';
+        ddCard.style.display = 'block';
       }
 
-      summaryVerdict.style.background = badgeBg;
-      summaryVerdict.style.color = badgeColor;
+      // 2. Coinbase Premium
+      const cbCard = document.getElementById('summary-card-coinbase-premium');
+      if (cbCard && m.coinbasePremium) {
+        cbCard.querySelector('.summary-desc').innerHTML = m.coinbasePremium.description || '';
+        const sentimentEl = cbCard.querySelector('.summary-sentiment');
+        sentimentEl.innerText = (m.coinbasePremium.sentiment || 'neutral').toUpperCase();
+        sentimentEl.style.color = getSentimentColor(m.coinbasePremium.sentiment);
+        cbCard.style.borderLeft = `4px solid ${getSentimentColor(m.coinbasePremium.sentiment)}`;
+        cbCard.querySelector('.summary-val').innerText = m.coinbasePremium.formatted || '--';
+        cbCard.style.display = 'block';
+      }
 
-      // Update Explanation
-      summaryContent.innerHTML = res.explanation.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+      // 3. Whale Orders
+      const whaleCard = document.getElementById('summary-card-whale-orders');
+      if (whaleCard && m.whaleOrders) {
+        whaleCard.querySelector('.summary-desc').innerHTML = m.whaleOrders.description || 'Tidak ada data';
+        const sentimentEl = whaleCard.querySelector('.summary-sentiment');
+        sentimentEl.innerText = m.whaleOrders.sentiment === 'bullish' ? 'BUY BIAS' : (m.whaleOrders.sentiment === 'bearish' ? 'SELL BIAS' : 'NEUTRAL');
+        sentimentEl.style.color = getSentimentColor(m.whaleOrders.sentiment);
+        whaleCard.style.borderLeft = `4px solid ${getSentimentColor(m.whaleOrders.sentiment)}`;
+        
+        const whaleDrawer = document.getElementById('whale-orders-drawer');
+        if (whaleDrawer) {
+          const whaleBids = m.whaleOrders.top3Buy || [];
+          const whaleAsks = m.whaleOrders.top3Sell || [];
+          if (whaleBids.length > 0 || whaleAsks.length > 0) {
+            const renderWhaleItem = (order, isBuy) => {
+              const color = isBuy ? '#0ECB81' : '#F6465D';
+              return `
+                <div style="display: flex; justify-content: space-between; font-size: 11px; background: rgba(255,255,255,0.01); border: 1px solid rgba(255,255,255,0.03); border-radius: 4px; padding: 4px 8px; font-family: 'JetBrains Mono', monospace;">
+                  <span style="color: ${color}; font-weight: 700;">$${parseFloat(order.price).toLocaleString()}</span>
+                  <span style="color: #EAECEF; font-weight: 600;">${order.valueUsdFormatted} <span style="font-size: 9px; color: #848E9C; font-weight: normal;">(${order.exchange})</span></span>
+                </div>
+              `;
+            };
+            const whaleBidsHtml = whaleBids.map(b => renderWhaleItem(b, true)).join('');
+            const whaleAsksHtml = whaleAsks.map(a => renderWhaleItem(a, false)).join('');
 
-      // Populate Grid Metrics
-      const m = res.metrics;
-      const getSentimentColor = (s) => s === 'bullish' ? '#0ECB81' : (s === 'bearish' ? '#F6465D' : '#848E9C');
-      const getSentimentIcon = (s) => s === 'bullish' ? '▲' : (s === 'bearish' ? '▼' : '◆');
+            whaleDrawer.innerHTML = `
+              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+                <div>
+                  <div style="font-size: 9px; color: #0ECB81; font-weight: 700; margin-bottom: 4px; letter-spacing: 0.5px;">🟢 TOP WHALE BUY</div>
+                  <div style="display: flex; flex-direction: column; gap: 3px;">${whaleBidsHtml || '<div style="color:#848E9C;font-size:10px;">Tidak ada data</div>'}</div>
+                </div>
+                <div>
+                  <div style="font-size: 9px; color: #F6465D; font-weight: 700; margin-bottom: 4px; letter-spacing: 0.5px;">🔴 TOP WHALE SELL</div>
+                  <div style="display: flex; flex-direction: column; gap: 3px;">${whaleAsksHtml || '<div style="color:#848E9C;font-size:10px;">Tidak ada data</div>'}</div>
+                </div>
+              </div>
+            `;
+            whaleDrawer.style.display = 'block';
+          } else {
+            whaleDrawer.style.display = 'none';
+          }
+        }
+        whaleCard.style.display = 'block';
+      }
 
-      summaryGrid.innerHTML = `
-        <div style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.04);">
-          <div style="font-size: 11px; color: #848E9C; margin-bottom: 4px; text-transform: uppercase;">Depth Delta</div>
-          <div class="select-mono" style="font-size: 16px; font-weight: bold; color: ${getSentimentColor(m.depthDelta?.sentiment)};">
-            ${getSentimentIcon(m.depthDelta?.sentiment)} ${m.depthDelta?.formatted || '--'}
-          </div>
-          <div style="font-size: 11px; color: #848E9C; margin-top: 4px;">${m.depthDelta?.description || ''}</div>
-        </div>
-        <div style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.04);">
-          <div style="font-size: 11px; color: #848E9C; margin-bottom: 4px; text-transform: uppercase;">Coinbase Premium</div>
-          <div class="select-mono" style="font-size: 16px; font-weight: bold; color: ${getSentimentColor(m.coinbasePremium?.sentiment)};">
-            ${getSentimentIcon(m.coinbasePremium?.sentiment)} ${m.coinbasePremium?.formatted || '--'}
-          </div>
-          <div style="font-size: 11px; color: #848E9C; margin-top: 4px;">${m.coinbasePremium?.description || ''}</div>
-        </div>
-        <div style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.04);">
-          <div style="font-size: 11px; color: #848E9C; margin-bottom: 4px; text-transform: uppercase;">Whale Orders</div>
-          <div class="select-mono" style="font-size: 16px; font-weight: bold; color: ${getSentimentColor(m.whaleOrders?.sentiment)};">
-            ${getSentimentIcon(m.whaleOrders?.sentiment)} ${m.whaleOrders?.sentiment === 'bullish' ? 'BUY BIAS' : (m.whaleOrders?.sentiment === 'bearish' ? 'SELL BIAS' : '--')}
-          </div>
-          <div style="font-size: 11px; color: #848E9C; margin-top: 4px;">${m.whaleOrders?.description || 'Tidak ada data'}</div>
-        </div>
-        <div style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.04);">
-          <div style="font-size: 11px; color: #848E9C; margin-bottom: 4px; text-transform: uppercase;">Whale vs Retail</div>
-          <div class="select-mono" style="font-size: 16px; font-weight: bold; color: ${getSentimentColor(m.whaleRetail?.sentiment)};">
-            ${getSentimentIcon(m.whaleRetail?.sentiment)} ${m.whaleRetail?.formatted || '--'}
-          </div>
-          <div style="font-size: 11px; color: #848E9C; margin-top: 4px;">${m.whaleRetail?.description || ''}</div>
-        </div>
-        <div style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.04);">
-          <div style="font-size: 11px; color: #848E9C; margin-bottom: 4px; text-transform: uppercase;">Top Trader L/S</div>
-          <div class="select-mono" style="font-size: 16px; font-weight: bold; color: ${getSentimentColor(m.topTraderLs?.sentiment)};">
-            ${getSentimentIcon(m.topTraderLs?.sentiment)} ${m.topTraderLs?.formatted || '--'}
-          </div>
-          <div style="font-size: 11px; color: #848E9C; margin-top: 4px;">${m.topTraderLs?.description || ''}</div>
-        </div>
-        <div style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.04);">
-          <div style="font-size: 11px; color: #848E9C; margin-bottom: 4px; text-transform: uppercase;">Combined Depth</div>
-          <div class="select-mono" style="font-size: 16px; font-weight: bold; color: ${getSentimentColor(m.combinedDepth?.sentiment)};">
-            ${getSentimentIcon(m.combinedDepth?.sentiment)} ${m.combinedDepth?.formatted || '--'}
-          </div>
-          <div style="font-size: 11px; color: #848E9C; margin-top: 4px;">${m.combinedDepth?.description || ''}</div>
-        </div>
-      `;
+      // 4. Whale vs Retail Delta
+      const wrCard = document.getElementById('summary-card-whale-retail');
+      if (wrCard && m.whaleRetail) {
+        wrCard.querySelector('.summary-desc').innerHTML = m.whaleRetail.description || '';
+        const sentimentEl = wrCard.querySelector('.summary-sentiment');
+        sentimentEl.innerText = (m.whaleRetail.sentiment || 'neutral').toUpperCase();
+        sentimentEl.style.color = getSentimentColor(m.whaleRetail.sentiment);
+        wrCard.style.borderLeft = `4px solid ${getSentimentColor(m.whaleRetail.sentiment)}`;
+        wrCard.querySelector('.summary-val').innerText = m.whaleRetail.formatted || '--';
+        wrCard.style.display = 'block';
+      }
 
-      summaryCard.style.display = 'block';
-    } catch (err) {
-      console.error('Error fetching market summary:', err);
-      summaryContent.innerHTML = `<span style="color: #F6465D;">Gagal memuat ringkasan pasar: ${err.message}</span>`;
-      summaryCard.style.display = 'block';
+      // 5. Top Trader L/S Ratio
+      const lsCard = document.getElementById('summary-card-top-trader-ls');
+      if (lsCard && m.topTraderLs) {
+        lsCard.querySelector('.summary-desc').innerHTML = m.topTraderLs.description || '';
+        const sentimentEl = lsCard.querySelector('.summary-sentiment');
+        sentimentEl.innerText = (m.topTraderLs.sentiment || 'neutral').toUpperCase();
+        sentimentEl.style.color = getSentimentColor(m.topTraderLs.sentiment);
+        lsCard.style.borderLeft = `4px solid ${getSentimentColor(m.topTraderLs.sentiment)}`;
+        lsCard.querySelector('.summary-val').innerText = m.topTraderLs.formatted || '--';
+        lsCard.style.display = 'block';
+      }
+
+    } catch (e) {
+      console.error('Error loading panel summaries:', e);
     }
   }
+
 });

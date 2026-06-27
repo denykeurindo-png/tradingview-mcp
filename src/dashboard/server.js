@@ -652,6 +652,11 @@ let topTraderLsCache = null;
 let lastTopTraderLsFetchTime = null;
 let isTopTraderLsScrapingBusy = false;
 
+// Cache variables for CoinGlass TV (CVD, OI, Funding Rate, Price)
+let coinglassTvCache = null;
+let lastCoinglassTvFetchTime = null;
+let isCoinglassTvScrapingBusy = false;
+
 // Last strategy phase reported to Telegram to prevent duplicate alerts
 let lastTelegramPhase = null;
 
@@ -730,6 +735,11 @@ if (whaleRetailDeltaCache) {
 topTraderLsCache = loadCacheFromDisk('top_trader_ls_cache.json');
 if (topTraderLsCache) {
   lastTopTraderLsFetchTime = Date.now();
+}
+
+coinglassTvCache = loadCacheFromDisk('coinglass_tv_cache.json');
+if (coinglassTvCache) {
+  lastCoinglassTvFetchTime = Date.now();
 }
 
 
@@ -1400,6 +1410,243 @@ async function scrapeWhaleRetailDelta() {
     if (navigated && savedUrl) {
       console.log(`[Scraper] Restoring original URL: ${savedUrl}`);
       await cdp('Page.navigate', { url: savedUrl }).catch(e => console.error('[Scraper] Failed to navigate back:', e));
+    }
+    ws.close();
+  }
+}
+
+async function scrapeCoinGlassTv() {
+  let tabs = null;
+  let retries = 3;
+  while (retries > 0) {
+    try {
+      const tabsResponse = await fetch('http://127.0.0.1:9222/json', { signal: AbortSignal.timeout(4000) });
+      tabs = await tabsResponse.json();
+      break;
+    } catch (e) {
+      retries--;
+      if (retries === 0) throw new Error('Failed to fetch Chrome tab list.');
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+  
+  let tab = tabs.find(t => t.type === 'page' && t.url?.includes('coinglass.com/tv/'));
+  let navigated = false;
+  if (!tab) {
+    tab = tabs.find(t => t.type === 'page' && t.url?.includes('coinglass.com'));
+    if (!tab) {
+      tab = tabs.find(t => t.type === 'page' && t.url?.startsWith('http') && !t.url?.includes('devtools'));
+    }
+    if (!tab) throw new Error('No suitable tab found for CoinGlass TV.');
+    navigated = true;
+  }
+  const savedUrl = navigated ? tab.url : null;
+
+  let ws = null;
+  retries = 3;
+  while (retries > 0) {
+    try {
+      ws = new WebSocket(tab.webSocketDebuggerUrl);
+      await new Promise((res, rej) => {
+        const connTimeout = setTimeout(() => rej(new Error('WebSocket connection timeout')), 4000);
+        ws.on('open', () => { clearTimeout(connTimeout); res(); });
+        ws.on('error', (err) => { clearTimeout(connTimeout); rej(err); });
+      });
+      break;
+    } catch (e) {
+      retries--;
+      if (ws) { try { ws.close(); } catch (err) {} ws = null; }
+      if (retries === 0) throw new Error(`Failed to connect to Chrome DevTools WebSocket: ${e.message}`);
+      await new Promise(r => setTimeout(r, 2000));
+    }
+  }
+
+  let _mid = 1;
+  const cdp = (method, params = {}) => new Promise((res, rej) => {
+    const id = _mid++;
+    ws.send(JSON.stringify({ id, method, params }));
+    const t = setTimeout(() => rej(new Error(`CDP timeout: ${method}`)), 40000);
+    const handler = (data) => {
+      const m = JSON.parse(data.toString());
+      if (m.id === id) {
+        clearTimeout(t);
+        ws.off('message', handler);
+        if (m.error) rej(new Error(m.error.message || JSON.stringify(m.error)));
+        else res(m.result);
+      }
+    };
+    ws.on('message', handler);
+  });
+
+  try {
+    await cdp('Page.enable');
+    await cdp('Runtime.enable');
+
+    const hookScript = `
+      window.__capturedTVData = [];
+      const originalParse = JSON.parse;
+      JSON.parse = function(text, reviver) {
+        const res = originalParse.call(JSON, text, reviver);
+        try {
+          if (res && typeof res === 'object') {
+            let shouldCapture = false;
+            let label = 'unknown';
+            if (res.code === '0' && res.data) {
+              shouldCapture = true;
+              label = 'api_response';
+            } else if (Array.isArray(res) && res.length > 5) {
+              shouldCapture = true;
+              label = 'array_data';
+            }
+            if (shouldCapture) {
+              window.__capturedTVData.push({
+                timestamp: Date.now(),
+                label,
+                fullContent: res
+              });
+            }
+          }
+        } catch (e) {}
+        return res;
+      };
+    `;
+
+    await cdp('Page.addScriptToEvaluateOnNewDocument', { source: hookScript });
+
+    console.log('[Scraper TV] Navigating/Reloading CoinGlass TV page...');
+    await cdp('Page.navigate', { url: 'https://www.coinglass.com/tv/Binance_BTCUSDT' });
+
+    // Wait for page load and API responses to decrypt
+    await new Promise(r => setTimeout(r, 15000));
+
+    const evalResult = await cdp('Runtime.evaluate', {
+      expression: 'JSON.stringify(window.__capturedTVData || [])',
+      returnByValue: true
+    });
+
+    const rawVal = evalResult?.result?.value;
+    if (!rawVal) throw new Error('No CoinGlass TV data captured');
+    const captured = JSON.parse(rawVal);
+
+    let price = null;
+    let cvdRaw = null;
+    let oi = null;
+    let fundingRate = null;
+    let spotCvdRaw = null;
+    let bidAskDeltaRaw = null;
+    let markets = null;
+    let performance = null;
+
+    for (const item of captured) {
+      let content = item.fullContent;
+      if (!content) continue;
+
+      if (content.code === '0' && content.data !== undefined && content.data !== null) {
+        content = content.data;
+      }
+
+      if (Array.isArray(content) && content.length > 0) {
+        const firstEl = content[0];
+        if (Array.isArray(firstEl)) {
+          const val = parseFloat(firstEl[1]);
+
+          if (firstEl.length === 6) {
+            if (val > 25000 && val < 200000) {
+              price = content;
+            }
+          } else if (firstEl.length === 5) {
+            if (typeof firstEl[1] === 'string') {
+              if (Math.abs(val) < 0.15) {
+                fundingRate = content;
+              } else {
+                oi = content;
+              }
+            } else {
+              bidAskDeltaRaw = content;
+            }
+          } else if (firstEl.length === 3) {
+            // Identify Futures CVD vs Spot CVD from length 3 arrays
+            if (typeof firstEl[1] === 'string') {
+              cvdRaw = content;
+            } else {
+              spotCvdRaw = content;
+            }
+          }
+        } else if (typeof firstEl === 'object' && firstEl !== null) {
+          if (firstEl.symbol && (firstEl.volUsd || firstEl.openInterest)) {
+            markets = content;
+          }
+        }
+      } else if (content && typeof content === 'object') {
+        if (content.d7 !== undefined && content.d30 !== undefined && content.y1 !== undefined) {
+          performance = content;
+        }
+      }
+    }
+
+    // Helper to compute cumulative sum for CVD lines from [timestamp, buy, sell]
+    const computeCvdLine = (arr) => {
+      if (!Array.isArray(arr)) return null;
+      let cum = 0;
+      return arr.map(item => {
+        const ts = item[0];
+        const buy = parseFloat(item[1]) || 0;
+        const sell = parseFloat(item[2]) || 0;
+        cum += (buy - sell);
+        return [ts, cum];
+      });
+    };
+
+    // Helper to compute cumulative sum for Futures CVD from [timestamp, buy, sell]
+    const computeFuturesCvdLine = (arr) => {
+      if (!Array.isArray(arr)) return null;
+      let cum = 0;
+      return arr.map(item => {
+        const ts = item[0];
+        const buy = parseFloat(item[1]) || 0;
+        const sell = parseFloat(item[2]) || 0;
+        cum += (buy - sell);
+        return [ts, cum];
+      });
+    };
+
+    // Helper to compute delta for histograms from cvdRaw [timestamp, buy, sell, buyUsd, sellUsd]
+    const computeFuturesDeltaLine = (arr) => {
+      if (!Array.isArray(arr)) return null;
+      return arr.map(item => {
+        const ts = item[0];
+        const buy = parseFloat(item[1]) || 0;
+        const sell = parseFloat(item[2]) || 0;
+        return [ts, buy - sell];
+      });
+    };
+
+    const cvd = computeFuturesCvdLine(cvdRaw);
+    const spotCvd = computeCvdLine(spotCvdRaw);
+    const bidAskDelta = computeFuturesDeltaLine(bidAskDeltaRaw);
+
+    if (!price || !cvd || !oi || !fundingRate) {
+      console.log(`[Scraper TV] Missing some indicators. Price=${!!price}, CVD=${!!cvd}, OI=${!!oi}, FundingRate=${!!fundingRate}, SpotCVD=${!!spotCvd}, BidAskDelta=${!!bidAskDelta}`);
+    }
+
+    const dataObj = {
+      timestamp: new Date().toISOString(),
+      price,
+      cvd,
+      oi,
+      fundingRate,
+      spotCvd,
+      bidAskDelta,
+      markets: markets ? markets.slice(0, 15) : null,
+      performance
+    };
+
+    pushToVps('/api/coinglass-tv/update', { data: dataObj }).catch(console.error);
+    return dataObj;
+  } finally {
+    if (navigated && savedUrl) {
+      console.log(`[Scraper TV] Restoring original URL: ${savedUrl}`);
+      await cdp('Page.navigate', { url: savedUrl }).catch(e => console.error('[Scraper TV] Failed to navigate back:', e));
     }
     ws.close();
   }
@@ -2513,6 +2760,45 @@ app.get('/api/top-trader-ls', async (req, res) => {
   }
 });
 
+// REST API for fetching CoinGlass TV data (CVD, OI, Funding Rate, Price)
+app.get('/api/coinglass-tv', async (req, res) => {
+  const forceRefresh = req.query.refresh === 'true';
+
+  if (coinglassTvCache && !forceRefresh && lastCoinglassTvFetchTime && (Date.now() - lastCoinglassTvFetchTime < 300000)) {
+    return res.json({ success: true, source: 'cache', data: coinglassTvCache });
+  }
+
+  // Bypass if scraper is disabled
+  const settings = loadSettings();
+  if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true') {
+    return res.json({ success: true, source: 'cache', data: coinglassTvCache || null });
+  }
+
+  if (isCoinglassTvScrapingBusy) {
+    return res.status(409).json({ success: false, error: 'A scrape is already in progress, please wait.' });
+  }
+
+  isCoinglassTvScrapingBusy = true;
+  try {
+    console.log('[API] Starting CoinGlass TV scrape...');
+    const result = await runWithCdpLock(() => scrapeCoinGlassTv());
+    coinglassTvCache = result;
+    lastCoinglassTvFetchTime = Date.now();
+    saveCacheToDisk('coinglass_tv_cache.json', coinglassTvCache);
+
+    res.json({ success: true, source: 'live', data: result });
+  } catch (err) {
+    console.error('[API] CoinGlass TV scrape failed:', err.message);
+    if (coinglassTvCache) {
+      res.json({ success: true, source: 'fallback-cache', data: coinglassTvCache, warning: err.message });
+    } else {
+      res.status(500).json({ success: false, error: err.message });
+    }
+  } finally {
+    isCoinglassTvScrapingBusy = false;
+  }
+});
+
 // REST API for fetching consolidated market summary
 app.get('/api/coinglass-summary', (req, res) => {
   let score = 0;
@@ -2570,6 +2856,10 @@ app.get('/api/coinglass-summary', (req, res) => {
       const totalBuyVal = buyOrders.reduce((sum, o) => sum + (o.valueUsd || 0), 0);
       const totalSellVal = sellOrders.reduce((sum, o) => sum + (o.valueUsd || 0), 0);
       
+      const sortedBuys = [...buyOrders].sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0)).slice(0, 3);
+      const sortedSells = [...sellOrders].sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0)).slice(0, 3);
+      const formatVal = (v) => `$${(v / 1e6).toFixed(2)}M`;
+
       const isBullish = totalBuyVal > totalSellVal;
       metrics.whaleOrders = {
         buyCount: buyOrders.length,
@@ -2578,7 +2868,19 @@ app.get('/api/coinglass-summary', (req, res) => {
         sellVolume: totalSellVal,
         formatted: `Buy: $${(totalBuyVal / 1e6).toFixed(1)}M | Sell: $${(totalSellVal / 1e6).toFixed(1)}M`,
         sentiment: isBullish ? 'bullish' : 'bearish',
-        description: isBullish ? `Whale dominasi Buy (+$${((totalBuyVal - totalSellVal)/1e6).toFixed(1)}M)` : `Whale dominasi Sell (+$${((totalSellVal - totalBuyVal)/1e6).toFixed(1)}M)`
+        description: isBullish ? `Whale dominasi Buy (+$${((totalBuyVal - totalSellVal)/1e6).toFixed(1)}M)` : `Whale dominasi Sell (+$${((totalSellVal - totalBuyVal)/1e6).toFixed(1)}M)`,
+        top3Buy: sortedBuys.map(o => ({
+          price: o.price,
+          valueUsd: o.valueUsd,
+          valueUsdFormatted: formatVal(o.valueUsd),
+          exchange: o.exchange
+        })),
+        top3Sell: sortedSells.map(o => ({
+          price: o.price,
+          valueUsd: o.valueUsd,
+          valueUsdFormatted: formatVal(o.valueUsd),
+          exchange: o.exchange
+        }))
       };
       score += isBullish ? 1 : -1;
     } else {
@@ -2647,7 +2949,7 @@ app.get('/api/coinglass-summary', (req, res) => {
     metrics.topTraderLs = { sentiment: 'neutral', description: 'Gagal menganalisis data', formatted: '--' };
   }
 
-  // 6. Combined Depth
+  // 6. Combined Depth & Top Walls
   try {
     const bids = orderBookDataCache?.bids || orderBookDataCache?.data?.bids || [];
     const asks = orderBookDataCache?.asks || orderBookDataCache?.data?.asks || [];
@@ -2675,14 +2977,32 @@ app.get('/api/coinglass-summary', (req, res) => {
         sentiment: sentiment,
         description: sentiment === 'bullish' ? `Bid mendominasi (${imbalanceRatio.toFixed(2)}x)` : (sentiment === 'bearish' ? `Ask mendominasi (${imbalanceRatio.toFixed(2)}x)` : 'Tekanan bid/ask seimbang')
       };
+
+      // Get the top 3 highest volume walls (permintaan tertinggi)
+      const topBids = [...bids]
+        .sort((a, b) => b.quantity - a.quantity)
+        .slice(0, 3)
+        .map(b => ({ price: b.price, quantity: b.quantity }));
+
+      const topAsks = [...asks]
+        .sort((a, b) => b.quantity - a.quantity)
+        .slice(0, 3)
+        .map(a => ({ price: a.price, quantity: a.quantity }));
+
+      metrics.topWalls = {
+        bids: topBids,
+        asks: topAsks
+      };
       
       if (sentiment === 'bullish') score += 1;
       else if (sentiment === 'bearish') score -= 1;
     } else {
       metrics.combinedDepth = { sentiment: 'neutral', description: 'Data tidak tersedia', formatted: '--' };
+      metrics.topWalls = { bids: [], asks: [] };
     }
   } catch (e) {
     metrics.combinedDepth = { sentiment: 'neutral', description: 'Gagal menganalisis data', formatted: '--' };
+    metrics.topWalls = { bids: [], asks: [] };
   }
 
   // Sentiment Verdict calculation
@@ -2716,9 +3036,25 @@ app.get('/api/coinglass-summary', (req, res) => {
   }
 
   if (bulletPoints.length > 0) {
-    explanation += 'Berikut adalah ringkasan indikator saat ini:\n<ul style="margin-top: 5px; margin-bottom: 0; padding-left: 20px;">' + bulletPoints.map(bp => `<li style="margin-bottom: 4px;">${bp}</li>`).join('') + '</ul>';
+    explanation += 'Berikut adalah ringkasan indikator saat ini:\n<ul style="margin-top: 5px; margin-bottom: 8px; padding-left: 20px;">' + bulletPoints.map(bp => `<li style="margin-bottom: 4px;">${bp}</li>`).join('') + '</ul>';
   } else {
     explanation += 'Tidak ada data cache CoinGlass yang cukup untuk menyusun ringkasan indikator saat ini. Silakan jalankan sinkronisasi data.';
+  }
+
+  // Inject top 3 whale orders summary
+  if (metrics.whaleOrders && metrics.whaleOrders.top3Buy && metrics.whaleOrders.top3Sell) {
+    const buyListStr = metrics.whaleOrders.top3Buy.length > 0 
+      ? metrics.whaleOrders.top3Buy.map(o => `<b>$${o.price.toLocaleString()}</b> (${o.valueUsdFormatted} di ${o.exchange})`).join(', ')
+      : 'Tidak ada order';
+    
+    const sellListStr = metrics.whaleOrders.top3Sell.length > 0 
+      ? metrics.whaleOrders.top3Sell.map(o => `<b>$${o.price.toLocaleString()}</b> (${o.valueUsdFormatted} di ${o.exchange})`).join(', ')
+      : 'Tidak ada order';
+
+    explanation += `<div style="margin-top: 10px; padding-top: 8px; border-top: 1px dashed rgba(255, 255, 255, 0.15); font-size: 12px; line-height: 1.5;">`;
+    explanation += `📢 <b>Top 3 Whale Buy (Bid) Orders:</b> ${buyListStr}<br/>`;
+    explanation += `📢 <b>Top 3 Whale Sell (Ask) Orders:</b> ${sellListStr}`;
+    explanation += `</div>`;
   }
 
   res.json({
@@ -4325,16 +4661,16 @@ function evaluateActiveTradesBackend(heatmapData) {
       if (trade.direction === 'LONG') {
         const targetPrice = trade.entry * (1 + slDist / 100);
         if (lastHigh >= targetPrice) {
-          trade.sl = trade.entry;
+          trade.sl = trade.entry * 1.001; // Lock in slippage/fee buffer (+0.1%)
           trade.isBreakeven = true;
-          trade.note = `SL moved to Breakeven (1:1 hit at $${lastHigh.toFixed(2)})`;
+          trade.note = `SL moved to Breakeven+Buffer (1:1 hit at $${lastHigh.toFixed(2)})`;
           updated = true;
-          console.log(`[LSR Bot] 🛡️ LONG SL moved to Breakeven for trade ${trade.id} (Entry: $${trade.entry.toFixed(2)}, Target: $${targetPrice.toFixed(2)})`);
+          console.log(`[LSR Bot] 🛡️ LONG SL moved to Breakeven+Buffer for trade ${trade.id} (Entry: $${trade.entry.toFixed(2)}, Target: $${targetPrice.toFixed(2)}, New SL: $${trade.sl.toFixed(2)})`);
           sendTelegramAlert(
-            `🛡️ <b>Trade Protected (Moved to BE)</b>\n` +
+            `🛡️ <b>Trade Protected (Moved to BE+Buffer)</b>\n` +
             `Type: <b>LONG</b>\n` +
             `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
-            `New SL: <code>$${trade.sl.toFixed(2)}</code> (Breakeven)\n` +
+            `New SL: <code>$${trade.sl.toFixed(2)}</code> (+0.1% Buffer)\n` +
             `R:R 1:1 Target Hit: <code>$${targetPrice.toFixed(2)}</code>\n` +
             `Note: ${trade.note}`
           );
@@ -4342,16 +4678,16 @@ function evaluateActiveTradesBackend(heatmapData) {
       } else { // SHORT
         const targetPrice = trade.entry * (1 - slDist / 100);
         if (lastLow <= targetPrice) {
-          trade.sl = trade.entry;
+          trade.sl = trade.entry * 0.999; // Lock in slippage/fee buffer (-0.1%)
           trade.isBreakeven = true;
-          trade.note = `SL moved to Breakeven (1:1 hit at $${lastLow.toFixed(2)})`;
+          trade.note = `SL moved to Breakeven+Buffer (1:1 hit at $${lastLow.toFixed(2)})`;
           updated = true;
-          console.log(`[LSR Bot] 🛡️ SHORT SL moved to Breakeven for trade ${trade.id} (Entry: $${trade.entry.toFixed(2)}, Target: $${targetPrice.toFixed(2)})`);
+          console.log(`[LSR Bot] 🛡️ SHORT SL moved to Breakeven+Buffer for trade ${trade.id} (Entry: $${trade.entry.toFixed(2)}, Target: $${targetPrice.toFixed(2)}, New SL: $${trade.sl.toFixed(2)})`);
           sendTelegramAlert(
-            `🛡️ <b>Trade Protected (Moved to BE)</b>\n` +
+            `🛡️ <b>Trade Protected (Moved to BE+Buffer)</b>\n` +
             `Type: <b>SHORT</b>\n` +
             `Entry: <code>$${trade.entry.toFixed(2)}</code>\n` +
-            `New SL: <code>$${trade.sl.toFixed(2)}</code> (Breakeven)\n` +
+            `New SL: <code>$${trade.sl.toFixed(2)}</code> (-0.1% Buffer)\n` +
             `R:R 1:1 Target Hit: <code>$${targetPrice.toFixed(2)}</code>\n` +
             `Note: ${trade.note}`
           );
@@ -5551,6 +5887,36 @@ function autoTradeStrategyBackend(heatmapData) {
       console.log(`[LSR Bot] SWEEP_REJECTED — Coinbase Premium ${latestPremium.toFixed(4)} > max ${maxShortPremium} for SHORT at $${entry.toFixed(0)}`);
       return;
     }
+  }
+
+  // ─── Step 10d: Strict HTF Trend Filter Override ────────────
+  if (direction === 'LONG' && botMetrics.trend1h === 'BEARISH' && botMetrics.trend4h === 'BEARISH') {
+    botPhaseState = {
+      phase: 'SWEEP_REJECTED',
+      nearestPool: bestSweep.price,
+      nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
+      nearestPoolVolume: bestSweep.volume,
+      nearestPoolSide: 'SUPPORT',
+      sweepCandidate: { direction, entry, tp, sl, rr, prob },
+      message: `Sweep detected at $${bestSweep.price.toFixed(0)} but LONG blocked: Dominant HTF trend is BEARISH on both 1h and 4h timeframes.`,
+      lastUpdate: new Date().toISOString()
+    };
+    console.log(`[LSR Bot] SWEEP_REJECTED — LONG blocked by bearish HTF trend for LONG at $${entry.toFixed(0)}`);
+    return;
+  }
+  if (direction === 'SHORT' && botMetrics.trend1h === 'BULLISH' && botMetrics.trend4h === 'BULLISH') {
+    botPhaseState = {
+      phase: 'SWEEP_REJECTED',
+      nearestPool: bestSweep.price,
+      nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
+      nearestPoolVolume: bestSweep.volume,
+      nearestPoolSide: 'RESISTANCE',
+      sweepCandidate: { direction, entry, tp, sl, rr, prob },
+      message: `Sweep detected at $${bestSweep.price.toFixed(0)} but SHORT blocked: Dominant HTF trend is BULLISH on both 1h and 4h timeframes.`,
+      lastUpdate: new Date().toISOString()
+    };
+    console.log(`[LSR Bot] SWEEP_REJECTED — SHORT blocked by bullish HTF trend for SHORT at $${entry.toFixed(0)}`);
+    return;
   }
 
   // Check for anti-spoofing or other override force-skips

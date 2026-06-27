@@ -249,3 +249,32 @@ Reusable workflows in `skills/`:
 - `replay-practice` — step-through historical bar practice
 - `strategy-report` — strategy tester results summary
 - `multi-symbol-scan` — batch screenshot/data across symbols
+
+## Web Dashboard Layout & Custom Features
+
+### Spacing & Menu Layout
+- Maintain a `24px` spacing/gap between the sidebar menu and content cards in `style.css`.
+- Ensure no duplicate items exist in the sidebar navigation menu.
+
+### Market Direction Bias Widget (Cockpit Page)
+- **Position**: Located directly below the **LSR Bot Status & Orderbook** widget card in Column 1 of `cockpit.html`.
+- **Trigger**: Automatically recalculated and re-rendered via `updateMarketBiasConclusion()` whenever underlying data changes from:
+  - `updateJdaMtfStatus()` (/api/jda-signal)
+  - `fetchOrderbookRatio()` (/api/orderbook-data)
+  - `renderActivePosition()` (/api/trades)
+- **Scoring Logic**: Computes a combined score from `-100` to `+100` using:
+  1. **JDA MTF Strategy Bias (30%)**: `BULLISH` = `+30`, `BEARISH` = `-30`, other = `0`.
+  2. **Whale Flow 15M (25%)**: `ACCUMULATION` or NetFlow > 0 = `+25`, `DISTRIBUTION` or NetFlow < 0 = `-25`, other = `0`.
+  3. **Orderbook 1% Depth Ratio (20%)**: Clamped value of `(Bid % - 50) * 2` (ranges from `-20` to `+20`).
+  4. **LSR Reversal Probability & Pool / Active Position (25%)**:
+     - Active trade: `LONG` = `+25`, `SHORT` = `-25`.
+     - No trade (scanning): Support pool approaching = `+(reversalProbability / 100) * 25`; Resistance pool = `-(reversalProbability / 100) * 25`.
+- **Conversion Formula**:
+  - `LONG % = 50 + (TotalScore / 2)`
+  - `SHORT % = 100 - LONG %`
+- **UI Elements**: Uses a dual-color progress bar (green/red) and details table in Indonesian.
+
+### Git Repositories Synchronization
+- Running workspace: `C:\Gemini\TvMonitor`
+- Git backup repository: `C:\Gemini\TVMONITOR_GIT`
+- When modifying dashboard assets (`src/dashboard/public/*.html|js|css`), ensure changes are mirrored to both paths to prevent repository divergence.

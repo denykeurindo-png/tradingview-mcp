@@ -291,115 +291,82 @@ window.addEventListener('resize', () => {
   if (depthChart) depthChart.resize();
 });
 
-// Fetch and render consolidated market summary
-async function loadMarketSummary() {
-  const summaryCard = document.getElementById('market-summary-card');
-  const summaryVerdict = document.getElementById('summary-verdict');
-  const summaryContent = document.getElementById('summary-content');
-  const summaryGrid = document.getElementById('summary-metrics-grid');
 
-  if (!summaryCard) return;
+
+// Load Combined Depth metric summary card
+async function loadMetricSummary() {
+  const card = document.getElementById('metric-summary-card');
+  const descEl = document.getElementById('metric-summary-desc');
+  const sentimentEl = document.getElementById('metric-summary-sentiment');
+  const valEl = document.getElementById('metric-summary-val');
+  const wallsDrawer = document.getElementById('metric-summary-walls-drawer');
+
+  if (!card) return;
 
   try {
     const response = await fetch('/api/coinglass-summary');
-    if (!response.ok) throw new Error(`HTTP Error ${response.status}`);
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
     const res = await response.json();
     if (!res.success) throw new Error(res.error || 'Failed to fetch summary');
 
-    // Update Verdict Badge
-    summaryVerdict.innerText = res.verdict;
-    
-    // Styling according to verdict
-    let badgeBg = '#2B3139';
-    let badgeColor = '#EAECEF';
-    if (res.verdict.includes('STRONG BULLISH')) {
-      badgeBg = 'rgba(14, 203, 129, 0.2)';
-      badgeColor = '#0ECB81';
-      summaryCard.style.border = '1px solid rgba(14, 203, 129, 0.3)';
-      summaryCard.style.boxShadow = '0 0 15px rgba(14, 203, 129, 0.05)';
-    } else if (res.verdict.includes('BULLISH')) {
-      badgeBg = 'rgba(14, 203, 129, 0.15)';
-      badgeColor = '#0ECB81';
-      summaryCard.style.border = '1px solid rgba(14, 203, 129, 0.2)';
-      summaryCard.style.boxShadow = 'none';
-    } else if (res.verdict.includes('STRONG BEARISH')) {
-      badgeBg = 'rgba(246, 70, 93, 0.2)';
-      badgeColor = '#F6465D';
-      summaryCard.style.border = '1px solid rgba(246, 70, 93, 0.3)';
-      summaryCard.style.boxShadow = '0 0 15px rgba(246, 70, 93, 0.05)';
-    } else if (res.verdict.includes('BEARISH')) {
-      badgeBg = 'rgba(246, 70, 93, 0.15)';
-      badgeColor = '#F6465D';
-      summaryCard.style.border = '1px solid rgba(246, 70, 93, 0.2)';
-      summaryCard.style.boxShadow = 'none';
+    const m = res.metrics?.combinedDepth;
+    if (!m) return;
+
+    descEl.innerHTML = m.description || 'Tidak ada analisis detail';
+    sentimentEl.innerText = (m.sentiment || 'neutral').toUpperCase();
+
+    // Sentiment text color styling
+    if (m.sentiment === 'bullish') {
+      sentimentEl.style.color = '#0ECB81';
+      card.style.borderLeft = '4px solid #0ECB81';
+    } else if (m.sentiment === 'bearish') {
+      sentimentEl.style.color = '#F6465D';
+      card.style.borderLeft = '4px solid #F6465D';
     } else {
-      badgeBg = 'rgba(240, 185, 11, 0.15)';
-      badgeColor = '#F0B90B';
-      summaryCard.style.border = '1px solid rgba(255, 255, 255, 0.08)';
-      summaryCard.style.boxShadow = 'none';
+      sentimentEl.style.color = '#F0B90B';
+      card.style.borderLeft = '4px solid #F0B90B';
     }
 
-    summaryVerdict.style.background = badgeBg;
-    summaryVerdict.style.color = badgeColor;
+    valEl.innerText = m.formatted || '--';
 
-    // Update Explanation
-    summaryContent.innerHTML = res.explanation.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    // Render Top Walls inside orderbook
+    if (wallsDrawer && res.metrics?.topWalls) {
+      const topBids = res.metrics.topWalls.bids || [];
+      const topAsks = res.metrics.topWalls.asks || [];
+      if (topBids.length > 0 || topAsks.length > 0) {
+        const renderWallItem = (wall, isBid) => {
+          const color = isBid ? '#0ECB81' : '#F6465D';
+          return `
+            <div style="display: flex; justify-content: space-between; font-size: 11px; background: rgba(255,255,255,0.01); border: 1px solid rgba(255,255,255,0.03); border-radius: 4px; padding: 4px 8px; font-family: 'JetBrains Mono', monospace;">
+              <span style="color: ${color}; font-weight: 700;">$${Math.round(wall.price).toLocaleString()}</span>
+              <span style="color: #EAECEF; font-weight: 600;">${parseFloat(wall.quantity).toFixed(2)} BTC</span>
+            </div>
+          `;
+        };
+        const bidsHtml = topBids.map(b => renderWallItem(b, true)).join('');
+        const asksHtml = topAsks.map(a => renderWallItem(a, false)).join('');
 
-    // Populate Grid Metrics
-    const m = res.metrics;
-    const getSentimentColor = (s) => s === 'bullish' ? '#0ECB81' : (s === 'bearish' ? '#F6465D' : '#848E9C');
-    const getSentimentIcon = (s) => s === 'bullish' ? '▲' : (s === 'bearish' ? '▼' : '◆');
+        wallsDrawer.innerHTML = `
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px;">
+            <div>
+              <div style="font-size: 9px; color: #0ECB81; font-weight: 700; margin-bottom: 4px; letter-spacing: 0.5px;">🟢 DINDING BELI TERBESAR</div>
+              <div style="display: flex; flex-direction: column; gap: 3px;">${bidsHtml || '<div style="color:#848E9C;font-size:10px;">Tidak ada data</div>'}</div>
+            </div>
+            <div>
+              <div style="font-size: 9px; color: #F6465D; font-weight: 700; margin-bottom: 4px; letter-spacing: 0.5px;">🔴 DINDING JUAL TERBESAR</div>
+              <div style="display: flex; flex-direction: column; gap: 3px;">${asksHtml || '<div style="color:#848E9C;font-size:10px;">Tidak ada data</div>'}</div>
+            </div>
+          </div>
+        `;
+        wallsDrawer.style.display = 'block';
+      } else {
+        wallsDrawer.style.display = 'none';
+      }
+    }
 
-    summaryGrid.innerHTML = `
-      <div style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.04);">
-        <div style="font-size: 11px; color: #848E9C; margin-bottom: 4px; text-transform: uppercase;">Depth Delta</div>
-        <div class="select-mono" style="font-size: 16px; font-weight: bold; color: ${getSentimentColor(m.depthDelta?.sentiment)};">
-          ${getSentimentIcon(m.depthDelta?.sentiment)} ${m.depthDelta?.formatted || '--'}
-        </div>
-        <div style="font-size: 11px; color: #848E9C; margin-top: 4px;">${m.depthDelta?.description || ''}</div>
-      </div>
-      <div style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.04);">
-        <div style="font-size: 11px; color: #848E9C; margin-bottom: 4px; text-transform: uppercase;">Coinbase Premium</div>
-        <div class="select-mono" style="font-size: 16px; font-weight: bold; color: ${getSentimentColor(m.coinbasePremium?.sentiment)};">
-          ${getSentimentIcon(m.coinbasePremium?.sentiment)} ${m.coinbasePremium?.formatted || '--'}
-        </div>
-        <div style="font-size: 11px; color: #848E9C; margin-top: 4px;">${m.coinbasePremium?.description || ''}</div>
-      </div>
-      <div style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.04);">
-        <div style="font-size: 11px; color: #848E9C; margin-bottom: 4px; text-transform: uppercase;">Whale Orders</div>
-        <div class="select-mono" style="font-size: 16px; font-weight: bold; color: ${getSentimentColor(m.whaleOrders?.sentiment)};">
-          ${getSentimentIcon(m.whaleOrders?.sentiment)} ${m.whaleOrders?.sentiment === 'bullish' ? 'BUY BIAS' : (m.whaleOrders?.sentiment === 'bearish' ? 'SELL BIAS' : '--')}
-        </div>
-        <div style="font-size: 11px; color: #848E9C; margin-top: 4px;">${m.whaleOrders?.description || 'Tidak ada data'}</div>
-      </div>
-      <div style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.04);">
-        <div style="font-size: 11px; color: #848E9C; margin-bottom: 4px; text-transform: uppercase;">Whale vs Retail</div>
-        <div class="select-mono" style="font-size: 16px; font-weight: bold; color: ${getSentimentColor(m.whaleRetail?.sentiment)};">
-          ${getSentimentIcon(m.whaleRetail?.sentiment)} ${m.whaleRetail?.formatted || '--'}
-        </div>
-        <div style="font-size: 11px; color: #848E9C; margin-top: 4px;">${m.whaleRetail?.description || ''}</div>
-      </div>
-      <div style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.04);">
-        <div style="font-size: 11px; color: #848E9C; margin-bottom: 4px; text-transform: uppercase;">Top Trader L/S</div>
-        <div class="select-mono" style="font-size: 16px; font-weight: bold; color: ${getSentimentColor(m.topTraderLs?.sentiment)};">
-          ${getSentimentIcon(m.topTraderLs?.sentiment)} ${m.topTraderLs?.formatted || '--'}
-        </div>
-        <div style="font-size: 11px; color: #848E9C; margin-top: 4px;">${m.topTraderLs?.description || ''}</div>
-      </div>
-      <div style="background: rgba(255,255,255,0.02); padding: 12px; border-radius: 6px; border: 1px solid rgba(255,255,255,0.04);">
-        <div style="font-size: 11px; color: #848E9C; margin-bottom: 4px; text-transform: uppercase;">Combined Depth</div>
-        <div class="select-mono" style="font-size: 16px; font-weight: bold; color: ${getSentimentColor(m.combinedDepth?.sentiment)};">
-          ${getSentimentIcon(m.combinedDepth?.sentiment)} ${m.combinedDepth?.formatted || '--'}
-        </div>
-        <div style="font-size: 11px; color: #848E9C; margin-top: 4px;">${m.combinedDepth?.description || ''}</div>
-      </div>
-    `;
-
-    summaryCard.style.display = 'block';
+    card.style.display = 'block';
   } catch (err) {
-    console.error('Error fetching market summary:', err);
-    summaryContent.innerHTML = `<span style="color: #F6465D;">Gagal memuat ringkasan pasar: ${err.message}</span>`;
-    summaryCard.style.display = 'block';
+    console.error('Error loading metric summary card:', err);
   }
 }
 
@@ -408,20 +375,20 @@ document.addEventListener('DOMContentLoaded', () => {
   initDepthChart();
   updateConnectionStatus();
   fetchOrderBook(); // Initial load
-  loadMarketSummary(); // Load market summary on page load
+  loadMetricSummary(); // Initial load summary card
 
   // Bind refresh button click event
   const btnRefresh = document.getElementById('btn-refresh');
   if (btnRefresh) {
     btnRefresh.addEventListener('click', () => {
       fetchOrderBook(true); // Force refresh depth
-      loadMarketSummary(); // Refresh summary too
+      loadMetricSummary();
     });
   }
 
   // Periodic auto-sync every 30 seconds
   setInterval(() => {
     fetchOrderBook(false); // Passive sync
-    loadMarketSummary(); // Passive sync summary
+    loadMetricSummary();
   }, 30000);
 });

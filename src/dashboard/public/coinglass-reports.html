@@ -131,10 +131,10 @@
       <svg width="24" height="24" viewBox="0 0 24 24" fill="none">
         <path d="M13 10V3L4 14H11V21L20 10H13Z" stroke="#F0B90B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/>
       </svg>
-      <div class="sidebar-logo-text">JDA <span>Monitor</span>      <button id="btn-sidebar-toggle" class="sidebar-toggle-btn" title="Toggle Sidebar">
+      <div class="sidebar-logo-text">JDA <span>Monitor</span></div>
+      <button id="btn-sidebar-toggle" class="sidebar-toggle-btn" title="Toggle Sidebar">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="15 18 9 12 15 6"></polyline></svg>
       </button>
-    </div>
     </div>
     <ul class="sidebar-nav">
       <li class="sidebar-item" id="nav-cockpit">
@@ -159,6 +159,12 @@
         <a href="orderbook.html">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
           <span>Combined Depth</span>
+        </a>
+      </li>
+      <li class="sidebar-item" id="nav-coinglass-summary">
+        <a href="coinglass-summary.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="18" y1="20" x2="18" y2="10"></line><line x1="12" y1="20" x2="12" y2="4"></line><line x1="6" y1="20" x2="6" y2="14"></line></svg>
+          <span>Market Summary</span>
         </a>
       </li>
       <li class="sidebar-item" id="nav-depth-delta">
@@ -189,6 +195,15 @@
         <a href="coinglass-reports.html?tab=top-trader-ls">
           <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
           <span>Top Trader L/S</span>
+        </a>
+      </li>
+      <li class="sidebar-item" id="nav-coinglass-tv">
+        <a href="tv-charts.html">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <rect x="2" y="7" width="20" height="15" rx="2" ry="2"></rect>
+            <polyline points="17 2 12 7 7 2"></polyline>
+          </svg>
+          <span>CoinGlass TV</span>
         </a>
       </li>
 
@@ -250,22 +265,6 @@
   </div>
 
   <div class="app-container">
-    <!-- Market Intelligence Summary Card -->
-    <div class="market-summary-card" id="market-summary-card" style="margin-bottom: 24px; background: rgba(30, 35, 41, 0.95); border: 1px solid rgba(255, 255, 255, 0.08); border-radius: 8px; padding: 20px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15); display: none;">
-      <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; border-bottom: 1px solid rgba(255, 255, 255, 0.05); padding-bottom: 10px;">
-        <h3 style="margin: 0; color: #EAECEF; display: flex; align-items: center; gap: 8px; font-size: 16px;">
-          <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color: #F0B90B;"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
-          CoinGlass Market Summary & Analysis
-        </h3>
-        <span id="summary-verdict" style="font-weight: bold; padding: 6px 12px; border-radius: 4px; font-size: 12px; text-transform: uppercase; letter-spacing: 0.5px;">LOADING...</span>
-      </div>
-      <div id="summary-content" style="color: #EAECEF; font-size: 14px; line-height: 1.6; margin-bottom: 15px;">
-        Mengambil analisis data dari seluruh laporan CoinGlass...
-      </div>
-      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(180px, 1fr)); gap: 15px; border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 15px;" id="summary-metrics-grid">
-        <!-- Dynamic metrics populated via JS -->
-      </div>
-    </div>
 
 
 
@@ -274,6 +273,30 @@
       <div class="report-header-info">
         <h3 style="margin: 0; color: #EAECEF;">BTC Depth Liquidity Delta (CoinGlass)</h3>
         <span class="last-update-text" id="update-depth-delta">Last updated: --</span>
+      </div>
+      <!-- Dedicated Depth Delta Summary Card -->
+      <div class="card" id="summary-card-depth-delta" style="margin-bottom: 20px; display: none; background: rgba(30, 35, 41, 0.95); border: 1px solid rgba(255, 255, 255, 0.08); border-left: 4px solid #F0B90B; padding: 12px 16px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="background: rgba(240, 185, 11, 0.1); padding: 8px; border-radius: 6px; display: flex; align-items: center; justify-content: center;">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#F0B90B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 12h-4l-3 9L9 3l-3 9H2"/></svg>
+            </div>
+            <div>
+              <div style="font-size: 11px; color: #848E9C; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Depth Delta Summary</div>
+              <div class="summary-desc" style="font-size: 13px; color: #EAECEF; margin-top: 2px;">Loading summary...</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 20px;">
+            <div style="text-align: right;">
+              <div style="font-size: 9px; color: #848E9C; text-transform: uppercase;">Sentiment</div>
+              <div class="summary-sentiment" style="font-size: 13px; font-weight: bold; margin-top: 2px; font-family: 'JetBrains Mono', monospace;">--</div>
+            </div>
+            <div style="text-align: right;">
+              <div style="font-size: 9px; color: #848E9C; text-transform: uppercase;">Value</div>
+              <div class="summary-val" style="font-size: 13px; font-weight: bold; margin-top: 2px; font-family: 'JetBrains Mono', monospace;">--</div>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="chart-box" id="chart-depth-delta">
         <div style="display:flex; justify-content:center; align-items:center; height:100%; color:#848E9C;">Loading chart...</div>
@@ -286,6 +309,30 @@
         <h3 style="margin: 0; color: #EAECEF;">Coinbase Bitcoin Premium Index</h3>
         <span class="last-update-text" id="update-coinbase-premium">Last updated: --</span>
       </div>
+      <!-- Dedicated Coinbase Premium Summary Card -->
+      <div class="card" id="summary-card-coinbase-premium" style="margin-bottom: 20px; display: none; background: rgba(30, 35, 41, 0.95); border: 1px solid rgba(255, 255, 255, 0.08); border-left: 4px solid #F0B90B; padding: 12px 16px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="background: rgba(240, 185, 11, 0.1); padding: 8px; border-radius: 6px; display: flex; align-items: center; justify-content: center;">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#F0B90B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="12" y1="1" x2="12" y2="23"></line><path d="M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"></path></svg>
+            </div>
+            <div>
+              <div style="font-size: 11px; color: #848E9C; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Coinbase Premium Summary</div>
+              <div class="summary-desc" style="font-size: 13px; color: #EAECEF; margin-top: 2px;">Loading summary...</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 20px;">
+            <div style="text-align: right;">
+              <div style="font-size: 9px; color: #848E9C; text-transform: uppercase;">Sentiment</div>
+              <div class="summary-sentiment" style="font-size: 13px; font-weight: bold; margin-top: 2px; font-family: 'JetBrains Mono', monospace;">--</div>
+            </div>
+            <div style="text-align: right;">
+              <div style="font-size: 9px; color: #848E9C; text-transform: uppercase;">Premium</div>
+              <div class="summary-val" style="font-size: 13px; font-weight: bold; margin-top: 2px; font-family: 'JetBrains Mono', monospace;">--</div>
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="chart-box" id="chart-coinbase-premium">
         <div style="display:flex; justify-content:center; align-items:center; height:100%; color:#848E9C;">Loading chart...</div>
       </div>
@@ -296,6 +343,28 @@
       <div class="report-header-info">
         <h3 style="margin: 0; color: #EAECEF;">Large Orderbook Statistics (Whale Orders)</h3>
         <span class="last-update-text" id="update-whale-orders">Last updated: --</span>
+      </div>
+      <!-- Dedicated Whale Orders Summary Card -->
+      <div class="card" id="summary-card-whale-orders" style="margin-bottom: 20px; display: none; background: rgba(30, 35, 41, 0.95); border: 1px solid rgba(255, 255, 255, 0.08); border-left: 4px solid #F0B90B; padding: 12px 16px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="background: rgba(240, 185, 11, 0.1); padding: 8px; border-radius: 6px; display: flex; align-items: center; justify-content: center;">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#F0B90B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="22 12 18 12 15 21 9 3 6 12 2 12"></polyline></svg>
+            </div>
+            <div>
+              <div style="font-size: 11px; color: #848E9C; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Whale Orders Summary</div>
+              <div class="summary-desc" style="font-size: 13px; color: #EAECEF; margin-top: 2px;">Loading summary...</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 20px;">
+            <div style="text-align: right;">
+              <div style="font-size: 9px; color: #848E9C; text-transform: uppercase;">Bias</div>
+              <div class="summary-sentiment" style="font-size: 13px; font-weight: bold; margin-top: 2px; font-family: 'JetBrains Mono', monospace;">--</div>
+            </div>
+          </div>
+        </div>
+        <!-- Top Whale orders (Beli vs Jual) drawer -->
+        <div id="whale-orders-drawer" style="margin-top: 12px; padding-top: 12px; border-top: 1px solid rgba(255, 255, 255, 0.05); display: none;"></div>
       </div>
       <div class="whale-table-card">
         <table class="whale-table" id="table-whale-orders">
@@ -327,6 +396,30 @@
         <h3 style="margin: 0; color: #EAECEF;">Whale vs Retail Position Delta</h3>
         <span class="last-update-text" id="update-whale-retail-delta">Last updated: --</span>
       </div>
+      <!-- Dedicated Whale vs Retail Summary Card -->
+      <div class="card" id="summary-card-whale-retail" style="margin-bottom: 20px; display: none; background: rgba(30, 35, 41, 0.95); border: 1px solid rgba(255, 255, 255, 0.08); border-left: 4px solid #F0B90B; padding: 12px 16px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="background: rgba(240, 185, 11, 0.1); padding: 8px; border-radius: 6px; display: flex; align-items: center; justify-content: center;">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#F0B90B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path><circle cx="9" cy="7" r="4"></circle><path d="M23 21v-2a4 4 0 0 0-3-3.87"></path><path d="M16 3.13a4 4 0 0 1 0 7.75"></path></svg>
+            </div>
+            <div>
+              <div style="font-size: 11px; color: #848E9C; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Whale vs Retail Delta Summary</div>
+              <div class="summary-desc" style="font-size: 13px; color: #EAECEF; margin-top: 2px;">Loading summary...</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 20px;">
+            <div style="text-align: right;">
+              <div style="font-size: 9px; color: #848E9C; text-transform: uppercase;">Sentiment</div>
+              <div class="summary-sentiment" style="font-size: 13px; font-weight: bold; margin-top: 2px; font-family: 'JetBrains Mono', monospace;">--</div>
+            </div>
+            <div style="text-align: right;">
+              <div style="font-size: 9px; color: #848E9C; text-transform: uppercase;">Delta</div>
+              <div class="summary-val" style="font-size: 13px; font-weight: bold; margin-top: 2px; font-family: 'JetBrains Mono', monospace;">--</div>
+            </div>
+          </div>
+        </div>
+      </div>
       <div class="chart-box" id="chart-whale-retail-delta">
         <div style="display:flex; justify-content:center; align-items:center; height:100%; color:#848E9C;">Loading chart...</div>
       </div>
@@ -337,6 +430,30 @@
       <div class="report-header-info">
         <h3 style="margin: 0; color: #EAECEF;">Top Trader Long/Short Ratio</h3>
         <span class="last-update-text" id="update-top-trader-ls">Last updated: --</span>
+      </div>
+      <!-- Dedicated Top Trader L/S Summary Card -->
+      <div class="card" id="summary-card-top-trader-ls" style="margin-bottom: 20px; display: none; background: rgba(30, 35, 41, 0.95); border: 1px solid rgba(255, 255, 255, 0.08); border-left: 4px solid #F0B90B; padding: 12px 16px; box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);">
+        <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; flex-wrap: wrap;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="background: rgba(240, 185, 11, 0.1); padding: 8px; border-radius: 6px; display: flex; align-items: center; justify-content: center;">
+              <svg viewBox="0 0 24 24" width="18" height="18" fill="none" stroke="#F0B90B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"></polyline><polyline points="17 6 23 6 23 12"></polyline></svg>
+            </div>
+            <div>
+              <div style="font-size: 11px; color: #848E9C; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Top Trader L/S Summary</div>
+              <div class="summary-desc" style="font-size: 13px; color: #EAECEF; margin-top: 2px;">Loading summary...</div>
+            </div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 20px;">
+            <div style="text-align: right;">
+              <div style="font-size: 9px; color: #848E9C; text-transform: uppercase;">Sentiment</div>
+              <div class="summary-sentiment" style="font-size: 13px; font-weight: bold; margin-top: 2px; font-family: 'JetBrains Mono', monospace;">--</div>
+            </div>
+            <div style="text-align: right;">
+              <div style="font-size: 9px; color: #848E9C; text-transform: uppercase;">Ratio</div>
+              <div class="summary-val" style="font-size: 13px; font-weight: bold; margin-top: 2px; font-family: 'JetBrains Mono', monospace;">--</div>
+            </div>
+          </div>
+        </div>
       </div>
       <div class="whale-table-card">
         <table class="whale-table" id="table-top-trader-ls">
@@ -355,6 +472,17 @@
             </tr>
           </tbody>
         </table>
+      </div>
+    </div>
+
+    <!-- Panel 6: CoinGlass TV (CVD, OI, FR) -->
+    <div class="report-content-panel" id="panel-coinglass-tv">
+      <div class="report-header-info">
+        <h3 style="margin: 0; color: #EAECEF;">CoinGlass TV (CVD, OI & Funding Rate)</h3>
+        <span class="last-update-text" id="update-coinglass-tv">Last updated: --</span>
+      </div>
+      <div class="chart-box" id="chart-coinglass-tv" style="height: 650px;">
+        <div style="display:flex; justify-content:center; align-items:center; height:100%; color:#848E9C;">Loading CoinGlass TV charts...</div>
       </div>
     </div>
   </div>

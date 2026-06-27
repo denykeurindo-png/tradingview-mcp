@@ -53,6 +53,10 @@ let currentBtcPrice = 65000;
 let isSavingSettings = false;
 let latestBotStatus = null;
 let activeChartPeriod = '24h';
+let latestJdaSignal = null;
+let latestBidPercent = 50;
+let latestAskPercent = 50;
+let latestActiveTrade = null;
 
 // Format Helpers
 const formatUSD = (val) => {
@@ -245,6 +249,7 @@ async function updateJdaMtfStatus() {
     const json = await res.json();
     const d = json.data;
     if (!d) return;
+    latestJdaSignal = d; // Store globally
 
     // 1. Update Time
     const timeEl = document.getElementById('jda-mtf-update-time');
@@ -353,6 +358,9 @@ async function updateJdaMtfStatus() {
       }
     }
 
+    // Update Market Bias widget
+    updateMarketBiasConclusion();
+
   } catch (e) {
     console.error('[Cockpit] JDA MTF Status update failed:', e.message);
   }
@@ -430,6 +438,8 @@ async function fetchOrderbookRatio() {
       if (totalVol > 0) {
         const bidPercent = Math.round((bidVol / totalVol) * 100);
         const askPercent = 100 - bidPercent;
+        latestBidPercent = bidPercent; // Store globally
+        latestAskPercent = askPercent; // Store globally
 
         const elBid = document.getElementById('depth-bar-bid');
         const elAsk = document.getElementById('depth-bar-ask');
@@ -451,6 +461,9 @@ async function fetchOrderbookRatio() {
           const age = body.data.timestamp ? new Date(body.data.timestamp).toLocaleTimeString() : 'N/A';
           elUpdate.innerText = `Last Scraped: ${age}`;
         }
+
+        // Update Market Bias widget
+        updateMarketBiasConclusion();
       }
     }
   } catch (e) {
@@ -472,8 +485,11 @@ async function renderActivePosition() {
     
     // Find active trades
     const activeTrade = trades.find(t => t.status === 'ACTIVE');
+    latestActiveTrade = activeTrade || null; // Store globally
+    
     if (!activeTrade) {
       renderLsrBotStatusEmptyState();
+      updateMarketBiasConclusion();
       return;
     }
 
@@ -525,6 +541,9 @@ async function renderActivePosition() {
 
       <button class="btn-emergency" onclick="triggerEmergencyClose('${activeTrade.id}')">Emergency Market Close</button>
     `;
+
+    // Update Market Bias widget
+    updateMarketBiasConclusion();
 
   } catch (e) {
     console.error('[Cockpit] Failed to render active position:', e.message);
@@ -1292,6 +1311,199 @@ function renderLsrBotStatusEmptyState() {
     </div>
   `;
   fetchOrderbookRatio();
+}
+
+// Calculate overall market bias based on Cockpit indicators
+function updateMarketBiasConclusion() {
+  const container = document.getElementById('market-bias-conclusion-content');
+  if (!container) return;
+
+  // 1. JDA Score (Max 30)
+  let jdaScore = 0;
+  let jdaValText = 'NEUTRAL';
+  let jdaScoreText = '0';
+  if (latestJdaSignal) {
+    const bias = latestJdaSignal.marketBias || 'NEUTRAL';
+    const conf = latestJdaSignal.conf || 0;
+    if (bias === 'BULLISH') {
+      jdaScore = 30;
+      jdaValText = `BULLISH (${conf}%)`;
+      jdaScoreText = '+30';
+    } else if (bias === 'BEARISH') {
+      jdaScore = -30;
+      jdaValText = `BEARISH (${conf}%)`;
+      jdaScoreText = '-30';
+    } else {
+      jdaValText = `NEUTRAL (${conf}%)`;
+      jdaScoreText = '0';
+    }
+  }
+
+  // 2. Whale Score (Max 25)
+  let whaleScore = 0;
+  let whaleValText = 'NEUTRAL';
+  let whaleScoreText = '0';
+  if (latestBotStatus && latestBotStatus.whaleData) {
+    const w = latestBotStatus.whaleData;
+    const signal = w.signal || 'NEUTRAL';
+    const netFlow = w.netFlow || 0;
+    
+    // Format net flow for display
+    let flowStr = formatUSD(netFlow);
+    if (netFlow > 0) flowStr = '+' + flowStr;
+
+    if (signal === 'ACCUMULATION' || netFlow > 0) {
+      whaleScore = 25;
+      whaleValText = `ACCUMULATION (${flowStr})`;
+      whaleScoreText = '+25';
+    } else if (signal === 'DISTRIBUTION' || netFlow < 0) {
+      whaleScore = -25;
+      whaleValText = `DISTRIBUTION (${flowStr})`;
+      whaleScoreText = '-25';
+    } else {
+      whaleValText = `NEUTRAL (${flowStr})`;
+      whaleScoreText = '0';
+    }
+  }
+
+  // 3. Orderbook Ratio Score (Max 20)
+  let obScore = 0;
+  let obValText = '50% / 50%';
+  let obScoreText = '0';
+  if (latestBidPercent !== undefined && latestAskPercent !== undefined) {
+    obValText = `${latestBidPercent}% Bids / ${latestAskPercent}% Asks`;
+    obScore = (latestBidPercent - 50) * 2; // e.g. 55% Bids -> (55-50)*2 = +10. 40% Bids -> (40-50)*2 = -20
+    obScore = Math.max(-20, Math.min(20, obScore));
+    obScoreText = obScore >= 0 ? `+${obScore.toFixed(0)}` : obScore.toFixed(0);
+  }
+
+  // 4. Reversal Probability & Pool / Position (Max 25)
+  let poolScore = 0;
+  let poolValText = 'NO SIGNAL';
+  let poolScoreText = '0';
+  
+  if (latestActiveTrade) {
+    const dir = latestActiveTrade.direction;
+    if (dir === 'LONG') {
+      poolScore = 25;
+      poolValText = 'POSISI LONG AKTIF';
+      poolScoreText = '+25';
+    } else if (dir === 'SHORT') {
+      poolScore = -25;
+      poolValText = 'POSISI SHORT AKTIF';
+      poolScoreText = '-25';
+    }
+  } else if (latestBotStatus) {
+    const status = latestBotStatus;
+    const poolSide = status.nearestPoolSide || '--';
+    const probVal = status.reversalProbabilityPreview || status.metrics?.reversalProbability || 0;
+    const poolPrice = status.nearestPool ? '$' + Math.round(status.nearestPool).toLocaleString() : '--';
+
+    if (poolSide === 'SUPPORT') {
+      // Reversal from support means price goes UP (BULLISH)
+      poolScore = (probVal / 100) * 25;
+      poolValText = `SUPPORT POOL ${poolPrice} (Prob ${probVal}%)`;
+      poolScoreText = `+${poolScore.toFixed(1)}`;
+    } else if (poolSide === 'RESISTANCE') {
+      // Reversal from resistance means price goes DOWN (BEARISH)
+      poolScore = -(probVal / 100) * 25;
+      poolValText = `RESIST POOL ${poolPrice} (Prob ${probVal}%)`;
+      poolScoreText = `-${Math.abs(poolScore).toFixed(1)}`;
+    } else {
+      poolValText = `NO POOL NEAREST`;
+      poolScoreText = '0';
+    }
+  }
+
+  // Sum total score (-100 to +100)
+  const totalScore = jdaScore + whaleScore + obScore + poolScore;
+  
+  // Convert score to percentages (clamped between 0 and 100)
+  let longPercent = Math.round(50 + (totalScore / 2));
+  longPercent = Math.max(0, Math.min(100, longPercent));
+  const shortPercent = 100 - longPercent;
+
+  // Determine dominant bias
+  let biasText = 'NEUTRAL';
+  let biasColor = 'var(--text-muted)';
+  let biasDesc = 'Pasar sedang seimbang (Konsolidasi/Neutral).';
+  
+  if (longPercent > 55) {
+    biasText = 'CENDERUNG LONG';
+    biasColor = 'var(--accent-success)';
+    biasDesc = `Indikator dominan menunjukkan kekuatan beli (${longPercent}% LONG).`;
+  } else if (shortPercent > 55) {
+    biasText = 'CENDERUNG SHORT';
+    biasColor = 'var(--accent-alert)';
+    biasDesc = `Indikator dominan menunjukkan tekanan jual (${shortPercent}% SHORT).`;
+  }
+
+  // Render content
+  container.innerHTML = `
+    <div style="display: flex; flex-direction: column; gap: 10px;">
+      
+      <!-- Dominant Verdict Row -->
+      <div style="display: flex; justify-content: space-between; align-items: center;">
+        <span style="font-size: 11px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">Arah Bias</span>
+        <span style="font-size: 18px; font-weight: 700; color: ${biasColor}; letter-spacing: 0.5px;">
+          ${biasText} ${biasText.includes('LONG') ? longPercent : shortPercent}%
+        </span>
+      </div>
+
+      <!-- Combined Progress Bar -->
+      <div style="background: rgba(255,255,255,0.05); height: 22px; border-radius: 6px; overflow: hidden; width: 100%; display: flex; border: 1px solid var(--border-color); position: relative;">
+        <!-- LONG BAR -->
+        <div style="width: ${longPercent}%; background: rgba(14, 203, 129, 0.25); border-right: 1px solid rgba(14, 203, 129, 0.4); display: flex; align-items: center; padding-left: 8px; font-size: 10px; font-weight: 700; color: var(--accent-success); transition: width 0.3s ease; white-space: nowrap; overflow: hidden;">
+          LONG ${longPercent}%
+        </div>
+        <!-- SHORT BAR -->
+        <div style="width: ${shortPercent}%; background: rgba(246, 70, 93, 0.25); display: flex; align-items: center; justify-content: flex-end; padding-right: 8px; font-size: 10px; font-weight: 700; color: var(--accent-alert); transition: width 0.3s ease; white-space: nowrap; overflow: hidden;">
+          ${shortPercent}% SHORT
+        </div>
+      </div>
+
+      <div style="font-size: 11px; color: #fff; font-weight: 500; text-align: center; margin-top: -2px; line-height: 1.3;">
+        ${biasDesc}
+      </div>
+
+      <!-- Breakdown Table (Indonesian) -->
+      <div style="display: flex; flex-direction: column; gap: 4px; font-size: 10px; background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 6px; padding: 8px 10px; margin-top: 2px;">
+        <!-- JDA -->
+        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.02); padding-bottom: 4px; align-items: center;">
+          <span style="color: var(--text-muted);">JDA MTF Strategy (30%):</span>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <span style="color: #fff; font-weight: 500;">${jdaValText}</span>
+            <span style="font-family: var(--font-mono); font-weight: 700; color: ${jdaScore > 0 ? 'var(--accent-success)' : jdaScore < 0 ? 'var(--accent-alert)' : 'var(--text-muted)'}">${jdaScoreText}</span>
+          </div>
+        </div>
+        <!-- Whale -->
+        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.02); padding-bottom: 4px; align-items: center;">
+          <span style="color: var(--text-muted);">Whale Flow 15m (25%):</span>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <span style="color: #fff; font-weight: 500;">${whaleValText}</span>
+            <span style="font-family: var(--font-mono); font-weight: 700; color: ${whaleScore > 0 ? 'var(--accent-success)' : whaleScore < 0 ? 'var(--accent-alert)' : 'var(--text-muted)'}">${whaleScoreText}</span>
+          </div>
+        </div>
+        <!-- Orderbook -->
+        <div style="display: flex; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.02); padding-bottom: 4px; align-items: center;">
+          <span style="color: var(--text-muted);">Orderbook Depth 1% (20%):</span>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <span style="color: #fff; font-weight: 500;">${obValText}</span>
+            <span style="font-family: var(--font-mono); font-weight: 700; color: ${obScore > 0 ? 'var(--accent-success)' : obScore < 0 ? 'var(--accent-alert)' : 'var(--text-muted)'}">${obScoreText}</span>
+          </div>
+        </div>
+        <!-- LSR / Reversal -->
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <span style="color: var(--text-muted);">LSR Reversal & Posisi (25%):</span>
+          <div style="display: flex; gap: 6px; align-items: center;">
+            <span style="color: #fff; font-weight: 500;">${poolValText}</span>
+            <span style="font-family: var(--font-mono); font-weight: 700; color: ${poolScore > 0 ? 'var(--accent-success)' : poolScore < 0 ? 'var(--accent-alert)' : 'var(--text-muted)'}">${poolScoreText}</span>
+          </div>
+        </div>
+      </div>
+      
+    </div>
+  `;
 }
 
 // Translate bot messages to a friendly Indonesian narrative layout
