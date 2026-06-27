@@ -396,9 +396,9 @@ async function updateJdaMtfStatus() {
         
         html += `
           <div style="background: rgba(255,255,255,0.02); border: 1px solid var(--border-color); border-radius: 4px; padding: 4px 2px;">
-            <div style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">${tf}</div>
-            <div style="font-size: 10px; font-weight: 700; color: ${color}; margin-top: 2px;">${state}</div>
-            <div style="font-size: 8px; color: var(--text-muted); font-family: var(--font-mono); margin-top: 1px;">${scoreVal >= 0 ? '+' : ''}${scoreVal.toFixed(0)}</div>
+            <div style="font-size: 7px; color: var(--text-muted); text-transform: uppercase; font-weight: 700;">${tf}</div>
+            <div style="font-size: 8px; font-weight: 700; color: ${color}; margin-top: 2px;">${state}</div>
+            <div style="font-size: 7px; color: var(--text-muted); font-family: var(--font-mono); margin-top: 1px;">${scoreVal >= 0 ? '+' : ''}${scoreVal.toFixed(0)}</div>
           </div>
         `;
       });

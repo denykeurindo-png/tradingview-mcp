@@ -52,8 +52,7 @@
     }
 
     .w-mini-heatmap-24h, .w-mini-heatmap-3d {
-      flex: 1;
-      min-height: 280px;
+      flex: 0 0 290px;
       padding: 16px 8px 8px 8px; /* Tighter padding to allow chart to be flush with card borders */
       margin-bottom: 12px;
     }
@@ -466,24 +465,24 @@
       background: rgba(255, 255, 255, 0.02);
       border: 1px solid var(--border-color);
       border-radius: 6px;
-      padding: 10px 14px;
+      padding: 6px 10px;
       display: flex;
       flex-direction: column;
       justify-content: center;
-      min-height: 58px;
+      min-height: 48px;
     }
 
     .jda-card-label {
-      font-size: 10px;
+      font-size: 8px;
       font-weight: 600;
       color: var(--text-muted);
       text-transform: uppercase;
       letter-spacing: 0.5px;
-      margin-bottom: 4px;
+      margin-bottom: 2px;
     }
 
     .jda-card-val {
-      font-size: 13px;
+      font-size: 11px;
       font-weight: 700;
       display: flex;
       align-items: center;
@@ -498,8 +497,8 @@
       background: rgba(255, 255, 255, 0.02);
       border: 1px solid var(--border-color);
       border-radius: 6px;
-      padding: 10px 14px;
-      min-height: 58px;
+      padding: 6px 10px;
+      min-height: 48px;
     }
 
     .jda-flex-col {
@@ -546,11 +545,11 @@
       }
 
       .w-mini-heatmap-24h, .w-mini-heatmap-3d {
-        min-height: 280px;
+        height: 290px !important;
       }
 
       .w-top-liq-pools {
-        min-height: 420px;
+        min-height: 360px;
       }
     }
 
@@ -875,13 +874,13 @@
             <span>24H Liquidity Sweep Map</span>
             <span style="font-family: var(--font-mono); color: var(--accent-primary); font-size: 14px;" id="live-btc-price">$0.00</span>
           </div>
-          <div id="chart-mini-heatmap-24h" style="flex: 1; width: 100%; min-height: 230px;"></div>
+          <div id="chart-mini-heatmap-24h" style="width: 100%; height: 240px;"></div>
         </div>
 
         <!-- Widget 3b: Mini Heatmap 3D -->
         <div class="cockpit-widget w-mini-heatmap-3d">
           <div class="widget-title">3D Liquidity Sweep Map</div>
-          <div id="chart-mini-heatmap-3d" style="flex: 1; width: 100%; min-height: 230px;"></div>
+          <div id="chart-mini-heatmap-3d" style="width: 100%; height: 240px;"></div>
         </div>
 
         <!-- Widget: JDA MTF Strategy Status -->
@@ -1100,50 +1099,50 @@
         </div>
 
         <!-- Widget 8: Top Liquidation Pools (24H / 3D) -->
-        <div class="cockpit-widget w-top-liq-pools" style="flex: 1; min-height: 420px; display: flex; flex-direction: column;">
+        <div class="cockpit-widget w-top-liq-pools" style="flex: 1; min-height: 360px; display: flex; flex-direction: column;">
           <div class="widget-title" style="margin-bottom: 8px;">
             <span>🔥 Top Liquidation Pools</span>
           </div>
           <div class="top-pools-grid">
             <!-- Left Box: 24H Pools -->
-            <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; flex-direction: column; gap: 8px; height: 100%; min-height: 0;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
                 <span style="font-weight: 600; font-size: 11px; color: var(--text-muted); letter-spacing: 0.3px;">24H POOLS</span>
                 <span style="font-size: 9px; color: var(--text-muted); font-family: var(--font-mono);" id="liq-pools-update-24h">--:--:--</span>
               </div>
               <!-- Resistance 24H -->
-              <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; flex: 1;">
+              <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; flex: 1; min-height: 0;">
                 <div style="font-weight: 700; color: var(--accent-alert); text-transform: uppercase; letter-spacing: 0.3px; font-size: 9px; margin-bottom: 6px;">▲ Resistance 24H</div>
-                <div id="cockpit-resistance-pools" style="display: flex; flex-direction: column; gap: 6px; flex: 1; justify-content: flex-start; margin-top: 4px;">
+                <div id="cockpit-resistance-pools" style="display: flex; flex-direction: column; gap: 6px; flex: 1; justify-content: flex-start; margin-top: 4px; overflow-y: auto;">
                   <div style="color: var(--text-muted); text-align: center; padding: 10px; font-size: 10px;">Loading 24H...</div>
                 </div>
               </div>
               <!-- Support 24H -->
-              <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; flex: 1;">
+              <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; flex: 1; min-height: 0;">
                 <div style="font-weight: 700; color: var(--accent-success); text-transform: uppercase; letter-spacing: 0.3px; font-size: 9px; margin-bottom: 6px;">▼ Support 24H</div>
-                <div id="cockpit-support-pools" style="display: flex; flex-direction: column; gap: 6px; flex: 1; justify-content: flex-start; margin-top: 4px;">
+                <div id="cockpit-support-pools" style="display: flex; flex-direction: column; gap: 6px; flex: 1; justify-content: flex-start; margin-top: 4px; overflow-y: auto;">
                   <div style="color: var(--text-muted); text-align: center; padding: 10px; font-size: 10px;">Loading 24H...</div>
                 </div>
               </div>
             </div>
 
             <!-- Right Box: 3D Pools -->
-            <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="display: flex; flex-direction: column; gap: 8px; height: 100%; min-height: 0;">
               <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
                 <span style="font-weight: 600; font-size: 11px; color: var(--text-muted); letter-spacing: 0.3px;">3D POOLS</span>
                 <span style="font-size: 9px; color: var(--text-muted); font-family: var(--font-mono);" id="liq-pools-update-3d">--:--:--</span>
               </div>
               <!-- Resistance 3D -->
-              <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; flex: 1;">
+              <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; flex: 1; min-height: 0;">
                 <div style="font-weight: 700; color: var(--accent-alert); text-transform: uppercase; letter-spacing: 0.3px; font-size: 9px; margin-bottom: 6px;">▲ Resistance 3D</div>
-                <div id="cockpit-resistance-pools-3d" style="display: flex; flex-direction: column; gap: 6px; flex: 1; justify-content: flex-start; margin-top: 4px;">
+                <div id="cockpit-resistance-pools-3d" style="display: flex; flex-direction: column; gap: 6px; flex: 1; justify-content: flex-start; margin-top: 4px; overflow-y: auto;">
                   <div style="color: var(--text-muted); text-align: center; padding: 10px; font-size: 10px;">Loading 3D...</div>
                 </div>
               </div>
               <!-- Support 3D -->
-              <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; flex: 1;">
+              <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; flex: 1; min-height: 0;">
                 <div style="font-weight: 700; color: var(--accent-success); text-transform: uppercase; letter-spacing: 0.3px; font-size: 9px; margin-bottom: 6px;">▼ Support 3D</div>
-                <div id="cockpit-support-pools-3d" style="display: flex; flex-direction: column; gap: 6px; flex: 1; justify-content: flex-start; margin-top: 4px;">
+                <div id="cockpit-support-pools-3d" style="display: flex; flex-direction: column; gap: 6px; flex: 1; justify-content: flex-start; margin-top: 4px; overflow-y: auto;">
                   <div style="color: var(--text-muted); text-align: center; padding: 10px; font-size: 10px;">Loading 3D...</div>
                 </div>
               </div>
