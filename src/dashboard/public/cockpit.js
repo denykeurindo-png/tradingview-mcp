@@ -919,6 +919,7 @@ function renderSingleMiniChart(chartInstance, title, heatmapData, is3d = false) 
   };
 
   chartInstance.setOption(option, true);
+  chartInstance.resize();
 }
 
 // Fetch Liquidation Heatmap data and update ECharts Mini map
