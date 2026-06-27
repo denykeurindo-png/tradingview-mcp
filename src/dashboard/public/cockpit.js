@@ -1339,21 +1339,6 @@ function renderLsrBotStatusEmptyState() {
         </div>
       </div>
 
-      <!-- Card Section 3: Binance Orderbook Ratio -->
-      <div>
-        <div style="font-size: 12px; font-weight: 700; color: var(--accent-primary); border-bottom: 1px dashed var(--border-color); padding-bottom: 6px; display: flex; justify-content: space-between; align-items: center;">
-          <span>📊 BINANCE ORDERBOOK RATIO (1% DEPTH)</span>
-          <span id="depth-ratio-text" style="font-size: 11px; font-weight: 700;">50% / 50%</span>
-        </div>
-        <div class="depth-bar-container" style="margin-top: 8px;">
-          <div class="depth-bar-bid" id="depth-bar-bid" style="width: 50%;">BID 50%</div>
-          <div class="depth-bar-ask" id="depth-bar-ask" style="width: 50%;">50% ASK</div>
-        </div>
-        <div style="font-size: 10px; color: var(--text-muted); margin-top: 6px; text-align: center;" id="orderbook-update-text">
-          Waiting for orderbook stream...
-        </div>
-      </div>
-      
       ${wickHtml}
     </div>
   `;
