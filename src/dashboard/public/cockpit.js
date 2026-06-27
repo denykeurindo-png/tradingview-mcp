@@ -1149,6 +1149,16 @@ autoTradeToggle.addEventListener('change', async (e) => {
       body: JSON.stringify({ autoTradeEnabled: newValue })
     });
     if (!res.ok) throw new Error('Settings save failed');
+    
+    // Immediately fetch bot status to update layout and breakdown details
+    await updateBotStatus();
+    
+    // Trigger charts resize after layout adjustments
+    setTimeout(() => {
+      if (gaugeChart) gaugeChart.resize();
+      if (miniHeatmapChart24h) miniHeatmapChart24h.resize();
+      if (miniHeatmapChart3d) miniHeatmapChart3d.resize();
+    }, 100);
   } catch (err) {
     alert(`Failed to save settings: ${err.message}`);
     autoTradeToggle.checked = !newValue;
