@@ -1225,7 +1225,7 @@ window.addEventListener('resize', () => {
 // Render LSR Bot Status when no active positions exist
 function renderLsrBotStatusEmptyState() {
   const titleEl = document.getElementById('active-position-title');
-  if (titleEl) titleEl.innerText = 'LSR Bot Status & Orderbook';
+  if (titleEl) titleEl.innerText = 'LSR Bot Status & Whale Flow';
 
   if (!latestBotStatus) {
     activePositionContent.innerHTML = `<div class="no-active-trade">No active trade. Loading bot status...</div>`;
