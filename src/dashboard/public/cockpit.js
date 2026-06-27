@@ -1415,7 +1415,7 @@ function updateMarketBiasConclusion() {
 
   // Render content
   container.innerHTML = `
-    <div style="display: flex; flex-direction: column; gap: 10px;">
+    <div style="display: flex; flex-direction: column; justify-content: space-between; flex: 1; height: 100%; gap: 10px;">
       
       <!-- Dominant Verdict Row -->
       <div style="display: flex; justify-content: space-between; align-items: center;">
