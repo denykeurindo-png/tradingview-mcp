@@ -3906,7 +3906,7 @@ app.post('/api/tradingview/webhook', (req, res) => {
       return res.status(400).json({ success: false, error: 'Missing entry, tp, or sl' });
     }
 
-    const activeTrades = trades.filter(t => t.status === 'ACTIVE');
+    const activeTrades = trades.filter(t => t.status === 'ACTIVE' && !(t.id && t.id.startsWith('T_BT_')) && !(t.note && t.note.toLowerCase().includes('backtest')));
     if (activeTrades.length >= settings.maxActive) {
       console.log('[TradingView Webhook] Max active trades reached, skipping entry.');
       return res.status(400).json({ success: false, error: 'Max active trades reached' });
@@ -4025,7 +4025,7 @@ app.post('/api/jda-trades/webhook', (req, res) => {
       return res.status(400).json({ success: false, error: 'Missing entry, tp, or sl' });
     }
 
-    const activeTrades = trades.filter(t => t.status === 'ACTIVE');
+    const activeTrades = trades.filter(t => t.status === 'ACTIVE' && !(t.id && t.id.startsWith('T_BT_')) && !(t.note && t.note.toLowerCase().includes('backtest')));
     if (activeTrades.length >= settings.maxActive) {
       console.log('[JDA Webhook] Max active trades reached, skipping entry.');
       return res.status(400).json({ success: false, error: 'Max active trades reached' });
@@ -5471,7 +5471,7 @@ function autoTradeStrategyBackend(heatmapData) {
   if (isNaN(lastLow) || isNaN(lastHigh)) return;
 
   const trades = loadTrades();
-  const activeTrades = trades.filter(t => t.status === 'ACTIVE');
+  const activeTrades = trades.filter(t => t.status === 'ACTIVE' && !(t.id && t.id.startsWith('T_BT_')) && !(t.note && t.note.toLowerCase().includes('backtest')));
 
   const heatmapSeries = heatmapData.series.find(s => s.type === 'heatmap');
   if (!heatmapSeries || !heatmapSeries.data || heatmapSeries.data.length === 0) return;
