@@ -3068,7 +3068,14 @@ app.get('/api/coinglass-summary', (req, res) => {
     verdict,
     score,
     explanation,
-    metrics,
+    metrics: {
+      ...metrics,
+      ...botMetrics
+    },
+    botPhaseState,
+    status: {
+      lastPrice: botMetrics.openInterest && botMetrics.openInterestBtc ? (botMetrics.openInterest / botMetrics.openInterestBtc) : 60000
+    },
     timestamp: new Date().toISOString()
   });
 });

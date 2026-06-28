@@ -361,7 +361,7 @@ function updateCvdChart(summary) {
 async function updateHeatmap() {
   if (!heatmapChart) return;
 
-  const url = activePeriod === '24h' ? '/api/heatmap' : '/api/heatmap3d';
+  const url = activePeriod === '24h' ? '/api/heatmap-data' : '/api/heatmap-data-3d';
   const res = await fetch(url);
   if (!res.ok) return;
   const raw = await res.json();
