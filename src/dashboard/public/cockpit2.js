@@ -814,11 +814,12 @@ async function updateHeatmap() {
       if (sup3dContainer) sup3dContainer.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:6px;font-size:10px;">No 3D data cache yet...</div>';
     }
 
-    // Detect pool liquidations
-    // Detect pool liquidations using all levels
-    detectLiquidatedPools('24h', pools24h.allLevels);
-    if (data3d && pools3d.allLevels) {
-      detectLiquidatedPools('3d', pools3d.allLevels);
+    // Detect pool liquidations using only the visible Top 5 pools (above and below)
+    const visiblePools24h = pools24h.above.concat(pools24h.below);
+    detectLiquidatedPools('24h', visiblePools24h);
+    if (data3d) {
+      const visiblePools3d = pools3d.above.concat(pools3d.below);
+      detectLiquidatedPools('3d', visiblePools3d);
     }
 
     const syncEl24h = document.getElementById('liq-pools-update-24h');
