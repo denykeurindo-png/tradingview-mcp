@@ -686,6 +686,7 @@ async function updateHeatmap() {
 
         // Check if price crossed this level recently
         let isLiquidated = false;
+        let liquidationTime = null;
         if (isAbove) {
           if (price <= maxHighRecent) {
             isLiquidated = true;
@@ -693,6 +694,23 @@ async function updateHeatmap() {
         } else {
           if (price >= minLowRecent) {
             isLiquidated = true;
+          }
+        }
+
+        if (isLiquidated && cs && cs.data) {
+          const recentCandles = cs.data.slice(-40);
+          for (let i = recentCandles.length - 1; i >= 0; i--) {
+            const candle = recentCandles[i];
+            const time = parseInt(candle[0]);
+            const low = parseFloat(candle[2]);
+            const high = parseFloat(candle[3]);
+            if (isAbove && high >= price) {
+              liquidationTime = new Date(time).toLocaleTimeString(undefined, {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+              break;
+            } else if (!isAbove && low <= price) {
+              liquidationTime = new Date(time).toLocaleTimeString(undefined, {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+              break;
+            }
           }
         }
 
@@ -705,7 +723,7 @@ async function updateHeatmap() {
         if (leverage <= 0) return;
 
         const distancePercent = ((price - refPrice) / refPrice) * 100;
-        levels.push({ price, leverage, distance: distancePercent, isAbove, isLiquidated });
+        levels.push({ price, leverage, distance: distancePercent, isAbove, isLiquidated, liquidationTime });
       });
 
       const aboveLevels = levels.filter(l => l.isAbove).sort((a, b) => b.leverage - a.leverage).slice(0, 5).sort((a, b) => a.price - b.price);
@@ -749,7 +767,7 @@ async function updateHeatmap() {
         let intensityBg = 'rgba(255,255,255,0.05)';
         
         if (isLiq) {
-          intensityText = 'LIQ';
+          intensityText = lvl.liquidationTime ? 'LIQ ' + lvl.liquidationTime : 'LIQ';
           intensityColor = '#848E9C';
           intensityBg = 'rgba(255,255,255,0.03)';
         } else {
@@ -773,9 +791,9 @@ async function updateHeatmap() {
         
         return `
           <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.02); padding: 4px 0; font-family: var(--font-mono); font-size: 10px; ${rowStyle}">
-            <span style="width: 70px; text-align: left; font-weight: 600; color: ${priceColor};">$${Math.round(lvl.price).toLocaleString()}</span>
-            <span style="width: 70px; text-align: center; color: ${volColor}; font-weight: 600;">$${formatIntensity(lvl.leverage)}</span>
-            <span style="width: 50px; text-align: right;">${badgeHtml}</span>
+            <span style="width: 65px; text-align: left; font-weight: 600; color: ${priceColor};">$${Math.round(lvl.price).toLocaleString()}</span>
+            <span style="width: 60px; text-align: center; color: ${volColor}; font-weight: 600;">$${formatIntensity(lvl.leverage)}</span>
+            <span style="width: 85px; text-align: right;">${badgeHtml}</span>
           </div>
         `;
       }).join('');
