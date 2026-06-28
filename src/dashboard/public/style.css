@@ -38,8 +38,13 @@ body {
   font-family: var(--font-sans);
   font-size: 14px;
   line-height: 1.5;
-  padding: var(--spacing-md);
-  min-height: 100vh;
+  padding: 0;
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  overflow: hidden;
+  box-sizing: border-box;
 }
 
 /* Scrollbar styling */
@@ -64,6 +69,11 @@ body {
   display: flex;
   flex-direction: column;
   gap: var(--spacing-md);
+  flex: 1;
+  overflow-y: auto;
+  padding: var(--spacing-md);
+  box-sizing: border-box;
+  width: 100%;
 }
 
 /* Header */
@@ -1452,7 +1462,7 @@ tr:hover td {
 
 /* Shift all content to the right of sidebar */
 body {
-  padding-left: calc(220px + var(--spacing-md));
+  padding-left: 220px;
   transition: padding-left 0.3s ease;
 }
 
@@ -1495,7 +1505,7 @@ body {
   .sidebar { width: 60px !important; }
   .sidebar-logo-text, .sidebar-item a span, .sidebar-logout span { display: none !important; }
   .sidebar-item a { padding: 12px !important; justify-content: center !important; }
-  body { padding-left: calc(60px + var(--spacing-md)) !important; }
+  body { padding-left: 60px !important; }
   .sidebar-toggle-btn { display: none !important; }
 }
 
@@ -1525,7 +1535,7 @@ body {
 
 /* Sidebar Minimized State (Desktop) */
 body.sidebar-minimized {
-  padding-left: calc(60px + var(--spacing-md));
+  padding-left: 60px;
 }
 body.sidebar-minimized .sidebar {
   width: 60px;
@@ -1705,12 +1715,12 @@ body.sidebar-minimized .sidebar-toggle-btn svg {
 /* ─── Cockpit 2 Specific Dashboard Styles ─── */
 .cockpit2-grid {
   display: grid;
-  grid-template-columns: 1fr 420px 420px;
+  grid-template-columns: 50% 1fr;
   gap: 16px;
   margin-top: 12px;
-  height: calc(100vh - 124px);
+  height: 100%;
   min-height: 640px;
-  margin-bottom: 24px;
+  margin-bottom: 0;
 }
 .cockpit2-col {
   display: flex;
@@ -1744,7 +1754,7 @@ body.sidebar-minimized .sidebar-toggle-btn svg {
   min-height: 250px;
 }
 .w-whales-orders {
-  flex: 0 0 320px;
+  flex: 0 0 auto;
 }
 .w-strategy-reversal {
   flex: 0 0 340px;

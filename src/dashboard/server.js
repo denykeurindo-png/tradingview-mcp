@@ -3226,12 +3226,16 @@ app.post('/api/etf-data/update', (req, res) => {
 });
 
 app.post('/api/bot-phase/update', (req, res) => {
-  const { botPhaseState: newPhaseState, botMetrics: newMetrics } = req.body;
+  const { botPhaseState: newPhaseState, botMetrics: newMetrics, sweepHistory: newHistory } = req.body;
   if (newPhaseState) {
     botPhaseState = newPhaseState;
   }
   if (newMetrics) {
     botMetrics = { ...botMetrics, ...newMetrics };
+  }
+  if (newHistory && Array.isArray(newHistory)) {
+    sweepHistory = newHistory;
+    saveSweepHistory(sweepHistory);
   }
   console.log(`[Sync API] Successfully synchronized bot phase: ${botPhaseState?.phase}`);
   res.json({ success: true });
@@ -3549,6 +3553,21 @@ async function pushToVps(apiPath, payload) {
     console.error(`[VPS Push] Error pushing to ${url}:`, err.message);
   }
 }
+
+// ─── Sweep History REST API Endpoints ─────────────────────────
+app.get('/api/sweep-history', (req, res) => {
+  res.json(sweepHistory);
+});
+
+app.post('/api/sweep-history/clear', (req, res) => {
+  sweepHistory = [];
+  saveSweepHistory(sweepHistory);
+  const settings = loadSettings();
+  if (!settings.disableScraper && process.env.DISABLE_SCRAPER !== 'true') {
+    pushToVps('/api/sweep-history/clear', {}).catch(console.error);
+  }
+  res.json({ success: true });
+});
 
 // ─── Trade Log REST API Endpoints ────────────────────────────
 app.get('/api/trades', (req, res) => {
@@ -5162,6 +5181,44 @@ function autoJdaTradeStrategyBackend(heatmapData, klines15m) {
 
 
 // ─── Global Bot Phase State (for API reporting) ─────────────
+const SWEEP_HISTORY_FILE = path.join(__dirname, 'sweep_history.json');
+let sweepHistory = [];
+let lastSweepHistoryKey = null;
+let lastSweepHistoryTime = 0;
+
+function loadSweepHistory() {
+  if (!fs.existsSync(SWEEP_HISTORY_FILE)) {
+    try {
+      fs.writeFileSync(SWEEP_HISTORY_FILE, JSON.stringify([], null, 2));
+    } catch (e) {
+      console.error('Error creating sweep history file:', e.message);
+    }
+    return [];
+  }
+  try {
+    const data = fs.readFileSync(SWEEP_HISTORY_FILE, 'utf8');
+    return JSON.parse(data);
+  } catch (e) {
+    console.error('Error reading sweep history file:', e.message);
+    return [];
+  }
+}
+
+function saveSweepHistory(history) {
+  try {
+    fs.writeFileSync(SWEEP_HISTORY_FILE, JSON.stringify(history, null, 2));
+  } catch (e) {
+    console.error('Error saving sweep history file:', e.message);
+  }
+}
+
+// Load sweep history on startup
+try {
+  sweepHistory = loadSweepHistory();
+} catch (e) {
+  sweepHistory = [];
+}
+
 let botPhaseState = {
   phase: 'INITIALIZING',
   nearestPool: null,
@@ -5172,6 +5229,40 @@ let botPhaseState = {
   lastUpdate: new Date().toISOString(),
   message: 'Bot starting up...'
 };
+
+function setBotPhaseState(newState) {
+  botPhaseState = newState;
+  
+  if (newState && newState.phase && newState.phase !== 'STANDBY') {
+    const key = `${newState.phase}_${newState.nearestPool || ''}_${newState.message}`;
+    const now = Date.now();
+    
+    // Deduplicate: same phase and message within 2 minutes
+    if (key !== lastSweepHistoryKey || (now - lastSweepHistoryTime > 120000)) {
+      lastSweepHistoryKey = key;
+      lastSweepHistoryTime = now;
+      
+      const entry = {
+        id: 'L' + now + Math.floor(Math.random() * 1000),
+        timestamp: now,
+        phase: newState.phase,
+        nearestPool: newState.nearestPool,
+        nearestPoolDistance: newState.nearestPoolDistance,
+        nearestPoolVolume: newState.nearestPoolVolume,
+        nearestPoolSide: newState.nearestPoolSide,
+        message: newState.message,
+        sweepCandidate: newState.sweepCandidate || null,
+        probabilityBreakdown: newState.probabilityBreakdown || null
+      };
+      
+      sweepHistory.unshift(entry);
+      if (sweepHistory.length > 200) {
+        sweepHistory.pop();
+      }
+      saveSweepHistory(sweepHistory);
+    }
+  }
+}
 
 let botJdaPhaseState = {
   phase: 'INITIALIZING',

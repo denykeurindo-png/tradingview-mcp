@@ -12,6 +12,180 @@
   <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
   <!-- Style -->
   <link rel="stylesheet" href="style.css?v=2.2.0">
+  <style>
+    .app-container {
+      padding-top: 10px;
+    }
+    .cockpit2-grid {
+      margin-top: 0;
+    }
+    .top-pools-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+      flex: 1;
+      min-height: 0;
+    }
+
+    /* Mobile and Tablet responsiveness rules */
+    @media (max-width: 1024px) {
+      .cockpit2-grid {
+        grid-template-columns: 1fr; /* Stack main columns vertically */
+        height: auto;
+        min-height: auto;
+      }
+      .cockpit2-col {
+        height: auto;
+      }
+      body {
+        height: auto;
+        overflow-y: auto !important; /* Enable natural scrolling on body */
+      }
+      .app-container {
+        height: auto;
+        overflow-y: visible !important; /* Prevent double scrollbars */
+      }
+      .top-pools-grid {
+        grid-template-columns: 1fr; /* Stack liquidation pools vertically */
+      }
+      .liquidity-row-grid {
+        grid-template-columns: 1fr !important;
+      }
+    }
+
+    /* KPI Grid responsiveness */
+    .kpi-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr 1fr 1fr;
+      gap: 8px;
+    }
+    @media (max-width: 768px) {
+      .kpi-grid {
+        grid-template-columns: 1fr 1fr; /* 2x2 grid on mobile/tablet */
+      }
+    }
+    @media (max-width: 480px) {
+      .kpi-grid {
+        grid-template-columns: 1fr; /* 1 column on small phones */
+      }
+      .top-bar {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 8px;
+        height: auto;
+        padding: 10px;
+      }
+      .top-bar-controls {
+        width: 100%;
+        justify-content: space-between;
+        margin-top: 4px;
+      }
+    }
+    /* Orderbook Depth Bar */
+    .depth-bar-container {
+      display: flex;
+      height: 24px;
+      width: 100%;
+      border-radius: 4px;
+      overflow: hidden;
+      margin-top: 12px;
+      border: 1px solid var(--border-color);
+    }
+    .depth-bar-bid {
+      background: rgba(14, 203, 129, 0.35);
+      border-right: 1px solid var(--accent-success);
+      transition: width 0.3s ease;
+      display: flex;
+      align-items: center;
+      padding-left: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent-success);
+    }
+    .depth-bar-ask {
+      background: rgba(246, 70, 93, 0.35);
+      transition: width 0.3s ease;
+      display: flex;
+      align-items: center;
+      justify-content: flex-end;
+      padding-right: 8px;
+      font-size: 11px;
+      font-weight: 600;
+      color: var(--accent-alert);
+    }
+
+    /* Enlarge fonts inside cards without changing the layout */
+    .cockpit2-card {
+      font-size: 13.5px !important;
+    }
+    .widget-title {
+      font-size: 12.5px !important;
+    }
+    /* Enlarge liquidation pools list text */
+    #cockpit-resistance-pools div > span:not(:last-child),
+    #cockpit-support-pools div > span:not(:last-child),
+    #cockpit-resistance-pools-3d div > span:not(:last-child),
+    #cockpit-support-pools-3d div > span:not(:last-child) {
+      font-size: 12.5px !important;
+      font-weight: 700 !important;
+    }
+    #cockpit-resistance-pools span span,
+    #cockpit-support-pools span span,
+    #cockpit-resistance-pools-3d span span,
+    #cockpit-support-pools-3d span span {
+      font-size: 9.5px !important;
+      font-weight: 700 !important;
+    }
+    
+    /* Enlarge KPI text in the 4 grid boxes */
+    .kpi-grid > div > span:nth-child(1) {
+      font-size: 10px !important;
+    }
+    .kpi-grid > div > span:nth-child(2) {
+      font-size: 16px !important;
+    }
+    .kpi-grid > div > span:nth-child(3) {
+      font-size: 9.5px !important;
+    }
+
+    /* Enlarge Combined Depth Summary card text */
+    #metric-summary-card div {
+      font-size: 9.5px !important;
+    }
+    #metric-summary-desc {
+      font-size: 12.5px !important;
+    }
+
+    /* Enlarge Live Alerts log card text */
+    #notifications-list .notification-item div:first-child {
+      font-size: 15px !important;
+    }
+    #notifications-list .notification-item span:first-child {
+      font-size: 11.5px !important;
+    }
+    #notifications-list .notification-item span:last-child {
+      font-size: 9px !important;
+    }
+    #notifications-list .notification-item div > div:last-child {
+      font-size: 10.5px !important;
+    }
+
+    /* Custom scrollbar for notifications list */
+    #notifications-list::-webkit-scrollbar {
+      width: 4px;
+    }
+    #notifications-list::-webkit-scrollbar-track {
+      background: rgba(255, 255, 255, 0.01);
+      border-radius: 4px;
+    }
+    #notifications-list::-webkit-scrollbar-thumb {
+      background: rgba(255, 255, 255, 0.15);
+      border-radius: 4px;
+    }
+    #notifications-list::-webkit-scrollbar-thumb:hover {
+      background: rgba(255, 255, 255, 0.3);
+    }
+  </style>
 </head>
 <body>
 
@@ -139,25 +313,75 @@
     <div class="cockpit2-grid">
       <!-- COLUMN 1: Heatmap Liquidity Map (Left) -->
       <div class="cockpit2-col">
-        <div class="cockpit2-card w-full-heatmap">
-          <div class="widget-title">
-            <span>🔥 PETA PANAS LIKUIDASI (LIQUIDATION HEATMAP)</span>
-            <div style="display: flex; gap: 8px;">
-              <button class="btn-primary" id="btn-period-24h" style="padding: 2px 8px; font-size: 10px; border-radius: 4px; background: var(--accent-primary); color: #000; cursor: pointer; border: none;">24H</button>
-              <button class="btn-primary" id="btn-period-3d" style="padding: 2px 8px; font-size: 10px; border-radius: 4px; background: rgba(255,255,255,0.05); color: var(--text-muted); cursor: pointer; border: none;">3D</button>
-            </div>
+        <div class="cockpit2-card w-full-heatmap" style="padding: 10px 8px 6px 8px; margin-bottom: 0px;">
+          <div class="widget-title" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <span>24H Liquidity Sweep Map</span>
           </div>
-          <div id="heatmap-canvas-container" style="flex: 1; min-height: 0; position: relative;">
-            <!-- Main ECharts Liquidation Heatmap rendered here -->
-            <div style="display:flex; justify-content:center; align-items:center; height:100%; color:var(--text-muted);">Memuat grafik heatmap...</div>
+          <div id="chart-mini-heatmap-24h" style="width: 100%; height: 320px; margin-bottom: 10px;"></div>
+          
+          <div class="widget-title">
+            <span>3D Liquidity Sweep Map</span>
+          </div>
+          <div id="chart-mini-heatmap-3d" style="width: 100%; height: 320px;"></div>
+        </div>
+
+        <!-- Widget 8: Top Liquidation Pools (24H / 3D) -->
+        <div class="cockpit2-card w-top-liq-pools" style="display: flex; flex-direction: column; padding: 10px 12px 12px 12px;">
+          <div class="widget-title" style="margin-bottom: 8px;">
+            <span>🔥 Top Liquidation Pools</span>
+          </div>
+          <div class="top-pools-grid">
+            <!-- Left Box: 24H Pools -->
+            <div style="display: flex; flex-direction: column; gap: 8px; min-height: 0;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                <span style="font-weight: 600; font-size: 11px; color: var(--text-muted); letter-spacing: 0.3px;">24H POOLS</span>
+                <span style="font-size: 9px; color: var(--text-muted); font-family: var(--font-mono);" id="liq-pools-update-24h">--:--:--</span>
+              </div>
+              <!-- Resistance 24H -->
+              <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; min-height: 0;">
+                <div style="font-weight: 700; color: var(--accent-alert); text-transform: uppercase; letter-spacing: 0.3px; font-size: 9px; margin-bottom: 6px;">▲ Resistance 24H</div>
+                <div id="cockpit-resistance-pools" style="display: flex; flex-direction: column; gap: 6px; justify-content: flex-start; margin-top: 4px; overflow-y: auto; max-height: 180px;">
+                  <div style="color: var(--text-muted); text-align: center; padding: 10px; font-size: 10px;">Loading 24H...</div>
+                </div>
+              </div>
+              <!-- Support 24H -->
+              <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; min-height: 0;">
+                <div style="font-weight: 700; color: var(--accent-success); text-transform: uppercase; letter-spacing: 0.3px; font-size: 9px; margin-bottom: 6px;">▼ Support 24H</div>
+                <div id="cockpit-support-pools" style="display: flex; flex-direction: column; gap: 6px; justify-content: flex-start; margin-top: 4px; overflow-y: auto; max-height: 180px;">
+                  <div style="color: var(--text-muted); text-align: center; padding: 10px; font-size: 10px;">Loading 24H...</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Right Box: 3D Pools -->
+            <div style="display: flex; flex-direction: column; gap: 8px; min-height: 0;">
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
+                <span style="font-weight: 600; font-size: 11px; color: var(--text-muted); letter-spacing: 0.3px;">3D POOLS</span>
+                <span style="font-size: 9px; color: var(--text-muted); font-family: var(--font-mono);" id="liq-pools-update-3d">--:--:--</span>
+              </div>
+              <!-- Resistance 3D -->
+              <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; min-height: 0;">
+                <div style="font-weight: 700; color: var(--accent-alert); text-transform: uppercase; letter-spacing: 0.3px; font-size: 9px; margin-bottom: 6px;">▲ Resistance 3D</div>
+                <div id="cockpit-resistance-pools-3d" style="display: flex; flex-direction: column; gap: 6px; justify-content: flex-start; margin-top: 4px; overflow-y: auto; max-height: 180px;">
+                  <div style="color: var(--text-muted); text-align: center; padding: 10px; font-size: 10px;">Loading 3D...</div>
+                </div>
+              </div>
+              <!-- Support 3D -->
+              <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; min-height: 0;">
+                <div style="font-weight: 700; color: var(--accent-success); text-transform: uppercase; letter-spacing: 0.3px; font-size: 9px; margin-bottom: 6px;">▼ Support 3D</div>
+                <div id="cockpit-support-pools-3d" style="display: flex; flex-direction: column; gap: 6px; justify-content: flex-start; margin-top: 4px; overflow-y: auto; max-height: 180px;">
+                  <div style="color: var(--text-muted); text-align: center; padding: 10px; font-size: 10px;">Loading 3D...</div>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </div>
 
       <!-- COLUMN 2: Reversal Strategy & Control Center (Center) -->
-      <div class="cockpit2-col">
+      <div class="cockpit2-col" style="display: none;">
         <!-- Reversal Score Widget -->
-        <div class="cockpit2-card w-strategy-reversal">
+        <div class="cockpit2-card w-strategy-reversal" style="display: none;">
           <div class="widget-title">
             <span>🎯 METERAN KONVERGENSI REVERSAL</span>
             <span style="font-size: 10px; color: var(--text-muted);" id="strategy-last-update">--:--:--</span>
@@ -236,7 +460,7 @@
       <!-- COLUMN 3: Whale footprint, CVD & Orderbook Depth (Right) -->
       <div class="cockpit2-col">
         <!-- Whale Spot CVD Flow -->
-        <div class="cockpit2-card w-whales-cvd">
+        <div class="cockpit2-card w-whales-cvd" style="display: none;">
           <div class="widget-title">
             <span>🐳 SPOT CVD FLOW (ALIRAN DANA PAUS)</span>
             <span style="font-size: 10px; color: var(--text-muted);" id="cvd-update-time">--:--:--</span>
@@ -279,6 +503,199 @@
                 <div style="color: var(--text-muted); text-align: center; grid-column: span 2; padding: 15px;">Loading whale orderbook walls...</div>
               </div>
             </div>
+          </div>
+        </div>
+
+        <!-- Widget: Combined Depth Global Market Order Book -->
+        <div class="cockpit2-card w-combined-depth-c2" style="display: flex; flex-direction: column; padding: 12px 14px;">
+          <div class="widget-title" style="margin-bottom: 10px;">
+            <span>Combined Depth <span style="font-size: 9px; color: var(--text-muted); font-weight: normal; margin-left: 4px;">Global Market Order Book</span></span>
+          </div>
+
+          <!-- Combined Depth Summary card -->
+          <div style="background: rgba(30, 35, 41, 0.5); border: 1px solid rgba(255, 255, 255, 0.08); border-left: 4px solid #F0B90B; padding: 10px 12px; border-radius: 6px; margin-bottom: 12px;" id="metric-summary-card">
+            <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 8px;">
+              <div style="display: flex; align-items: center; gap: 8px;">
+                <div style="background: rgba(240, 185, 11, 0.1); padding: 5px; border-radius: 4px; display: flex; align-items: center; justify-content: center;">
+                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#F0B90B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                </div>
+                <div>
+                  <div style="font-size: 9px; color: #848E9C; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">COMBINED DEPTH SUMMARY</div>
+                  <div id="metric-summary-desc" style="font-size: 11px; color: #EAECEF; margin-top: 1px;">Loading summary...</div>
+                </div>
+              </div>
+              <div style="display: flex; align-items: center; gap: 12px;">
+                <div style="text-align: right;">
+                  <div style="font-size: 8px; color: #848E9C; text-transform: uppercase;">Sentiment</div>
+                  <div id="metric-summary-sentiment" style="font-size: 11px; font-weight: bold; margin-top: 1px; font-family: 'JetBrains Mono', monospace; color: #F0B90B;">NEUTRAL</div>
+                </div>
+                <div style="text-align: right;">
+                  <div style="font-size: 8px; color: #848E9C; text-transform: uppercase;">Ratio</div>
+                  <div id="metric-summary-val" style="font-size: 11px; font-weight: bold; margin-top: 1px; font-family: 'JetBrains Mono', monospace;">1.02</div>
+                </div>
+              </div>
+            </div>
+            
+            <!-- Top Walls inside Combined Depth drawer -->
+            <div id="metric-summary-walls-drawer" style="border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 8px; display: none;"></div>
+          </div>
+
+          <!-- KPI row (4 boxes side-by-side in 1 row) -->
+          <div class="kpi-grid">
+            <!-- BTC Price -->
+            <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column;">
+              <span style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">BTC PRICE (BINANCE)</span>
+              <span id="val-btc-price" style="font-size: 13px; font-weight: bold; color: var(--accent-success); font-family: var(--font-mono); margin-top: 2px;">$0.00</span>
+              <span id="foot-btc-price" style="font-size: 8px; color: var(--text-muted); margin-top: 1px;">Spread: $0.00</span>
+            </div>
+
+            <!-- Imbalance Ratio -->
+            <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column;">
+              <span style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">BIDS/ASKS DEPTH RATIO</span>
+              <span id="val-imbalance-ratio" style="font-size: 13px; font-weight: bold; color: #F0B90B; font-family: var(--font-mono); margin-top: 2px;">1.00</span>
+              <span id="foot-imbalance-text" style="font-size: 8px; color: var(--text-muted); margin-top: 1px;">50.0% Bids / 50.0% Asks</span>
+            </div>
+
+            <!-- Total Bids -->
+            <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column;">
+              <span style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">TOTAL BIDS (PASIF BUY)</span>
+              <span id="val-total-bids" style="font-size: 13px; font-weight: bold; color: var(--accent-success); font-family: var(--font-mono); margin-top: 2px;">0 BTC</span>
+              <span id="foot-total-bids-usd" style="font-size: 8px; color: var(--text-muted); margin-top: 1px;">$0.00M (2% Range)</span>
+            </div>
+
+            <!-- Total Asks -->
+            <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column;">
+              <span style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">TOTAL ASKS (PASIF SELL)</span>
+              <span id="val-total-asks" style="font-size: 13px; font-weight: bold; color: var(--accent-alert); font-family: var(--font-mono); margin-top: 2px;">0 BTC</span>
+              <span id="foot-total-asks-usd" style="font-size: 8px; color: var(--text-muted); margin-top: 1px;">$0.00M (2% Range)</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- Side-by-Side row: Liquidity Analysis & Custom Workspace -->
+        <div class="liquidity-row-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 0;">
+          <!-- Widget: Liquidity Analysis (Delta Profile & Exchange Distribution) -->
+          <div class="cockpit2-card w-liquidity-analysis" style="display: flex; flex-direction: column; padding: 12px 14px; margin-bottom: 0;">
+            <div class="widget-title" style="margin-bottom: 10px;">
+              <span>Liquidity Profile & Exchange Distribution</span>
+            </div>
+
+            <!-- Section 1: Liquidity Delta Profile -->
+            <div style="margin-bottom: 12px;">
+              <div style="font-size: 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">📊 ORDER BOOK LIQUIDITY DELTA</div>
+              <div style="display: flex; flex-direction: column; gap: 6px;" id="liquidity-delta-profile">
+                <!-- Dynamically populated rows -->
+                <div style="font-size: 10px; color: var(--text-muted); text-align: center; padding: 5px;">Loading delta profile...</div>
+              </div>
+            </div>
+
+            <!-- Divider -->
+            <div style="border-bottom: 1px dashed rgba(255,255,255,0.06); margin: 6px 0 10px 0;"></div>
+
+            <!-- Section 2: Exchange Liquidity Distribution -->
+            <div>
+              <div style="font-size: 9px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">🏢 EXCHANGE LIQUIDITY DISTRIBUTION</div>
+              <div style="display: flex; flex-direction: column; gap: 8px;" id="exchange-liquidity-distribution">
+                <!-- Dynamically populated progress bars -->
+                <div style="font-size: 10px; color: var(--text-muted); text-align: center; padding: 5px;">Loading exchange distribution...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Widget: CoinGlass Market Indicators Card -->
+          <div class="cockpit2-card w-custom-empty" style="display: flex; flex-direction: column; padding: 12px 14px; margin-bottom: 0;" id="coinglass-indicators-card">
+            <div class="widget-title" style="margin-bottom: 10px;">
+              <span>📈 CoinGlass Market Indicators</span>
+            </div>
+            <div style="display: flex; flex-direction: column; gap: 8px; flex: 1; justify-content: flex-start;">
+              
+              <!-- 1. Coinbase Premium Index -->
+              <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); border-radius: 6px; padding: 8px 10px;">
+                <div style="display: flex; justify-content: space-between; font-size: 10px; font-weight: 600; margin-bottom: 2px;">
+                  <span style="color: var(--text-main); font-weight: 700;">Coinbase Premium Index</span>
+                  <span id="cg-coinbase-premium-val" style="color: #FFFFFF; font-family: var(--font-mono); font-weight: 700; font-size: 11px;">--</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 9px; color: var(--text-muted); margin-bottom: 4px;">
+                  <span id="cg-coinbase-premium-desc" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px;">Memuat data...</span>
+                  <span id="cg-coinbase-premium-sentiment" style="font-weight: 700; text-transform: uppercase; font-size: 8.5px;">--</span>
+                </div>
+                <!-- Visual Indicator Bar -->
+                <div style="position: relative; width: 100%; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                  <div id="cg-coinbase-premium-bar" style="position: absolute; top: 0; left: 50%; height: 100%; width: 0%; transition: width 0.5s ease, left 0.5s ease; border-radius: 2px;"></div>
+                </div>
+              </div>
+
+              <!-- 2. BTC Depth Liquidity Delta -->
+              <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); border-radius: 6px; padding: 8px 10px;">
+                <div style="display: flex; justify-content: space-between; font-size: 10px; font-weight: 600; margin-bottom: 2px;">
+                  <span style="color: var(--text-main); font-weight: 700;">BTC Depth Liquidity Delta</span>
+                  <span id="cg-depth-delta-val" style="color: #FFFFFF; font-family: var(--font-mono); font-weight: 700; font-size: 11px;">--</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 9px; color: var(--text-muted); margin-bottom: 4px;">
+                  <span id="cg-depth-delta-desc" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px;">Memuat data...</span>
+                  <span id="cg-depth-delta-sentiment" style="font-weight: 700; text-transform: uppercase; font-size: 8.5px;">--</span>
+                </div>
+                <!-- Visual Indicator Bar -->
+                <div style="position: relative; width: 100%; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                  <div id="cg-depth-delta-bar" style="position: absolute; top: 0; left: 50%; height: 100%; width: 0%; transition: width 0.5s ease, left 0.5s ease; border-radius: 2px;"></div>
+                </div>
+              </div>
+
+              <!-- 3. Top Trader Long/Short Ratio -->
+              <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); border-radius: 6px; padding: 8px 10px;">
+                <div style="display: flex; justify-content: space-between; font-size: 10px; font-weight: 600; margin-bottom: 2px;">
+                  <span style="color: var(--text-main); font-weight: 700;">Top Trader Long/Short Ratio</span>
+                  <span id="cg-top-trader-val" style="color: #FFFFFF; font-family: var(--font-mono); font-weight: 700; font-size: 11px;">--</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 9px; color: var(--text-muted); margin-bottom: 4px;">
+                  <span id="cg-top-trader-desc" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px;">Memuat data...</span>
+                  <span id="cg-top-trader-sentiment" style="font-weight: 700; text-transform: uppercase; font-size: 8.5px;">--</span>
+                </div>
+                <!-- Visual Indicator Bar -->
+                <div style="position: relative; width: 100%; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                  <div id="cg-top-trader-bar" style="position: absolute; top: 0; left: 50%; height: 100%; width: 0%; transition: width 0.5s ease, left 0.5s ease; border-radius: 2px;"></div>
+                </div>
+              </div>
+
+              <!-- 4. Whale vs Retail Delta -->
+              <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); border-radius: 6px; padding: 8px 10px;">
+                <div style="display: flex; justify-content: space-between; font-size: 10px; font-weight: 600; margin-bottom: 2px;">
+                  <span style="color: var(--text-main); font-weight: 700;">Whale vs Retail Delta</span>
+                  <span id="cg-whale-retail-val" style="color: #FFFFFF; font-family: var(--font-mono); font-weight: 700; font-size: 11px;">--</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 9px; color: var(--text-muted); margin-bottom: 4px;">
+                  <span id="cg-whale-retail-desc" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px;">Memuat data...</span>
+                  <span id="cg-whale-retail-sentiment" style="font-weight: 700; text-transform: uppercase; font-size: 8.5px;">--</span>
+                </div>
+                <!-- Visual Indicator Bar -->
+                <div style="position: relative; width: 100%; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                  <div id="cg-whale-retail-bar" style="position: absolute; top: 0; left: 50%; height: 100%; width: 0%; transition: width 0.5s ease, left 0.5s ease; border-radius: 2px;"></div>
+                </div>
+              </div>
+
+              <!-- 5. Concluding JDA Sentiment Meter Footer -->
+              <div style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 10px 12px; margin-top: 4px;" id="cg-verdict-box">
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; font-weight: 600;">
+                  <span style="color: var(--text-muted); font-size: 9px; text-transform: uppercase; letter-spacing: 0.3px;">Sentimen Gabungan</span>
+                  <span id="cg-verdict-badge" style="padding: 2px 6px; border-radius: 4px; font-weight: 700; font-size: 9px; text-transform: uppercase; color: #F0B90B; background: rgba(240, 185, 11, 0.15); border: 1px solid rgba(240, 185, 11, 0.25);">NEUTRAL</span>
+                </div>
+                <div style="font-size: 9.5px; color: var(--text-muted); margin-top: 6px; line-height: 1.45;" id="cg-verdict-recommendation">
+                  Menghitung akumulasi data indikator...
+                </div>
+              </div>
+
+            </div>
+          </div>
+        </div>
+
+        <!-- Widget: Live Alerts & System Notifications -->
+        <div class="cockpit2-card w-notifications-center" style="display: flex; flex-direction: column; padding: 12px 14px; flex: 1; min-height: 230px;">
+          <div class="widget-title" style="margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <span>🔔 Live Alerts & Notifications</span>
+            <span style="font-size: 8px; color: var(--text-muted); cursor: pointer; text-transform: uppercase; font-weight: 600;" id="btn-clear-notifications">Clear All</span>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 6px; overflow-y: auto; flex: 1; max-height: 180px;" id="notifications-list">
+            <!-- Loaded dynamically -->
           </div>
         </div>
       </div>

@@ -20,7 +20,7 @@
       grid-template-columns: 380px 1fr 380px;
       gap: 10px;
       margin-top: 8px;
-      height: calc(100vh - 90px);
+      height: 100%;
       min-height: 650px;
     }
 
@@ -1196,6 +1196,37 @@
       </div>
 
     </div>
+
+    <!-- Liquidation Sweep & Reversal Event Log Table -->
+    <div class="card" id="widget-sweep-history" style="margin-top: 15px; display: flex; flex-direction: column;">
+      <div class="backtest-header" style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid var(--border-color); padding-bottom: 10px; margin-bottom: 15px;">
+        <h3 style="margin: 0; font-size: 14px; text-transform: uppercase; color: var(--accent-primary); letter-spacing: 0.5px;">🔥 Liquidation Sweep & Reversal Event Log</h3>
+        <button id="btn-clear-sweep-history" class="btn-action-sm danger" style="padding: 4px 10px; font-size: 11px;">Clear Sweep Logs</button>
+      </div>
+      <div class="table-container" style="max-height: 400px; overflow-y: auto;">
+        <table>
+          <thead>
+            <tr>
+              <th>Timestamp</th>
+              <th>Symbol</th>
+              <th>Direction</th>
+              <th>Sweep Volume</th>
+              <th>Price</th>
+              <th>Nearest Pool Dist</th>
+              <th>Rev Prob %</th>
+              <th>Trigger Level / Status</th>
+              <th>Decision / Ignore Reason</th>
+            </tr>
+          </thead>
+          <tbody id="sweep-history-tbody">
+            <tr>
+              <td colspan="9" style="text-align: center; color: var(--text-muted);">No sweep events logged yet. Scanning...</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+    </div>
+
   </div>
 
   <script src="cockpit.js?v=2.2.6"></script>

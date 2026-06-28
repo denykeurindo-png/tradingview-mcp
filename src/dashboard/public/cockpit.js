@@ -1606,10 +1606,29 @@ window.addEventListener('DOMContentLoaded', () => {
   updateConnectionStatus();
   updateMarketExtras();
   updateCoinGlassSummary();
+  updateSweepHistory();
   setTimeout(updateMiniHeatmap, 500); // slight delay to let ECharts initialize size
+
+  // Clear Sweep History Button Listener
+  const btnClearSweep = document.getElementById('btn-clear-sweep-history');
+  if (btnClearSweep) {
+    btnClearSweep.addEventListener('click', async () => {
+      if (confirm('Are you sure you want to clear all sweep logs?')) {
+        try {
+          const res = await fetch('/api/sweep-history/clear', { method: 'POST' });
+          if (res.ok) {
+            updateSweepHistory();
+          }
+        } catch (e) {
+          console.error('Failed to clear sweep history:', e);
+        }
+      }
+    });
+  }
 
   // Polling Schedulers
   setInterval(updateBotStatus, 3000);
+  setInterval(updateSweepHistory, 5000);
   setInterval(updateMarketExtras, 5000);
   setInterval(updateConnectionStatus, 10000);
   setInterval(updateMiniHeatmap, 30000);
@@ -1714,5 +1733,134 @@ async function updateCoinGlassSummary() {
     }
   } catch (e) {
     console.error('[Cockpit] Failed to load CoinGlass summary:', e.message);
+  }
+}
+
+// Fetch and update Liquidation Sweep & Reversal Event Log table
+async function updateSweepHistory() {
+  const tbody = document.getElementById('sweep-history-tbody');
+  if (!tbody) return;
+
+  try {
+    const res = await fetch('/api/sweep-history');
+    if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
+    const history = await res.json();
+
+    if (!Array.isArray(history) || history.length === 0) {
+      tbody.innerHTML = `
+        <tr>
+          <td colspan="9" style="text-align: center; color: var(--text-muted);">No sweep events logged yet. Scanning...</td>
+        </tr>
+      `;
+      return;
+    }
+
+    let html = '';
+    history.forEach(item => {
+      const dateStr = new Date(item.timestamp).toLocaleString();
+      const symbol = 'BTCUSDT';
+      
+      // Determine side/direction
+      let direction = item.phase || 'UNKNOWN';
+      let dirClass = 'text-muted';
+      if (direction.includes('LONG') || direction.includes('SUPPORT') || item.nearestPoolSide === 'SUPPORT' || item.nearestPoolSide === 'low') {
+        direction = 'LONG';
+        dirClass = 'text-positive';
+      } else if (direction.includes('SHORT') || direction.includes('RESISTANCE') || item.nearestPoolSide === 'RESISTANCE' || item.nearestPoolSide === 'high') {
+        direction = 'SHORT';
+        dirClass = 'text-alert';
+      }
+
+      // Volume formatting
+      let volStr = '--';
+      if (item.nearestPoolVolume) {
+        const vol = parseFloat(item.nearestPoolVolume);
+        if (vol >= 1000000) {
+          volStr = `$${(vol / 1000000).toFixed(2)}M`;
+        } else if (vol >= 1000) {
+          volStr = `$${(vol / 1000).toFixed(1)}K`;
+        } else {
+          volStr = `$${vol.toFixed(0)}`;
+        }
+      }
+
+      // Distance
+      let distStr = '--';
+      if (item.nearestPoolDistance) {
+        distStr = typeof item.nearestPoolDistance === 'number' 
+          ? `${item.nearestPoolDistance.toFixed(2)}%` 
+          : String(item.nearestPoolDistance);
+      }
+
+      // Reversal Probability
+      let probStr = '0.00%';
+      let prob = null;
+      if (item.sweepCandidate && typeof item.sweepCandidate.prob === 'number') {
+        prob = item.sweepCandidate.prob;
+      } else if (item.probabilityBreakdown && typeof item.probabilityBreakdown.score === 'number') {
+        prob = item.probabilityBreakdown.score;
+      } else {
+        // Try parsing from the message if available
+        const match = item.message && item.message.match(/probability is (\d+(\.\d+)?)%/);
+        if (match) {
+          prob = parseFloat(match[1]);
+        }
+      }
+      if (prob !== null) {
+        probStr = `${prob.toFixed(2)}%`;
+      }
+
+      // Nearest Pool Price
+      let priceStr = '--';
+      if (item.nearestPool) {
+        const price = parseFloat(item.nearestPool);
+        priceStr = isNaN(price) ? String(item.nearestPool) : formatUSD(price);
+      }
+
+      // Trigger level or status
+      let triggerStr = item.phase || 'SCANNING';
+      let triggerClass = 'status-badge';
+      let styleText = '';
+      if (triggerStr === 'ENTRY_PENDING') {
+        styleText = 'background: rgba(240, 185, 11, 0.15); color: #F0B90B; border-color: rgba(240, 185, 11, 0.3);';
+      } else if (triggerStr === 'IN_POSITION') {
+        styleText = 'background: rgba(14, 203, 129, 0.15); color: #0ECB81; border-color: rgba(14, 203, 129, 0.3);';
+      } else if (triggerStr === 'SWEEP_REJECTED') {
+        styleText = 'background: rgba(255, 69, 58, 0.15); color: #FF453A; border-color: rgba(255, 69, 58, 0.3);';
+      } else if (triggerStr === 'STANDBY') {
+        styleText = 'background: rgba(255, 255, 255, 0.05); color: var(--text-muted); border-color: rgba(255, 255, 255, 0.1);';
+      } else {
+        styleText = 'background: rgba(0, 229, 255, 0.15); color: #00E5FF; border-color: rgba(0, 229, 255, 0.3);';
+      }
+
+      // Highlight ignored reasons
+      let messageHtml = item.message;
+      if (messageHtml.includes('Ignored') || messageHtml.includes('blocked') || messageHtml.includes('REJECTED')) {
+        messageHtml = `<span style="color: #ff9f0a;">${messageHtml}</span>`;
+      }
+
+      html += `
+        <tr>
+          <td style="white-space: nowrap;">${dateStr}</td>
+          <td><span style="font-weight: 600; color: #fff;">${symbol}</span></td>
+          <td><span class="${dirClass}" style="font-weight: 700;">${direction}</span></td>
+          <td><span style="color: #00d2ff; font-weight: 600;">${volStr}</span></td>
+          <td><span style="color: #fff;">${priceStr}</span></td>
+          <td>${distStr}</td>
+          <td style="font-weight: 700; color: ${prob >= 60 ? 'var(--accent-success)' : 'var(--text-muted)'}">${probStr}</td>
+          <td><span class="${triggerClass}" style="${styleText}">${triggerStr}</span></td>
+          <td style="font-family: inherit; font-size: 11.5px; text-align: left; max-width: 450px; overflow: hidden; text-overflow: ellipsis; white-space: normal;" title="${item.message}">${messageHtml}</td>
+        </tr>
+      `;
+    });
+
+    tbody.innerHTML = html;
+  } catch (err) {
+    console.error('Failed to update sweep history:', err);
+    tbody.innerHTML = `
+      <tr>
+        <td colspan="9" style="text-align: center; color: var(--accent-alert);">Error loading sweep logs: ${err.message}</td>
+      </tr>
+    `;
   }
 }
