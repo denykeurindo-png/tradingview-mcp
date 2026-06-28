@@ -705,10 +705,10 @@ async function updateHeatmap() {
             const low = parseFloat(candle[2]);
             const high = parseFloat(candle[3]);
             if (isAbove && high >= price) {
-              liquidationTime = new Date(time).toLocaleTimeString(undefined, {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+              liquidationTime = new Date(time).toLocaleTimeString(undefined, {hour: '2-digit', minute:'2-digit', second:'2-digit', hour12: false});
               break;
             } else if (!isAbove && low <= price) {
-              liquidationTime = new Date(time).toLocaleTimeString(undefined, {hour: '2-digit', minute:'2-digit', second:'2-digit'});
+              liquidationTime = new Date(time).toLocaleTimeString(undefined, {hour: '2-digit', minute:'2-digit', second:'2-digit', hour12: false});
               break;
             }
           }
@@ -787,7 +787,7 @@ async function updateHeatmap() {
           }
         }
 
-        const badgeHtml = `<span style="display: inline-block; padding: 2px 4px; border-radius: 3px; font-size: 8px; font-weight: 700; border: 1px solid ${intensityColor}; background: ${intensityBg}; color: ${intensityColor}; text-transform: uppercase;">${intensityText}</span>`;
+        const badgeHtml = `<span style="display: inline-block; padding: 2px 4px; border-radius: 3px; font-size: 8px; font-weight: 700; border: 1px solid ${intensityColor}; background: ${intensityBg}; color: ${intensityColor}; text-transform: uppercase; white-space: nowrap;">${intensityText}</span>`;
         
         return `
           <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.02); padding: 4px 0; font-family: var(--font-mono); font-size: 10px; ${rowStyle}">
