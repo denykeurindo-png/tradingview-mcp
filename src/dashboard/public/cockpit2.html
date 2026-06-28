@@ -108,31 +108,32 @@
     </ul>
   </nav>
 
+  <!-- Top Header Bar -->
+  <div class="top-bar">
+    <div class="top-bar-title" style="display: flex; align-items: center; gap: 12px;">
+      COCKPIT 2: HEATMAP & WHALES
+      <span id="market-price-badge" style="font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--accent-success); background: rgba(14,203,129,0.1); padding: 2px 8px; border-radius: 4px; border: 1px solid rgba(14,203,129,0.2); margin-left: 10px;">BTC $--,---.--</span>
+    </div>
+    <div class="top-bar-controls">
+      <div class="system-lights" style="display: flex; align-items: center; gap: 15px; margin-right: 15px;">
+        <div class="light-item" style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted);">
+          <span class="light-dot ok" id="light-ws" style="width: 8px; height: 8px; border-radius: 50%; display: inline-block;"></span>
+          <span>DATA FEED</span>
+        </div>
+        <div class="light-item" style="display: flex; align-items: center; gap: 6px; font-size: 12px; color: var(--text-muted);">
+          <span class="light-dot ok" id="light-strategy" style="width: 8px; height: 8px; border-radius: 50%; display: inline-block;"></span>
+          <span>STRATEGY ENGINE</span>
+        </div>
+      </div>
+      <div style="text-align: right; border-left: 1px solid var(--border-color); padding-left: 15px;">
+        <div style="font-size: 9px; color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.5px;">JDA Bias</div>
+        <div id="jda-bias-header" style="font-size: 12px; font-weight: 700; color: var(--accent-primary); line-height: 1.2;">LOADING...</div>
+      </div>
+    </div>
+  </div>
+
   <!-- Main Content Container -->
-  <div class="app-container" style="padding-left: 70px;">
-    <!-- Top Header Bar -->
-    <header class="app-header">
-      <div style="display: flex; align-items: center; gap: 15px;">
-        <h2 style="font-weight: 700; color: #EAECEF; margin: 0;">COCKPIT 2: HEATMAP & WHALES</h2>
-        <span id="market-price-badge" style="font-family: var(--font-mono); font-size: 16px; font-weight: 700; color: var(--accent-success); background: rgba(14,203,129,0.1); padding: 4px 10px; border-radius: 6px; border: 1px solid rgba(14,203,129,0.2);">BTC $--,---.--</span>
-      </div>
-      <div style="display: flex; align-items: center; gap: 20px;">
-        <div class="system-lights">
-          <div class="light-item">
-            <span class="light-dot ok" id="light-ws"></span>
-            <span>DATA FEED</span>
-          </div>
-          <div class="light-item">
-            <span class="light-dot ok" id="light-strategy"></span>
-            <span>STRATEGY ENGINE</span>
-          </div>
-        </div>
-        <div style="text-align: right;">
-          <div style="font-size: 10px; color: var(--text-muted); text-transform: uppercase;">JDA Bias</div>
-          <div id="jda-bias-header" style="font-size: 13px; font-weight: 700; color: var(--accent-primary);">LOADING...</div>
-        </div>
-      </div>
-    </header>
+  <div class="app-container">
 
     <!-- Cockpit 2 Grid Layout -->
     <div class="cockpit2-grid">

@@ -1706,10 +1706,11 @@ body.sidebar-minimized .sidebar-toggle-btn svg {
 .cockpit2-grid {
   display: grid;
   grid-template-columns: 1fr 420px 420px;
-  gap: 12px;
-  margin-top: 8px;
-  height: calc(100vh - 90px);
-  min-height: 680px;
+  gap: 16px;
+  margin-top: 12px;
+  height: calc(100vh - 124px);
+  min-height: 640px;
+  margin-bottom: 24px;
 }
 .cockpit2-col {
   display: flex;

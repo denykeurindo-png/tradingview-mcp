@@ -3218,6 +3218,18 @@ app.post('/api/etf-data/update', (req, res) => {
   res.json({ success: true });
 });
 
+app.post('/api/bot-phase/update', (req, res) => {
+  const { botPhaseState: newPhaseState, botMetrics: newMetrics } = req.body;
+  if (newPhaseState) {
+    botPhaseState = newPhaseState;
+  }
+  if (newMetrics) {
+    botMetrics = { ...botMetrics, ...newMetrics };
+  }
+  console.log(`[Sync API] Successfully synchronized bot phase: ${botPhaseState?.phase}`);
+  res.json({ success: true });
+});
+
 app.post('/api/trades/sync', (req, res) => {
   const { trades } = req.body;
   if (!trades || !Array.isArray(trades)) {
@@ -6962,6 +6974,15 @@ async function runBotCycle() {
         autoTradeStrategyBackend(result.data, klines15m);
         autoJdaTradeStrategyBackend(result.data, klines15m);
         const newPhase = botPhaseState?.phase;
+
+        // Push bot phase state and reversal probability to VPS
+        pushToVps('/api/bot-phase/update', {
+          botPhaseState,
+          botMetrics: {
+            reversalProbability: botMetrics.reversalProbability,
+            probabilityBreakdown: botMetrics.probabilityBreakdown
+          }
+        }).catch(err => console.error('[VPS Push] Failed to push bot phase:', err.message));
 
         if (lastTelegramPhase === null) {
           lastTelegramPhase = oldPhase || 'INITIALIZING';
