@@ -1114,14 +1114,38 @@ async function updateMiniHeatmap() {
     if (resContainer) resContainer.innerHTML = renderPoolList(pools24h.above, true, pools24h.maxLeverage);
     if (supContainer) supContainer.innerHTML = renderPoolList(pools24h.below, false, pools24h.maxLeverage);
 
+    // Calculate 24H Pools ratio (visible Top 5)
+    const res24hSum = pools24h.above.reduce((sum, p) => sum + p.leverage, 0);
+    const sup24hSum = pools24h.below.reduce((sum, p) => sum + p.leverage, 0);
+    const total24h = res24hSum + sup24hSum;
+    const sup24hPct = total24h > 0 ? Math.round((sup24hSum / total24h) * 100) : 50;
+    const res24hPct = 100 - sup24hPct;
+    const ratio24hEl = document.getElementById('liq-ratio-24h');
+    if (ratio24hEl) {
+      ratio24hEl.innerHTML = `<span style="color: var(--accent-success);">${sup24hPct}%</span> / <span style="color: var(--accent-alert);">${res24hPct}%</span>`;
+    }
+
     const res3dContainer = document.getElementById('cockpit-resistance-pools-3d');
     const sup3dContainer = document.getElementById('cockpit-support-pools-3d');
     if (data3d) {
       if (res3dContainer) res3dContainer.innerHTML = renderPoolList(pools3d.above, true, pools3d.maxLeverage);
       if (sup3dContainer) sup3dContainer.innerHTML = renderPoolList(pools3d.below, false, pools3d.maxLeverage);
+      
+      // Calculate 3D Pools ratio (visible Top 5)
+      const res3dSum = pools3d.above.reduce((sum, p) => sum + p.leverage, 0);
+      const sup3dSum = pools3d.below.reduce((sum, p) => sum + p.leverage, 0);
+      const total3d = res3dSum + sup3dSum;
+      const sup3dPct = total3d > 0 ? Math.round((sup3dSum / total3d) * 100) : 50;
+      const res3dPct = 100 - sup3dPct;
+      const ratio3dEl = document.getElementById('liq-ratio-3d');
+      if (ratio3dEl) {
+        ratio3dEl.innerHTML = `<span style="color: var(--accent-success);">${sup3dPct}%</span> / <span style="color: var(--accent-alert);">${res3dPct}%</span>`;
+      }
     } else {
       if (res3dContainer) res3dContainer.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:6px;font-size:10px;">No 3D data cache yet...</div>';
       if (sup3dContainer) sup3dContainer.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:6px;font-size:10px;">No 3D data cache yet...</div>';
+      const ratio3dEl = document.getElementById('liq-ratio-3d');
+      if (ratio3dEl) ratio3dEl.innerHTML = '';
     }
 
     const syncEl24h = document.getElementById('liq-pools-update-24h');
