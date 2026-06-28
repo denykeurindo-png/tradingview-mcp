@@ -1145,7 +1145,7 @@ async function updateMiniHeatmap() {
     const res24hPct = 100 - sup24hPct;
     const ratio24hEl = document.getElementById('liq-ratio-24h');
     if (ratio24hEl) {
-      ratio24hEl.innerHTML = `<span style="color: var(--accent-success);">${sup24hPct}%</span> <span style="color: var(--accent-success); font-weight: 500; margin-left: 2px;">$${formatLiqSum(sup24hSum)}</span> <span style="color: var(--text-muted); margin: 0 4px;">/</span> <span style="color: var(--accent-alert); font-weight: 500; margin-right: 2px;">$${formatLiqSum(res24hSum)}</span> <span style="color: var(--accent-alert);">${res24hPct}%</span>`;
+      ratio24hEl.innerHTML = `<span style="color: var(--accent-success);">${sup24hPct}% - $${formatLiqSum(sup24hSum)}</span> <span style="color: var(--text-muted); margin: 0 4px;">/</span> <span style="color: var(--accent-alert);">${res24hPct}% - $${formatLiqSum(res24hSum)}</span>`;
     }
 
     const res3dContainer = document.getElementById('cockpit-resistance-pools-3d');
@@ -1162,7 +1162,7 @@ async function updateMiniHeatmap() {
       const res3dPct = 100 - sup3dPct;
       const ratio3dEl = document.getElementById('liq-ratio-3d');
       if (ratio3dEl) {
-        ratio3dEl.innerHTML = `<span style="color: var(--accent-success);">${sup3dPct}%</span> <span style="color: var(--accent-success); font-weight: 500; margin-left: 2px;">$${formatLiqSum(sup3dSum)}</span> <span style="color: var(--text-muted); margin: 0 4px;">/</span> <span style="color: var(--accent-alert); font-weight: 500; margin-right: 2px;">$${formatLiqSum(res3dSum)}</span> <span style="color: var(--accent-alert);">${res3dPct}%</span>`;
+        ratio3dEl.innerHTML = `<span style="color: var(--accent-success);">${sup3dPct}% - $${formatLiqSum(sup3dSum)}</span> <span style="color: var(--text-muted); margin: 0 4px;">/</span> <span style="color: var(--accent-alert);">${res3dPct}% - $${formatLiqSum(res3dSum)}</span>`;
       }
     } else {
       if (res3dContainer) res3dContainer.innerHTML = '<div style="color:var(--text-muted);text-align:center;padding:6px;font-size:10px;">No 3D data cache yet...</div>';
