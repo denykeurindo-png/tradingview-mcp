@@ -4733,8 +4733,12 @@ function evaluateActiveTradesBackend(heatmapData) {
           if (parseInt(v[1], 10) === closestYIdx) currentTpVolume += parseFloat(v[2] || 0);
         });
       }
+      
+      const isPriceVeryClose = currentTpDistPercent <= 0.3;
+      const poolShrunk = currentTpVolume < trade.initialTpVolume * 0.7;
+      const shouldTriggerAutoCut = poolShrunk && !(currentTpVolume === 0 && isPriceVeryClose);
 
-      if (trade.initialTpVolume && currentTpVolume < trade.initialTpVolume * 0.7) {
+      if (trade.initialTpVolume && shouldTriggerAutoCut) {
         // Multi-timeframe validation: check if the pool is still intact in the 3D heatmap
         let poolStillIntact3D = false;
         try {
