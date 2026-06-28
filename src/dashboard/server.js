@@ -5788,19 +5788,12 @@ function autoTradeStrategyBackend(heatmapData) {
   // ─── Step 5: Sweep Detection across recent candles ────────
   const sweepCandidates = [];
   
-  // Check ALL qualifying pools (not just nearest) for sweeps
-  yAxisData.forEach((priceStr, idx) => {
-    const p = parseFloat(priceStr);
-    if (isNaN(p)) return;
-    
-    // Check the maximum volume this pool had in the recent window,
-    // so we can detect sweeps even if the current volume has dropped to 0 after being swept.
-    const volume = maxRecentVolumeByY[idx] || 0;
-    if (volume < minPoolVolume) return; // Only top pools
-    
-    const distPercent = ((p - currentPrice) / currentPrice) * 100;
-    const absDist = Math.abs(distPercent);
-    if (absDist > settings.maxDist) return;
+  // Combine all visible active pools from top lists (both 24h and 3d)
+  const visiblePools = [...visibleAbove, ...visibleBelow];
+
+  visiblePools.forEach(pObj => {
+    const p = pObj.price;
+    const volume = pObj.leverage;
     
     // Check if this pool was already swept by OLDER candles (stale sweep = skip)
     const alreadySweptOld = olderCandles.some(c => {
@@ -5844,10 +5837,9 @@ function autoTradeStrategyBackend(heatmapData) {
       const rejectionStrength = Math.abs(((cClose - cLow) / cLow) * 100);
       sweepCandidates.push({
         price: p,
-        yIdx: idx,
         volume,
         direction: 'LONG',
-        distFromPrice: absDist,
+        distFromPrice: Math.abs(((p - currentPrice) / currentPrice) * 100),
         wickDepth,
         rejectionStrength,
         confirmCount,
@@ -5862,10 +5854,9 @@ function autoTradeStrategyBackend(heatmapData) {
       const rejectionStrength = Math.abs(((cHigh - cClose) / cHigh) * 100);
       sweepCandidates.push({
         price: p,
-        yIdx: idx,
         volume,
         direction: 'SHORT',
-        distFromPrice: absDist,
+        distFromPrice: Math.abs(((p - currentPrice) / currentPrice) * 100),
         wickDepth,
         rejectionStrength,
         confirmCount,
@@ -5951,15 +5942,16 @@ function autoTradeStrategyBackend(heatmapData) {
 
   let tp = 0;
   let maxOpposingVolume = 0;
+  let initialTpVolume = null;
+
+  // Opposing visible pools
+  const opposingPools = direction === 'LONG'
+    ? [...pools24h.above, ...pools3d.above]
+    : [...pools24h.below, ...pools3d.below];
 
   // 1. Search for the largest opposing unswept pool WITHIN the maxTPPercent distance
-  yAxisData.forEach((priceStr, idx) => {
-    const p = parseFloat(priceStr);
-    if (isNaN(p)) return;
-
-    const isOpposing = direction === 'LONG' ? (p > currentPrice) : (p < currentPrice);
-    if (!isOpposing) return;
-
+  opposingPools.forEach(pObj => {
+    const p = pObj.price;
     const dist = Math.abs(p - currentPrice);
     if (dist > maxTPDistance) return; // Exceeds max distance cap
 
@@ -5967,10 +5959,11 @@ function autoTradeStrategyBackend(heatmapData) {
     const swept = cs.data.some(c => p >= parseFloat(c[2]) && p <= parseFloat(c[3]));
     if (swept) return;
 
-    const volume = volumeByY[idx] || 0;
+    const volume = pObj.leverage;
     if (volume > maxOpposingVolume) {
       maxOpposingVolume = volume;
       tp = p;
+      initialTpVolume = volume;
     }
   });
 
@@ -5978,20 +5971,16 @@ function autoTradeStrategyBackend(heatmapData) {
   if (tp === 0) {
     let uncappedTp = 0;
     let uncappedMaxVol = 0;
-    yAxisData.forEach((priceStr, idx) => {
-      const p = parseFloat(priceStr);
-      if (isNaN(p)) return;
-
-      const isOpposing = direction === 'LONG' ? (p > currentPrice) : (p < currentPrice);
-      if (!isOpposing) return;
-
+    opposingPools.forEach(pObj => {
+      const p = pObj.price;
       const swept = cs.data.some(c => p >= parseFloat(c[2]) && p <= parseFloat(c[3]));
       if (swept) return;
 
-      const volume = volumeByY[idx] || 0;
+      const volume = pObj.leverage;
       if (volume > uncappedMaxVol) {
         uncappedMaxVol = volume;
         uncappedTp = p;
+        initialTpVolume = volume;
       }
     });
 
@@ -6200,17 +6189,8 @@ function autoTradeStrategyBackend(heatmapData) {
   // If an opposing sweep (e.g. support sweep while we want to SHORT) happened in
   // the same candle window, the market is in a "both-sides sweep" trap — skip.
   const allWindowCandles = [...olderCandles, ...recentCandles];
-  const hasConflictingSweep = yAxisData.some((priceStr, idx) => {
-    const p = parseFloat(priceStr);
-    if (isNaN(p)) return false;
-    const volume = volumeByY[idx] || 0;
-    if (volume < minPoolVolume) return false;
-
-    // For SHORT: conflict = a qualifying support pool (below price) was swept recently
-    // For LONG:  conflict = a qualifying resistance pool (above price) was swept recently
-    const isConflictingSide = direction === 'SHORT' ? (p < currentPrice) : (p > currentPrice);
-    if (!isConflictingSide) return false;
-
+  const hasConflictingSweep = (direction === 'SHORT' ? visibleBelow : visibleAbove).some(pObj => {
+    const p = pObj.price;
     return allWindowCandles.some(c => {
       const cLow   = parseFloat(c[2]);
       const cHigh  = parseFloat(c[3]);
@@ -6249,21 +6229,6 @@ function autoTradeStrategyBackend(heatmapData) {
   // ─── Step 12: EXECUTE TRADE ───────────────────────────────
   const riskUsd = settings.capital * (settings.riskPercent / 100);
   const positionSizeUsd = riskUsd / (slDistance / 100);
-
-  // Track TP pool initial volume for shrinkage detection
-  let initialTpVolume = null;
-  let closestTpYIdx = -1, minTpDiff = Infinity;
-  yAxisData.forEach((priceStr, idx) => {
-    const p = parseFloat(priceStr);
-    const diff = Math.abs(p - tp);
-    if (diff < minTpDiff) {
-      minTpDiff = diff;
-      closestTpYIdx = idx;
-    }
-  });
-  if (closestTpYIdx !== -1) {
-    initialTpVolume = volumeByY[closestTpYIdx] || 0;
-  }
 
   const timestamp = Date.now();
   const newTrade = {
