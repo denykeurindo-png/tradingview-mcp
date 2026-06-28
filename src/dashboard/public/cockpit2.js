@@ -1318,10 +1318,13 @@ function updateLiquidityAnalysis(bids, asks, midPrice) {
     const bidPct = total > 0 ? (bidsVol / total * 100).toFixed(0) : 50;
     const askPct = total > 0 ? (asksVol / total * 100).toFixed(0) : 50;
 
+    const formatPrice = (val) => '$' + Math.round(val).toLocaleString('id-ID');
+    const rangeText = `${formatPrice(bidLimit)} - ${formatPrice(askLimit)}`;
+
     deltaHtml += `
       <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); border-radius: 6px; padding: 6px 8px;">
         <div style="display: flex; justify-content: space-between; font-size: 10px; font-weight: 600; margin-bottom: 3px;">
-          <span style="color: var(--text-main);">${r.name}</span>
+          <span style="color: var(--text-main);">${r.name} <span style="color: var(--text-muted); font-size: 9px; font-weight: normal; margin-left: 3px;">(${rangeText})</span></span>
           <span style="color: ${deltaColor}; font-family: var(--font-mono); font-weight: 700;">Delta: ${deltaStr}</span>
         </div>
         <div style="display: flex; justify-content: space-between; font-size: 9px; color: var(--text-muted); margin-bottom: 2px;">
