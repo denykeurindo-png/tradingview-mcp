@@ -837,7 +837,64 @@ function renderSingleMiniChart(chartInstance, title, heatmapData, is3d = false) 
       lineStyle: { color: is3d ? '#F0B90B' : '#bfdc21', width: 1, type: 'dashed' }
     },
     tooltip: {
-      show: false
+      show: true,
+      trigger: 'item',
+      className: 'echarts-custom-tooltip',
+      alwaysShowContent: false,
+      hideDelay: 0,
+      transitionDuration: 0,
+      backgroundColor: 'rgba(11, 14, 17, 0.95)',
+      borderColor: 'rgba(255, 255, 255, 0.08)',
+      borderWidth: 1,
+      borderRadius: 8,
+      padding: [10, 14],
+      textStyle: {
+        color: '#FFFFFF'
+      },
+      formatter: function (params) {
+        if (params.seriesType === 'heatmap') {
+          const xIdx = params.value[0];
+          const yIdx = params.value[1];
+          const val = parseFloat(params.value[2] || 0);
+          const timeStr = xAxisData[xIdx] || '';
+          const priceVal = parseFloat(yAxisData[yIdx] || 0);
+          
+          let levStr = '';
+          if (val >= 1e9) levStr = (val / 1e9).toFixed(2) + 'B';
+          else if (val >= 1e6) levStr = (val / 1e6).toFixed(2) + 'M';
+          else if (val >= 1e3) levStr = (val / 1e3).toFixed(2) + 'K';
+          else levStr = val.toFixed(2);
+
+          const activeColor = is3d ? '#F0B90B' : '#bfdc21';
+          return `
+            <div style="font-family: Inter, system-ui, sans-serif; font-size: 11px; line-height: 1.6; color: #FFFFFF; min-width: 180px;">
+              <div style="font-weight: bold; margin-bottom: 8px; color: #848E9C;">${timeStr}</div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${activeColor}; margin-right: 6px;"></span>Price</span>
+                <span style="font-family: monospace; font-weight: bold; margin-left: 20px;">${Math.round(priceVal).toLocaleString()}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${activeColor}; margin-right: 6px;"></span>Liquidation Leverage</span>
+                <span style="font-family: monospace; font-weight: bold; margin-left: 20px;">$${levStr}</span>
+              </div>
+            </div>
+          `;
+        } else if (params.seriesType === 'candlestick') {
+          const timeStr = params.name || '';
+          const close = params.value[2]; // [open, close, lowest, highest]
+          const activeColor = is3d ? '#F0B90B' : '#bfdc21';
+          return `
+            <div style="font-family: Inter, system-ui, sans-serif; font-size: 11px; line-height: 1.6; color: #FFFFFF; min-width: 140px;">
+              <div style="font-weight: bold; margin-bottom: 8px; color: #848E9C;">${timeStr}</div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${activeColor}; margin-right: 6px;"></span>Price</span>
+                <span style="font-family: monospace; font-weight: bold; margin-left: 20px;">${Math.round(close).toLocaleString()}</span>
+              </div>
+            </div>
+          `;
+        }
+        return '';
+      }
     },
     grid: {
       top: 20, bottom: 20, left: 55, right: 10,
@@ -923,6 +980,15 @@ function renderSingleMiniChart(chartInstance, title, heatmapData, is3d = false) 
 
   chartInstance.setOption(option, true);
   chartInstance.resize();
+
+  // Explicitly hide tooltip on mouse leave to prevent sticking
+  const container = chartInstance.getDom();
+  if (container && !container.dataset.hasMouseLeaveListener) {
+    container.addEventListener('mouseleave', () => {
+      hideAllChartTooltips();
+    });
+    container.dataset.hasMouseLeaveListener = 'true';
+  }
 }
 
 // Fetch Liquidation Heatmap data and update ECharts Mini map
@@ -1914,3 +1980,70 @@ async function updateSweepHistory() {
     `;
   }
 }
+
+// Manual chart refresh helper
+async function triggerManualRefresh(btnElement) {
+  if (!btnElement) return;
+  const icon = btnElement.querySelector('.refresh-icon');
+  if (!icon || icon.classList.contains('spinning')) return;
+
+  icon.classList.add('spinning');
+  try {
+    await updateMiniHeatmap();
+  } catch (err) {
+    console.error('Manual refresh failed:', err);
+  } finally {
+    setTimeout(() => {
+      icon.classList.remove('spinning');
+    }, 600);
+  }
+}
+
+// Global function to forcefully hide all tooltips
+function hideAllChartTooltips() {
+  if (miniHeatmapChart24h) {
+    try { miniHeatmapChart24h.dispatchAction({ type: 'hideTip' }); } catch(e){}
+  }
+  if (miniHeatmapChart3d) {
+    try { miniHeatmapChart3d.dispatchAction({ type: 'hideTip' }); } catch(e){}
+  }
+  const globalTooltips = document.querySelectorAll('.echarts-custom-tooltip, .echarts-tooltip');
+  globalTooltips.forEach(el => {
+    el.style.display = 'none';
+    el.style.opacity = '0';
+  });
+  const allDivs = document.querySelectorAll('div');
+  allDivs.forEach(div => {
+    if (div.id === 'bell-dropdown' || div.closest('#bell-dropdown')) return;
+    if (div.style.position === 'absolute' && (div.innerHTML.includes('Liquidation Leverage') || div.innerHTML.includes('Price'))) {
+      div.style.display = 'none';
+      div.style.opacity = '0';
+    }
+  });
+}
+
+// Clear sticking tooltips when mouse goes out of charts
+document.addEventListener('mousemove', (e) => {
+  const inChart = e.target.closest('#chart-mini-heatmap-24h') || 
+                  e.target.closest('#chart-mini-heatmap-3d') || 
+                  e.target.closest('.echarts-custom-tooltip') || 
+                  e.target.closest('.echarts-tooltip') ||
+                  e.target.closest('.btn-chart-refresh');
+  if (!inChart) {
+    hideAllChartTooltips();
+  }
+});
+
+// Also clear tooltips when mouse leaves the parent widget cards
+document.addEventListener('DOMContentLoaded', () => {
+  const card24h = document.querySelector('.w-mini-heatmap-24h');
+  const card3d = document.querySelector('.w-mini-heatmap-3d');
+  if (card24h) {
+    card24h.addEventListener('mouseleave', hideAllChartTooltips);
+  }
+  if (card3d) {
+    card3d.addEventListener('mouseleave', hideAllChartTooltips);
+  }
+});
+
+

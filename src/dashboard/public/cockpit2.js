@@ -379,45 +379,107 @@ function updateOrderbookAndWhales(summary) {
 
   // Whale order book walls
   if (m.whaleOrders && whaleWallsGrid) {
-    const buyWalls = m.whaleOrders.top3Buy || [];
-    const sellWalls = m.whaleOrders.top3Sell || [];
+    let buySpot = m.whaleOrders.top3BuySpot;
+    let sellSpot = m.whaleOrders.top3SellSpot;
+    let buyFutures = m.whaleOrders.top3BuyFutures;
+    let sellFutures = m.whaleOrders.top3SellFutures;
+
+    // Fallback if backend hasn't populated these fields yet
+    if (!buySpot && m.whaleOrders.top3Buy) {
+      buySpot = (m.whaleOrders.top3Buy || []).filter(o => o.marketType === 'S' || o.exchange?.toLowerCase() === 'coinbase');
+      buyFutures = (m.whaleOrders.top3Buy || []).filter(o => o.marketType === 'P' || o.exchange?.toLowerCase() !== 'coinbase');
+    }
+    if (!sellSpot && m.whaleOrders.top3Sell) {
+      sellSpot = (m.whaleOrders.top3Sell || []).filter(o => o.marketType === 'S' || o.exchange?.toLowerCase() === 'coinbase');
+      sellFutures = (m.whaleOrders.top3Sell || []).filter(o => o.marketType === 'P' || o.exchange?.toLowerCase() !== 'coinbase');
+    }
+
+    buySpot = buySpot || [];
+    sellSpot = sellSpot || [];
+    buyFutures = buyFutures || [];
+    sellFutures = sellFutures || [];
 
     let wallsHtml = '';
-    const maxLen = Math.max(buyWalls.length, sellWalls.length);
 
-    if (maxLen > 0) {
-      for (let i = 0; i < maxLen; i++) {
-        const buy = buyWalls[i];
-        const sell = sellWalls[i];
+    // 1. SPOT Section
+    wallsHtml += `
+      <div style="grid-column: span 2; font-size: 10px; font-weight: bold; color: #5bc0de; margin-top: 2px; margin-bottom: 2px; padding: 2px 6px; background: rgba(91,192,222,0.06); border-radius: 3px; display: flex; align-items: center; gap: 6px;">
+        <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #5bc0de;"></span>
+        SPOT WHALE WALLS (LIMIT >= 500K)
+      </div>
+    `;
+    const maxSpot = Math.max(buySpot.length, sellSpot.length);
+    if (maxSpot > 0) {
+      for (let i = 0; i < maxSpot; i++) {
+        const buy = buySpot[i];
+        const sell = sellSpot[i];
 
-        // Bid column item
         if (buy) {
           wallsHtml += `
             <div style="display: flex; justify-content: space-between; align-items: center; color: var(--accent-success); border-left: 2px solid var(--accent-success); padding: 4px 6px; background: rgba(14,203,129,0.03); border-radius: 4px;">
-              <span style="font-weight: 700; font-size: 13px;">$${parseFloat(buy.price).toLocaleString()}</span>
-              <span style="font-size: 9.5px; color: var(--text-muted); margin-left: 4px;">${buy.valueUsdFormatted} (${buy.exchange})</span>
+              <span style="font-weight: 700; font-size: 12.5px;">$${parseFloat(buy.price).toLocaleString()}</span>
+              <span style="font-size: 9px; color: var(--text-muted); margin-left: 4px;">${buy.valueUsdFormatted} (${buy.exchange})</span>
             </div>
           `;
         } else {
           wallsHtml += `<div></div>`;
         }
 
-        // Ask column item
         if (sell) {
           wallsHtml += `
             <div style="display: flex; justify-content: space-between; align-items: center; color: var(--accent-alert); border-left: 2px solid var(--accent-alert); padding: 4px 6px; background: rgba(246,70,93,0.03); border-radius: 4px;">
-              <span style="font-size: 9.5px; color: var(--text-muted); margin-right: 4px;">(${sell.exchange}) ${sell.valueUsdFormatted}</span>
-              <span style="font-weight: 700; font-size: 13px;">$${parseFloat(sell.price).toLocaleString()}</span>
+              <span style="font-size: 9px; color: var(--text-muted); margin-right: 4px;">(${sell.exchange}) ${sell.valueUsdFormatted}</span>
+              <span style="font-weight: 700; font-size: 12.5px;">$${parseFloat(sell.price).toLocaleString()}</span>
             </div>
           `;
         } else {
           wallsHtml += `<div></div>`;
         }
       }
-      whaleWallsGrid.innerHTML = wallsHtml;
     } else {
-      whaleWallsGrid.innerHTML = `<div style="color: var(--text-muted); text-align: center; grid-column: span 2; padding: 15px;">Tidak ada dinding order paus terdeteksi</div>`;
+      wallsHtml += `<div style="color: var(--text-muted); text-align: center; grid-column: span 2; padding: 10px; font-size: 10px;">Tidak ada dinding order Spot terdeteksi</div>`;
     }
+
+    // 2. FUTURES Section
+    wallsHtml += `
+      <div style="grid-column: span 2; font-size: 10px; font-weight: bold; color: #a060f0; margin-top: 6px; margin-bottom: 2px; padding: 2px 6px; background: rgba(160,96,240,0.06); border-radius: 3px; display: flex; align-items: center; gap: 6px;">
+        <span style="display: inline-block; width: 6px; height: 6px; border-radius: 50%; background: #a060f0;"></span>
+        FUTURES WHALE WALLS (LIMIT >= 500K)
+      </div>
+    `;
+    const maxFutures = Math.max(buyFutures.length, sellFutures.length);
+    if (maxFutures > 0) {
+      for (let i = 0; i < maxFutures; i++) {
+        const buy = buyFutures[i];
+        const sell = sellFutures[i];
+
+        if (buy) {
+          wallsHtml += `
+            <div style="display: flex; justify-content: space-between; align-items: center; color: var(--accent-success); border-left: 2px solid var(--accent-success); padding: 4px 6px; background: rgba(14,203,129,0.03); border-radius: 4px;">
+              <span style="font-weight: 700; font-size: 12.5px;">$${parseFloat(buy.price).toLocaleString()}</span>
+              <span style="font-size: 9px; color: var(--text-muted); margin-left: 4px;">${buy.valueUsdFormatted} (${buy.exchange})</span>
+            </div>
+          `;
+        } else {
+          wallsHtml += `<div></div>`;
+        }
+
+        if (sell) {
+          wallsHtml += `
+            <div style="display: flex; justify-content: space-between; align-items: center; color: var(--accent-alert); border-left: 2px solid var(--accent-alert); padding: 4px 6px; background: rgba(246,70,93,0.03); border-radius: 4px;">
+              <span style="font-size: 9px; color: var(--text-muted); margin-right: 4px;">(${sell.exchange}) ${sell.valueUsdFormatted}</span>
+              <span style="font-weight: 700; font-size: 12.5px;">$${parseFloat(sell.price).toLocaleString()}</span>
+            </div>
+          `;
+        } else {
+          wallsHtml += `<div></div>`;
+        }
+      }
+    } else {
+      wallsHtml += `<div style="color: var(--text-muted); text-align: center; grid-column: span 2; padding: 10px; font-size: 10px;">Tidak ada dinding order Futures terdeteksi</div>`;
+    }
+
+    whaleWallsGrid.innerHTML = wallsHtml;
   }
 }
 
@@ -511,7 +573,64 @@ function renderSingleMiniChart(chartInstance, title, heatmapData, is3d = false) 
       lineStyle: { color: is3d ? '#F0B90B' : '#bfdc21', width: 1, type: 'dashed' }
     },
     tooltip: {
-      show: false
+      show: true,
+      trigger: 'item',
+      className: 'echarts-custom-tooltip',
+      alwaysShowContent: false,
+      hideDelay: 0,
+      transitionDuration: 0,
+      backgroundColor: 'rgba(11, 14, 17, 0.95)',
+      borderColor: 'rgba(255, 255, 255, 0.08)',
+      borderWidth: 1,
+      borderRadius: 8,
+      padding: [10, 14],
+      textStyle: {
+        color: '#FFFFFF'
+      },
+      formatter: function (params) {
+        if (params.seriesType === 'heatmap') {
+          const xIdx = params.value[0];
+          const yIdx = params.value[1];
+          const val = parseFloat(params.value[2] || 0);
+          const timeStr = xAxisData[xIdx] || '';
+          const priceVal = parseFloat(yAxisData[yIdx] || 0);
+          
+          let levStr = '';
+          if (val >= 1e9) levStr = (val / 1e9).toFixed(2) + 'B';
+          else if (val >= 1e6) levStr = (val / 1e6).toFixed(2) + 'M';
+          else if (val >= 1e3) levStr = (val / 1e3).toFixed(2) + 'K';
+          else levStr = val.toFixed(2);
+
+          const activeColor = is3d ? '#F0B90B' : '#bfdc21';
+          return `
+            <div style="font-family: Inter, system-ui, sans-serif; font-size: 11px; line-height: 1.6; color: #FFFFFF; min-width: 180px;">
+              <div style="font-weight: bold; margin-bottom: 8px; color: #848E9C;">${timeStr}</div>
+              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px;">
+                <span><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${activeColor}; margin-right: 6px;"></span>Price</span>
+                <span style="font-family: monospace; font-weight: bold; margin-left: 20px;">${Math.round(priceVal).toLocaleString()}</span>
+              </div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${activeColor}; margin-right: 6px;"></span>Liquidation Leverage</span>
+                <span style="font-family: monospace; font-weight: bold; margin-left: 20px;">$${levStr}</span>
+              </div>
+            </div>
+          `;
+        } else if (params.seriesType === 'candlestick') {
+          const timeStr = params.name || '';
+          const close = params.value[2]; // [open, close, lowest, highest]
+          const activeColor = is3d ? '#F0B90B' : '#bfdc21';
+          return `
+            <div style="font-family: Inter, system-ui, sans-serif; font-size: 11px; line-height: 1.6; color: #FFFFFF; min-width: 140px;">
+              <div style="font-weight: bold; margin-bottom: 8px; color: #848E9C;">${timeStr}</div>
+              <div style="display: flex; justify-content: space-between; align-items: center;">
+                <span><span style="display: inline-block; width: 8px; height: 8px; border-radius: 50%; background: ${activeColor}; margin-right: 6px;"></span>Price</span>
+                <span style="font-family: monospace; font-weight: bold; margin-left: 20px;">${Math.round(close).toLocaleString()}</span>
+              </div>
+            </div>
+          `;
+        }
+        return '';
+      }
     },
     grid: {
       top: 20, bottom: 20, left: 55, right: 10,
@@ -597,6 +716,15 @@ function renderSingleMiniChart(chartInstance, title, heatmapData, is3d = false) 
 
   chartInstance.setOption(option, true);
   chartInstance.resize();
+
+  // Explicitly hide tooltip on mouse leave to prevent sticking
+  const container = chartInstance.getDom();
+  if (container && !container.dataset.hasMouseLeaveListener) {
+    container.addEventListener('mouseleave', () => {
+      hideAllChartTooltips();
+    });
+    container.dataset.hasMouseLeaveListener = 'true';
+  }
 }
 
 async function updateHeatmap() {
@@ -1323,11 +1451,11 @@ function updateLiquidityAnalysis(bids, asks, midPrice) {
 
     deltaHtml += `
       <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); border-radius: 6px; padding: 6px 8px;">
-        <div style="display: flex; justify-content: space-between; font-size: 10px; font-weight: 600; margin-bottom: 3px;">
+        <div style="display: flex; justify-content: space-between; font-size: 11.5px; font-weight: 600; margin-bottom: 3px;">
           <span style="color: var(--text-main);">${r.name} <span style="color: var(--text-muted); font-size: 9px; font-weight: normal; margin-left: 3px;">(${rangeText})</span></span>
           <span style="color: ${deltaColor}; font-family: var(--font-mono); font-weight: 700;">Delta: ${deltaStr}</span>
         </div>
-        <div style="display: flex; justify-content: space-between; font-size: 9px; color: var(--text-muted); margin-bottom: 2px;">
+        <div style="display: flex; justify-content: space-between; font-size: 9.5px; color: var(--text-muted); margin-bottom: 2px;">
           <span>Bid: ${bidsVol.toLocaleString(undefined, {maximumFractionDigits: 0})} BTC (${bidPct}%)</span>
           <span>Ask: ${asksVol.toLocaleString(undefined, {maximumFractionDigits: 0})} BTC (${askPct}%)</span>
         </div>
@@ -1369,7 +1497,7 @@ function updateLiquidityAnalysis(bids, asks, midPrice) {
   exchanges.forEach(e => {
     exchHtml += `
       <div>
-        <div style="display: flex; justify-content: space-between; font-size: 10px; margin-bottom: 2px;">
+        <div style="display: flex; justify-content: space-between; font-size: 11.5px; margin-bottom: 2px;">
           <span style="color: var(--text-main); font-weight: 500;">${e.name}</span>
           <span style="color: var(--text-main); font-family: var(--font-mono); font-weight: 700;">${e.pct}%</span>
         </div>
@@ -1391,7 +1519,7 @@ function updateSavedNotificationsFromDOM() {
 
   const notifs = [];
   Array.from(container.children).forEach(el => {
-    if (el.className === 'notification-item') {
+    if (el.classList.contains('notif-item')) {
       notifs.push({
         type: el.dataset.type,
         title: el.dataset.title,
@@ -1401,6 +1529,101 @@ function updateSavedNotificationsFromDOM() {
     }
   });
   localStorage.setItem('jda_notifications', JSON.stringify(notifs));
+}
+
+// Update notification badge count in the header
+function updateNotifBadgeCount() {
+  const container = document.getElementById('notifications-list');
+  const badge = document.getElementById('notif-badge');
+  if (!container || !badge) return;
+
+  const count = Array.from(container.children).filter(el => el.classList.contains('notif-item')).length;
+  if (count > 0) {
+    badge.innerText = count;
+    badge.style.display = 'flex';
+  } else {
+    badge.style.display = 'none';
+  }
+}
+
+// Show a modern floating toast notification that slides in and vanishes
+function showToastNotification(type, title, desc, timestampStr) {
+  const toastContainer = document.getElementById('toast-container');
+  if (!toastContainer) return;
+
+  const toast = document.createElement('div');
+  toast.className = 'toast-item';
+  toast.style.cssText = `
+    background: var(--bg-surface);
+    border: 1px solid var(--border-color);
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0,0,0,0.5);
+    padding: 10px 14px;
+    width: 280px;
+    pointer-events: auto;
+    transform: translateX(120%);
+    transition: transform 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275), opacity 0.3s;
+    opacity: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+    position: relative;
+    overflow: hidden;
+  `;
+
+  let borderLeftColor = 'var(--accent-success)';
+  let icon = '✓';
+  let iconColor = 'var(--accent-success)';
+
+  if (type === 'danger') {
+    borderLeftColor = 'var(--accent-alert)';
+    icon = '✕';
+    iconColor = 'var(--accent-alert)';
+  } else if (type === 'warning') {
+    borderLeftColor = 'var(--accent-primary)';
+    icon = '⚠️';
+    iconColor = 'var(--accent-primary)';
+  }
+
+  toast.style.borderLeft = `4px solid ${borderLeftColor}`;
+
+  toast.innerHTML = `
+    <div style="display: flex; justify-content: space-between; align-items: center; gap: 8px;">
+      <div style="display: flex; align-items: center; gap: 6px; font-weight: 700; font-size: 11px; color: ${iconColor};">
+        <span>${icon}</span>
+        <span>${title}</span>
+      </div>
+      <span style="font-size: 8px; color: var(--text-muted);">${timestampStr || 'Now'}</span>
+    </div>
+    <div style="font-size: 10px; color: var(--text-main); line-height: 1.35; margin-top: 2px;">${desc}</div>
+    <span class="btn-close-toast" style="position: absolute; top: 6px; right: 8px; font-size: 8.5px; color: var(--text-muted); cursor: pointer; font-weight: bold; line-height: 1;">✕</span>
+  `;
+
+  const closeBtn = toast.querySelector('.btn-close-toast');
+  if (closeBtn) {
+    closeBtn.addEventListener('click', () => {
+      toast.style.transform = 'translateX(120%)';
+      toast.style.opacity = '0';
+      setTimeout(() => toast.remove(), 300);
+    });
+  }
+
+  toastContainer.appendChild(toast);
+
+  requestAnimationFrame(() => {
+    toast.style.transform = 'translateX(0)';
+    toast.style.opacity = '1';
+  });
+
+  setTimeout(() => {
+    if (toast.parentNode) {
+      toast.style.transform = 'translateX(120%)';
+      toast.style.opacity = '0';
+      setTimeout(() => {
+        if (toast.parentNode) toast.remove();
+      }, 300);
+    }
+  }, 6000);
 }
 
 // Add alert notification dynamically to feed
@@ -1423,7 +1646,7 @@ function addNotification(type, title, desc, timestampStr = null, preventSave = f
   }
 
   const item = document.createElement('div');
-  item.className = 'notification-item';
+  item.className = 'notif-item';
   item.dataset.title = title;
   item.dataset.desc = desc;
   item.dataset.time = now;
@@ -1459,7 +1682,7 @@ function addNotification(type, title, desc, timestampStr = null, preventSave = f
     display: flex;
     align-items: flex-start;
     gap: 10px;
-    margin-bottom: 2px;
+    margin-bottom: 4px;
     position: relative;
   `;
 
@@ -1491,6 +1714,7 @@ function addNotification(type, title, desc, timestampStr = null, preventSave = f
       e.stopPropagation();
       item.remove();
       updateSavedNotificationsFromDOM();
+      updateNotifBadgeCount();
       if (container.children.length === 0) {
         container.innerHTML = '<div style="color: var(--text-muted); text-align: center; padding: 15px; font-size: 10px;">No alerts or notifications yet.</div>';
       }
@@ -1508,17 +1732,18 @@ function addNotification(type, title, desc, timestampStr = null, preventSave = f
   // Save changes to localStorage
   if (!preventSave) {
     updateSavedNotificationsFromDOM();
+    updateNotifBadgeCount();
+    showToastNotification(type, title, desc, timestampStr);
   }
 }
 
-// Pre-populate alerts feed
+// Initialize notification bell: load history + wire toggle + wire clear buttons
 function initNotificationsCenter() {
   const container = document.getElementById('notifications-list');
   if (!container) return;
 
-  // Clear container first
+  // Load saved notifications from localStorage
   container.innerHTML = '';
-
   let saved = null;
   try {
     const data = localStorage.getItem('jda_notifications');
@@ -1528,33 +1753,113 @@ function initNotificationsCenter() {
   }
 
   if (saved && Array.isArray(saved) && saved.length > 0) {
-    // Recreate notifications (oldest first, so newer ones get prepended to the top)
     for (let i = saved.length - 1; i >= 0; i--) {
-      const n = saved[i];
-      addNotification(n.type, n.title, n.desc, n.timestamp, true);
+      addNotification(saved[i].type, saved[i].title, saved[i].desc, saved[i].timestamp, true);
     }
   } else {
-    // If no saved notifications, load the default mocks
-    addNotification('success', 'LSR Bot Status: STANDBY', 'Waiting in mid-range. Nearest RESISTANCE pool: $61,077. No sweep yet.', null, true);
-    addNotification('warning', 'Price Approaching Resistance Pool', 'BTC Price $59,950 approaching nearest RESISTANCE pool at $60,100 (0.25% away). Watching for sweep...', null, true);
-    addNotification('danger', 'Capital Outflow Detected (Net Outflow)', 'Net daily outflow of -7.44K BTC (equiv. -$445.76M / -Rp 7285.85B) in the recent session.', null, true);
-    updateSavedNotificationsFromDOM();
+    container.innerHTML = '<div style="color: var(--text-muted); text-align: center; padding: 20px 15px; font-size: 10px;">No alerts or notifications yet.</div>';
   }
+  updateNotifBadgeCount();
 
-  // Wire clear button
-  const btnClearNotif = document.getElementById('btn-clear-notifications');
-  if (btnClearNotif) {
-    btnClearNotif.addEventListener('click', () => {
-      container.innerHTML = '<div style="color: var(--text-muted); text-align: center; padding: 15px; font-size: 10px;">No alerts or notifications yet.</div>';
-      localStorage.removeItem('jda_notifications');
+  // Wire bell toggle
+  const btnBellToggle = document.getElementById('btn-bell-toggle');
+  const bellDropdown = document.getElementById('bell-dropdown');
+  if (btnBellToggle && bellDropdown) {
+    btnBellToggle.addEventListener('click', (e) => {
+      e.stopPropagation();
+      const isVisible = window.getComputedStyle(bellDropdown).display !== 'none';
+      if (isVisible) {
+        bellDropdown.style.display = 'none';
+      } else {
+        bellDropdown.style.display = 'flex';
+        const badge = document.getElementById('notif-badge');
+        if (badge) badge.style.display = 'none';
+      }
+    });
+    document.addEventListener('click', (e) => {
+      if (!bellDropdown.contains(e.target) && !btnBellToggle.contains(e.target)) {
+        bellDropdown.style.display = 'none';
+      }
     });
   }
+
+  // Wire clear buttons
+  const handleClearAll = () => {
+    container.innerHTML = '<div style="color: var(--text-muted); text-align: center; padding: 20px 15px; font-size: 10px;">No alerts or notifications yet.</div>';
+    localStorage.removeItem('jda_notifications');
+    updateNotifBadgeCount();
+  };
+  const btnClear = document.getElementById('btn-clear-notifications');
+  const btnClearFooter = document.getElementById('btn-clear-notifications-footer');
+  if (btnClear) btnClear.addEventListener('click', handleClearAll);
+  if (btnClearFooter) btnClearFooter.addEventListener('click', handleClearAll);
 }
 
 // Initialize on page load
 document.addEventListener('DOMContentLoaded', () => {
-  initCharts();
-  updateData();
   initNotificationsCenter();
+  try { initCharts(); } catch(e) { console.error('initCharts error:', e); }
+  updateData();
   setInterval(updateData, 3000);
+
+  // Wire card mouseleave
+  const card = document.querySelector('.w-full-heatmap');
+  if (card) {
+    card.addEventListener('mouseleave', hideAllChartTooltips);
+  }
 });
+
+// Manual chart refresh helper
+async function triggerManualRefresh(btnElement) {
+  if (!btnElement) return;
+  const icon = btnElement.querySelector('.refresh-icon');
+  if (!icon || icon.classList.contains('spinning')) return;
+
+  icon.classList.add('spinning');
+  try {
+    await updateHeatmap();
+  } catch (err) {
+    console.error('Manual refresh failed:', err);
+  } finally {
+    setTimeout(() => {
+      icon.classList.remove('spinning');
+    }, 600);
+  }
+}
+
+// Global function to forcefully hide all tooltips
+function hideAllChartTooltips() {
+  if (miniHeatmapChart24h) {
+    try { miniHeatmapChart24h.dispatchAction({ type: 'hideTip' }); } catch(e){}
+  }
+  if (miniHeatmapChart3d) {
+    try { miniHeatmapChart3d.dispatchAction({ type: 'hideTip' }); } catch(e){}
+  }
+  const globalTooltips = document.querySelectorAll('.echarts-custom-tooltip, .echarts-tooltip');
+  globalTooltips.forEach(el => {
+    el.style.display = 'none';
+    el.style.opacity = '0';
+  });
+  const allDivs = document.querySelectorAll('div');
+  allDivs.forEach(div => {
+    if (div.id === 'bell-dropdown' || div.closest('#bell-dropdown')) return;
+    if (div.style.position === 'absolute' && (div.innerHTML.includes('Liquidation Leverage') || div.innerHTML.includes('Price'))) {
+      div.style.display = 'none';
+      div.style.opacity = '0';
+    }
+  });
+}
+
+// Clear sticking tooltips when mouse goes out of charts
+document.addEventListener('mousemove', (e) => {
+  const inChart = e.target.closest('#chart-mini-heatmap-24h') || 
+                  e.target.closest('#chart-mini-heatmap-3d') || 
+                  e.target.closest('.echarts-custom-tooltip') || 
+                  e.target.closest('.echarts-tooltip') ||
+                  e.target.closest('.btn-chart-refresh');
+  if (!inChart) {
+    hideAllChartTooltips();
+  }
+});
+
+

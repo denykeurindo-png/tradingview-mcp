@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="en">
 
 <head>
@@ -12,7 +12,7 @@
   <!-- ECharts CDN -->
   <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
   <!-- Style -->
-  <link rel="stylesheet" href="style.css?v=2.2.0">
+  <link rel="stylesheet" href="style.css?v=2.2.9">
   <style>
     /* Cockpit Specific Dashboard Styles */
     .cockpit-grid {
@@ -872,14 +872,28 @@
         <div class="cockpit-widget w-mini-heatmap-24h">
           <div class="widget-title" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
             <span>24H Liquidity Sweep Map</span>
-            <span style="font-family: var(--font-mono); color: var(--accent-primary); font-size: 14px;" id="live-btc-price">$0.00</span>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <button class="btn-chart-refresh" onclick="triggerManualRefresh(this)" style="background: none; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; padding: 2px; transition: color 0.2s;" title="Refresh Chart Data">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="refresh-icon">
+                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                </svg>
+              </button>
+              <span style="font-family: var(--font-mono); color: var(--accent-primary); font-size: 14px;" id="live-btc-price">$0.00</span>
+            </div>
           </div>
           <div id="chart-mini-heatmap-24h" style="width: 100%; height: 240px;"></div>
         </div>
 
         <!-- Widget 3b: Mini Heatmap 3D -->
         <div class="cockpit-widget w-mini-heatmap-3d">
-          <div class="widget-title">3D Liquidity Sweep Map</div>
+          <div class="widget-title" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
+            <span>3D Liquidity Sweep Map</span>
+            <button class="btn-chart-refresh" onclick="triggerManualRefresh(this)" style="background: none; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; padding: 2px; transition: color 0.2s;" title="Refresh Chart Data">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="refresh-icon">
+                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+              </svg>
+            </button>
+          </div>
           <div id="chart-mini-heatmap-3d" style="width: 100%; height: 240px;"></div>
         </div>
 
@@ -1235,7 +1249,8 @@
 
   </div>
 
-  <script src="cockpit.js?v=2.2.6"></script>
+  <script src="notifications-shared.js"></script>
+  <script src="cockpit.js?v=2.2.9"></script>
 </body>
 
 </html>
