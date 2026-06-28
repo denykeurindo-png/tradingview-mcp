@@ -34,14 +34,23 @@ if (!heatmapSeries || !heatmapSeries.data || heatmapSeries.data.length === 0) {
 const yAxisData = heatmapData.yAxis || [];
 const latestXIdx = heatmapData.xAxis.length - 1;
 const volumeByY = {};
+const maxRecentVolumeByY = {};
+const startXIdx = Math.max(0, latestXIdx - 15);
 
 heatmapSeries.data.forEach(item => {
   const v = Array.isArray(item) ? item : (item.value || []);
   const xIdx = parseInt(v[0], 10);
   const yIdx = parseInt(v[1], 10);
   const val = parseFloat(v[2] || 0);
-  if (!isNaN(yIdx) && xIdx === latestXIdx) {
-    volumeByY[yIdx] = val;
+  if (!isNaN(yIdx)) {
+    if (xIdx === latestXIdx) {
+      volumeByY[yIdx] = val;
+    }
+    if (xIdx >= startXIdx && xIdx <= latestXIdx) {
+      if (!maxRecentVolumeByY[yIdx] || val > maxRecentVolumeByY[yIdx]) {
+        maxRecentVolumeByY[yIdx] = val;
+      }
+    }
   }
 });
 
@@ -64,7 +73,7 @@ yAxisData.forEach((priceStr, idx) => {
   const p = parseFloat(priceStr);
   if (isNaN(p)) return;
   
-  const volume = volumeByY[idx] || 0;
+  const volume = maxRecentVolumeByY[idx] || 0;
   
   // Calculate distance
   const distPercent = ((p - currentPrice) / currentPrice) * 100;

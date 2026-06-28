@@ -5500,16 +5500,26 @@ function autoTradeStrategyBackend(heatmapData) {
 
   const yAxisData = heatmapData.yAxis || [];
   
-  // ─── Step 1: Build volume map per price level (Latest timestamp only) ──
+  // ─── Step 1: Build volume map per price level (Latest and Max Recent) ──
   const latestXIdx = heatmapData.xAxis.length - 1;
   const volumeByY = {};
+  const maxRecentVolumeByY = {};
+  const startXIdx = Math.max(0, latestXIdx - 15);
+
   heatmapSeries.data.forEach(item => {
     const v = Array.isArray(item) ? item : (item.value || []);
     const xIdx = parseInt(v[0], 10);
     const yIdx = parseInt(v[1], 10);
     const val = parseFloat(v[2] || 0);
-    if (!isNaN(yIdx) && xIdx === latestXIdx) {
-      volumeByY[yIdx] = val;
+    if (!isNaN(yIdx)) {
+      if (xIdx === latestXIdx) {
+        volumeByY[yIdx] = val;
+      }
+      if (xIdx >= startXIdx && xIdx <= latestXIdx) {
+        if (!maxRecentVolumeByY[yIdx] || val > maxRecentVolumeByY[yIdx]) {
+          maxRecentVolumeByY[yIdx] = val;
+        }
+      }
     }
   });
 
@@ -5646,7 +5656,9 @@ function autoTradeStrategyBackend(heatmapData) {
     const p = parseFloat(priceStr);
     if (isNaN(p)) return;
     
-    const volume = volumeByY[idx] || 0;
+    // Check the maximum volume this pool had in the recent window,
+    // so we can detect sweeps even if the current volume has dropped to 0 after being swept.
+    const volume = maxRecentVolumeByY[idx] || 0;
     if (volume < minPoolVolume) return; // Only top pools
     
     const distPercent = ((p - currentPrice) / currentPrice) * 100;
