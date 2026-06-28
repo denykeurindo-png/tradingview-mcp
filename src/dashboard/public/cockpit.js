@@ -193,6 +193,9 @@ async function updateBotStatus() {
     if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
     const body = await res.json();
     const data = body.data;
+    if (data) {
+      data.whaleData = body.whaleData;
+    }
     latestBotStatus = data;
 
     // Time update

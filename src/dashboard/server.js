@@ -5563,6 +5563,81 @@ function isTrendFilterActive(settings, botMetrics) {
   return false;
 }
 
+function extractTopPoolsForServer(cache, currentPrice) {
+  if (!cache) return { above: [], below: [] };
+  const data = cache.data?.data || cache.data || cache;
+  if (!data || !data.xAxis || !data.yAxis || !data.series) return { above: [], below: [] };
+
+  const yAxisData = data.yAxis;
+  const leverageLatest = {};
+  const leverageMaxRecent = {};
+  
+  const heatmapSeries = data.series.find(s => s.type === 'heatmap');
+  if (!heatmapSeries || !heatmapSeries.data) return { above: [], below: [] };
+
+  const latestXIdx = data.xAxis.length - 1;
+  const startXIdx = Math.max(0, latestXIdx - 15);
+
+  heatmapSeries.data.forEach(item => {
+    const v = Array.isArray(item) ? item : (item.value || []);
+    const xIdx = parseInt(v[0], 10);
+    const yIdx = parseInt(v[1], 10);
+    const val = parseFloat(v[2] || 0);
+    if (!isNaN(yIdx)) {
+      if (xIdx === latestXIdx) {
+        leverageLatest[yIdx] = val;
+      }
+      if (xIdx >= startXIdx && xIdx <= latestXIdx) {
+        if (!leverageMaxRecent[yIdx] || val > leverageMaxRecent[yIdx]) {
+          leverageMaxRecent[yIdx] = val;
+        }
+      }
+    }
+  });
+
+  const cs = data.series.find(s => s.type === 'candlestick');
+  let maxHighRecent = currentPrice;
+  let minLowRecent = currentPrice;
+  if (cs && cs.data) {
+    const recentCandles = cs.data.slice(-40);
+    recentCandles.forEach(c => {
+      const low = parseFloat(c[2]), high = parseFloat(c[3]);
+      if (!isNaN(high) && high > maxHighRecent) maxHighRecent = high;
+      if (!isNaN(low) && low < minLowRecent) minLowRecent = low;
+    });
+  }
+
+  const levels = [];
+  yAxisData.forEach((priceStr, yIdx) => {
+    const price = parseFloat(priceStr);
+    if (isNaN(price)) return;
+    const latestVal = leverageLatest[yIdx] || 0;
+    const maxRecentVal = leverageMaxRecent[yIdx] || 0;
+    const isAbove = price > currentPrice;
+
+    let isLiquidated = false;
+    if (isAbove) {
+      if (price <= maxHighRecent) isLiquidated = true;
+    } else {
+      if (price >= minLowRecent) isLiquidated = true;
+    }
+
+    let leverage = latestVal;
+    if (isLiquidated && maxRecentVal > 0) {
+      leverage = maxRecentVal;
+    }
+
+    if (leverage <= 0) return;
+    levels.push({ price, leverage, isAbove, isLiquidated });
+  });
+
+  const activeLevels = levels.filter(l => !l.isLiquidated);
+  const aboveLevels = activeLevels.filter(l => l.isAbove).sort((a, b) => b.leverage - a.leverage).slice(0, 5);
+  const belowLevels = activeLevels.filter(l => !l.isAbove).sort((a, b) => b.leverage - a.leverage).slice(0, 5);
+
+  return { above: aboveLevels, below: belowLevels };
+}
+
 function autoTradeStrategyBackend(heatmapData) {
   const settings = loadSettings();
   
@@ -5589,63 +5664,31 @@ function autoTradeStrategyBackend(heatmapData) {
   const trades = loadTrades();
   const activeTrades = trades.filter(t => t.status === 'ACTIVE' && !(t.id && t.id.startsWith('T_BT_')) && !(t.note && t.note.toLowerCase().includes('backtest')));
 
-  const heatmapSeries = heatmapData.series.find(s => s.type === 'heatmap');
-  if (!heatmapSeries || !heatmapSeries.data || heatmapSeries.data.length === 0) return;
+  // Extract visible Top 5 pools for both 24H and 3D caches
+  const pools24h = extractTopPoolsForServer(heatmapDataCache, currentPrice);
+  const pools3d = extractTopPoolsForServer(heatmap3DCache, currentPrice);
 
-  const yAxisData = heatmapData.yAxis || [];
-  
-  // ─── Step 1: Build volume map per price level (Latest and Max Recent) ──
-  const latestXIdx = heatmapData.xAxis.length - 1;
-  const volumeByY = {};
-  const maxRecentVolumeByY = {};
-  const startXIdx = Math.max(0, latestXIdx - 15);
+  const visibleAbove = [...pools24h.above, ...pools3d.above];
+  const visibleBelow = [...pools24h.below, ...pools3d.below];
 
-  heatmapSeries.data.forEach(item => {
-    const v = Array.isArray(item) ? item : (item.value || []);
-    const xIdx = parseInt(v[0], 10);
-    const yIdx = parseInt(v[1], 10);
-    const val = parseFloat(v[2] || 0);
-    if (!isNaN(yIdx)) {
-      if (xIdx === latestXIdx) {
-        volumeByY[yIdx] = val;
-      }
-      if (xIdx >= startXIdx && xIdx <= latestXIdx) {
-        if (!maxRecentVolumeByY[yIdx] || val > maxRecentVolumeByY[yIdx]) {
-          maxRecentVolumeByY[yIdx] = val;
-        }
-      }
+  // Find nearest visible pool on each side
+  let nearestAbove = null, nearestBelow = null;
+
+  visibleAbove.forEach(p => {
+    const distPercent = ((p.price - currentPrice) / currentPrice) * 100;
+    const absDist = Math.abs(distPercent);
+    if (absDist < 0.1 || absDist > settings.maxDist) return;
+    if (!nearestAbove || absDist < Math.abs(nearestAbove.distance)) {
+      nearestAbove = { price: p.price, distance: distPercent, volume: p.leverage };
     }
   });
 
-  // ─── Step 2: Determine volume threshold (top pools only) ──
-  const allVolumes = Object.values(volumeByY).filter(v => v > 0).sort((a, b) => b - a);
-  const volumeRatio = settings.minPoolVolumeRatio || 0.15;
-  const topCutoffIndex = Math.max(1, Math.floor(allVolumes.length * volumeRatio));
-  const minPoolVolume = allVolumes[topCutoffIndex - 1] || 0;
-
-  // ─── Step 3: Find nearest HIGH-volume pool on each side ───
-  let nearestAbove = null, nearestBelow = null;
-  
-  yAxisData.forEach((priceStr, idx) => {
-    const p = parseFloat(priceStr);
-    if (isNaN(p)) return;
-    
-    const volume = volumeByY[idx] || 0;
-    if (volume < minPoolVolume) return; // Only consider top pools
-    
-    const distPercent = ((p - currentPrice) / currentPrice) * 100;
+  visibleBelow.forEach(p => {
+    const distPercent = ((p.price - currentPrice) / currentPrice) * 100;
     const absDist = Math.abs(distPercent);
-    
-    if (absDist < 0.1 || absDist > settings.maxDist) return; // Too close or too far
-    
-    if (p > currentPrice) {
-      if (!nearestAbove || absDist < Math.abs(nearestAbove.distance)) {
-        nearestAbove = { price: p, yIdx: idx, distance: distPercent, volume };
-      }
-    } else {
-      if (!nearestBelow || absDist < Math.abs(nearestBelow.distance)) {
-        nearestBelow = { price: p, yIdx: idx, distance: distPercent, volume };
-      }
+    if (absDist < 0.1 || absDist > settings.maxDist) return;
+    if (!nearestBelow || absDist < Math.abs(nearestBelow.distance)) {
+      nearestBelow = { price: p.price, distance: distPercent, volume: p.leverage };
     }
   });
 
