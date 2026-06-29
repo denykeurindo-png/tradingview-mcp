@@ -15,6 +15,155 @@
       --bg-card-hover: #252930;
       --border-color: #2B3139;
     }
+    /* ─── Tab Navigation ───────────────────────────────── */
+    .page-tabs {
+      display: flex;
+      gap: 4px;
+      padding: 0 0 16px 0;
+    }
+    .page-tab-btn {
+      background: rgba(43,49,57,0.6);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      color: #848E9C;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      letter-spacing: 0.04em;
+      padding: 7px 16px;
+      transition: all 0.15s;
+    }
+    .page-tab-btn:hover { background: rgba(43,49,57,0.9); color: #EAECEF; }
+    .page-tab-btn.active { background: rgba(240,185,11,0.15); border-color: rgba(240,185,11,0.4); color: #F0B90B; }
+    .tab-content { display: none; }
+    .tab-content.active { display: block; }
+
+    /* ─── Strategy Review ──────────────────────────────── */
+    .strategy-review-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+      gap: 12px;
+      margin-bottom: 16px;
+    }
+    .review-card {
+      background: rgba(0,0,0,0.2);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 12px 14px;
+    }
+    .review-title {
+      font-size: 11px;
+      font-weight: 700;
+      color: #F0B90B;
+      letter-spacing: 0.06em;
+      text-transform: uppercase;
+      margin-bottom: 10px;
+    }
+    .review-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+    .review-table td { padding: 3px 0; color: #848E9C; }
+    .review-table td:last-child { text-align: right; }
+    .review-table tr:nth-child(even) td { color: #EAECEF; }
+
+    /* ─── Sweep History Table ──────────────────────────── */
+    .sweep-table-container { overflow-x: auto; max-height: 500px; overflow-y: auto; }
+    .sweep-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .sweep-table th {
+      background: rgba(0,0,0,0.3);
+      color: #848E9C;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      padding: 8px 10px;
+      position: sticky;
+      text-align: left;
+      top: 0;
+      text-transform: uppercase;
+    }
+    .sweep-table td { border-bottom: 1px solid rgba(43,49,57,0.5); padding: 7px 10px; vertical-align: middle; }
+    .sweep-table tbody tr:hover td { background: rgba(255,255,255,0.02); }
+
+    /* ─── Backtest Controls ────────────────────────────── */
+    .bt-controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 10px;
+      align-items: flex-end;
+      padding: 14px;
+      background: rgba(0,0,0,0.2);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      margin-bottom: 14px;
+    }
+    .bt-field label {
+      display: block;
+      font-size: 10px;
+      color: var(--text-muted);
+      text-transform: uppercase;
+      letter-spacing: .5px;
+      margin-bottom: 4px;
+    }
+    .bt-field input, .bt-field select {
+      background: rgba(0,0,0,0.4);
+      border: 1px solid var(--border-color);
+      border-radius: 6px;
+      color: #EAECEF;
+      font-size: 12px;
+      font-family: var(--font-mono);
+      padding: 5px 8px;
+      width: 90px;
+      outline: none;
+    }
+    .bt-field input:focus { border-color: var(--accent-primary); }
+    .bt-summary {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(110px, 1fr));
+      gap: 8px;
+      margin-bottom: 12px;
+    }
+    .bt-stat {
+      background: rgba(0,0,0,0.25);
+      border: 1px solid var(--border-color);
+      border-radius: 8px;
+      padding: 10px 12px;
+      text-align: center;
+    }
+    .bt-stat-label { display: block; font-size: 10px; color: #636366; text-transform: uppercase; letter-spacing: .5px; margin-bottom: 4px; }
+    .bt-stat-value { display: block; font-size: 15px; font-weight: 700; font-family: var(--font-mono); color: #EAECEF; }
+    .bt-progress {
+      display: none;
+      background: rgba(240,185,11,0.1);
+      border: 1px solid rgba(240,185,11,0.3);
+      border-radius: 6px;
+      color: #F0B90B;
+      font-size: 12px;
+      margin-bottom: 12px;
+      padding: 8px 12px;
+    }
+    .bt-result-container { overflow-x: auto; max-height: 550px; overflow-y: auto; }
+    .bt-result-table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px;
+    }
+    .bt-result-table th {
+      background: rgba(0,0,0,0.3);
+      color: #848E9C;
+      font-size: 10px;
+      font-weight: 700;
+      letter-spacing: 0.05em;
+      padding: 7px 8px;
+      position: sticky;
+      text-align: left;
+      text-transform: uppercase;
+      top: 0;
+    }
+    .bt-result-table td { border-bottom: 1px solid rgba(43,49,57,0.5); padding: 6px 8px; vertical-align: middle; }
+    .bt-result-table tbody tr:hover td { background: rgba(255,255,255,0.02); }
+
     .phase-badge-large {
       display: inline-block;
       padding: 5px 14px;
@@ -216,6 +365,16 @@
 
   <div class="app-container">
 
+    <!-- Page Tab Navigation -->
+    <div class="page-tabs">
+      <button class="page-tab-btn active" data-tab="journal" onclick="switchPageTab('journal')">Trade Journal</button>
+      <button class="page-tab-btn" data-tab="sweep-history" onclick="switchPageTab('sweep-history')">Sweep History</button>
+      <button class="page-tab-btn" data-tab="backtest" onclick="switchPageTab('backtest')">Backtest Simulator</button>
+    </div>
+
+    <!-- ═══ TAB: Trade Journal ═══════════════════════════════════════ -->
+    <div id="tab-journal" class="tab-content active">
+
     <!-- KPI Row -->
     <section class="kpi-row cols-4">
       <!-- Bot Phase -->
@@ -400,6 +559,183 @@
         </div>
       </div>
     </section>
+
+    </div><!-- /tab-journal -->
+
+    <!-- ═══ TAB: Sweep History ═══════════════════════════════════════ -->
+    <div id="tab-sweep-history" class="tab-content">
+      <!-- Strategy Review Cards -->
+      <section>
+        <div class="card">
+          <div class="backtest-header">
+            <h3>LSR Strategy Review &amp; Configuration</h3>
+            <button class="btn-action-sm" onclick="loadSweepHistory()">Refresh</button>
+          </div>
+          <div id="strategy-review-content">
+            <p style="color:var(--text-muted);font-size:12px;padding:10px 0;">Loading strategy config...</p>
+          </div>
+        </div>
+      </section>
+
+      <!-- Sweep Events Table -->
+      <section>
+        <div class="card">
+          <div class="backtest-header">
+            <h3>All Sweep Events (Last 200 entries)</h3>
+            <div style="display:flex;gap:8px;align-items:center;">
+              <span id="sweep-history-count" style="font-size:11px;color:var(--text-muted);">0 events</span>
+              <button class="btn-action-sm danger" onclick="clearSweepHistory()">Clear History</button>
+            </div>
+          </div>
+
+          <!-- Rejection breakdown mini-bar -->
+          <div id="sweep-rejection-bars" style="display:none;margin-bottom:14px;"></div>
+
+          <div class="sweep-table-container">
+            <table class="sweep-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Phase</th>
+                  <th>Side</th>
+                  <th>Pool $</th>
+                  <th>Dist</th>
+                  <th>Volume</th>
+                  <th>Prob / R:R</th>
+                  <th>Analysis / Skip Reason</th>
+                </tr>
+              </thead>
+              <tbody id="sweep-history-tbody">
+                <tr><td colspan="8" style="text-align:center;color:var(--text-muted);padding:30px;">Loading...</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div><!-- /tab-sweep-history -->
+
+    <!-- ═══ TAB: Backtest Simulator ══════════════════════════════════ -->
+    <div id="tab-backtest" class="tab-content">
+      <section>
+        <div class="card">
+          <div class="backtest-header">
+            <h3>LSR Strategy Backtest (BTC/USDT 15m · Binance)</h3>
+            <div style="display:flex;gap:8px;">
+              <button id="btn-import-all-backtest" class="btn btn-primary" style="display:none;" onclick="importAllBacktestTrades()">Import All Trades</button>
+              <button id="btn-run-backtest" class="btn btn-primary" onclick="runBacktest()">▶ Run Backtest</button>
+            </div>
+          </div>
+
+          <!-- Controls -->
+          <div class="bt-controls">
+            <div class="bt-field">
+              <label>Days</label>
+              <input type="number" id="bt-days" value="14" min="3" max="90" step="1">
+            </div>
+            <div class="bt-field">
+              <label>Capital ($)</label>
+              <input type="number" id="bt-capital" value="5000" min="100" step="100">
+            </div>
+            <div class="bt-field">
+              <label>Risk %</label>
+              <input type="number" id="bt-risk" value="1" min="0.1" max="10" step="0.1">
+            </div>
+            <div class="bt-field">
+              <label>Min R:R</label>
+              <input type="number" id="bt-minrr" value="1.2" min="0.5" max="5" step="0.1">
+            </div>
+            <div class="bt-field">
+              <label>Min Prob %</label>
+              <input type="number" id="bt-minprob" value="60" min="40" max="95" step="5">
+            </div>
+            <div class="bt-field">
+              <label>ATR Mult</label>
+              <input type="number" id="bt-atrmult" value="3" min="1" max="6" step="0.5">
+            </div>
+            <div class="bt-field">
+              <label>Min SL %</label>
+              <input type="number" id="bt-minsl" value="1.2" min="0.3" max="5" step="0.1">
+            </div>
+            <div class="bt-field">
+              <label>Level Lookback</label>
+              <input type="number" id="bt-lookback" value="10" min="5" max="30" step="1">
+            </div>
+          </div>
+
+          <!-- Progress -->
+          <div class="bt-progress" id="bt-progress">Waiting...</div>
+
+          <!-- Summary Stats -->
+          <div class="bt-summary">
+            <div class="bt-stat">
+              <span class="bt-stat-label">Sweeps Detected</span>
+              <span class="bt-stat-value" id="bt-stat-total">-</span>
+            </div>
+            <div class="bt-stat">
+              <span class="bt-stat-label">Traded</span>
+              <span class="bt-stat-value" id="bt-stat-traded">-</span>
+            </div>
+            <div class="bt-stat">
+              <span class="bt-stat-label">Skipped</span>
+              <span class="bt-stat-value" id="bt-stat-skipped">-</span>
+            </div>
+            <div class="bt-stat">
+              <span class="bt-stat-label">Win Rate</span>
+              <span class="bt-stat-value" id="bt-stat-winrate">-</span>
+            </div>
+            <div class="bt-stat">
+              <span class="bt-stat-label">Hit TP</span>
+              <span class="bt-stat-value" id="bt-stat-tp" style="color:#32D74B;">-</span>
+            </div>
+            <div class="bt-stat">
+              <span class="bt-stat-label">Hit SL</span>
+              <span class="bt-stat-value" id="bt-stat-sl" style="color:#FF453A;">-</span>
+            </div>
+            <div class="bt-stat">
+              <span class="bt-stat-label">Active</span>
+              <span class="bt-stat-value" id="bt-stat-active">-</span>
+            </div>
+            <div class="bt-stat">
+              <span class="bt-stat-label">Net PnL</span>
+              <span class="bt-stat-value" id="bt-stat-pnl">-</span>
+            </div>
+            <div class="bt-stat">
+              <span class="bt-stat-label">ROI</span>
+              <span class="bt-stat-value" id="bt-stat-roi">-</span>
+            </div>
+            <div class="bt-stat">
+              <span class="bt-stat-label">Max Drawdown</span>
+              <span class="bt-stat-value" id="bt-stat-drawdown">-</span>
+            </div>
+          </div>
+
+          <!-- Results Table -->
+          <div class="bt-result-container">
+            <table class="bt-result-table">
+              <thead>
+                <tr>
+                  <th>Time</th>
+                  <th>Dir</th>
+                  <th>Pool</th>
+                  <th>Entry</th>
+                  <th>TP</th>
+                  <th>SL</th>
+                  <th>R:R</th>
+                  <th>Prob</th>
+                  <th>Outcome / Skip Reason</th>
+                  <th>PnL</th>
+                  <th>Cumulative</th>
+                  <th>Action</th>
+                </tr>
+              </thead>
+              <tbody id="bt-result-tbody">
+                <tr><td colspan="12" style="text-align:center;color:var(--text-muted);padding:30px;">Click "Run Backtest" to simulate the LSR strategy against historical BTC data.</td></tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+      </section>
+    </div><!-- /tab-backtest -->
 
   </div>
 

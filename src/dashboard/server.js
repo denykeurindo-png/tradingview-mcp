@@ -2864,6 +2864,18 @@ app.get('/api/coinglass-summary', (req, res) => {
       
       const sortedBuys = [...buyOrders].sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0)).slice(0, 3);
       const sortedSells = [...sellOrders].sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0)).slice(0, 3);
+      
+      // Separate Spot (S) and Perpetual Futures (P)
+      const spotBuys = buyOrders.filter(o => o.marketType === 'S');
+      const spotSells = sellOrders.filter(o => o.marketType === 'S');
+      const futuresBuys = buyOrders.filter(o => o.marketType === 'P');
+      const futuresSells = sellOrders.filter(o => o.marketType === 'P');
+
+      const sortedSpotBuys = [...spotBuys].sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0)).slice(0, 3);
+      const sortedSpotSells = [...spotSells].sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0)).slice(0, 3);
+      const sortedFuturesBuys = [...futuresBuys].sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0)).slice(0, 3);
+      const sortedFuturesSells = [...futuresSells].sort((a, b) => (b.valueUsd || 0) - (a.valueUsd || 0)).slice(0, 3);
+
       const formatVal = (v) => `$${(v / 1e6).toFixed(2)}M`;
 
       const isBullish = totalBuyVal > totalSellVal;
@@ -2879,9 +2891,35 @@ app.get('/api/coinglass-summary', (req, res) => {
           price: o.price,
           valueUsd: o.valueUsd,
           valueUsdFormatted: formatVal(o.valueUsd),
-          exchange: o.exchange
+          exchange: o.exchange,
+          marketType: o.marketType
         })),
         top3Sell: sortedSells.map(o => ({
+          price: o.price,
+          valueUsd: o.valueUsd,
+          valueUsdFormatted: formatVal(o.valueUsd),
+          exchange: o.exchange,
+          marketType: o.marketType
+        })),
+        top3BuySpot: sortedSpotBuys.map(o => ({
+          price: o.price,
+          valueUsd: o.valueUsd,
+          valueUsdFormatted: formatVal(o.valueUsd),
+          exchange: o.exchange
+        })),
+        top3SellSpot: sortedSpotSells.map(o => ({
+          price: o.price,
+          valueUsd: o.valueUsd,
+          valueUsdFormatted: formatVal(o.valueUsd),
+          exchange: o.exchange
+        })),
+        top3BuyFutures: sortedFuturesBuys.map(o => ({
+          price: o.price,
+          valueUsd: o.valueUsd,
+          valueUsdFormatted: formatVal(o.valueUsd),
+          exchange: o.exchange
+        })),
+        top3SellFutures: sortedFuturesSells.map(o => ({
           price: o.price,
           valueUsd: o.valueUsd,
           valueUsdFormatted: formatVal(o.valueUsd),
@@ -5230,36 +5268,42 @@ let botPhaseState = {
   message: 'Bot starting up...'
 };
 
-function setBotPhaseState(newState) {
+function setBotPhaseState(newState, providedOldPhase) {
+  const oldPhase = providedOldPhase !== undefined ? providedOldPhase : (botPhaseState ? botPhaseState.phase : null);
   botPhaseState = newState;
   
-  if (newState && newState.phase && newState.phase !== 'STANDBY') {
-    const key = `${newState.phase}_${newState.nearestPool || ''}_${newState.message}`;
-    const now = Date.now();
+  if (newState && newState.phase) {
+    const isStandbyTransition = (newState.phase === 'STANDBY' && oldPhase && oldPhase !== 'STANDBY');
+    const shouldLog = (newState.phase !== 'STANDBY' || isStandbyTransition || sweepHistory.length === 0);
     
-    // Deduplicate: same phase and message within 2 minutes
-    if (key !== lastSweepHistoryKey || (now - lastSweepHistoryTime > 120000)) {
-      lastSweepHistoryKey = key;
-      lastSweepHistoryTime = now;
+    if (shouldLog) {
+      const key = `${newState.phase}_${newState.nearestPool || ''}_${newState.message}`;
+      const now = Date.now();
       
-      const entry = {
-        id: 'L' + now + Math.floor(Math.random() * 1000),
-        timestamp: now,
-        phase: newState.phase,
-        nearestPool: newState.nearestPool,
-        nearestPoolDistance: newState.nearestPoolDistance,
-        nearestPoolVolume: newState.nearestPoolVolume,
-        nearestPoolSide: newState.nearestPoolSide,
-        message: newState.message,
-        sweepCandidate: newState.sweepCandidate || null,
-        probabilityBreakdown: newState.probabilityBreakdown || null
-      };
-      
-      sweepHistory.unshift(entry);
-      if (sweepHistory.length > 200) {
-        sweepHistory.pop();
+      // Deduplicate: same phase and message within 2 minutes
+      if (key !== lastSweepHistoryKey || (now - lastSweepHistoryTime > 120000)) {
+        lastSweepHistoryKey = key;
+        lastSweepHistoryTime = now;
+        
+        const entry = {
+          id: 'L' + now + Math.floor(Math.random() * 1000),
+          timestamp: now,
+          phase: newState.phase,
+          nearestPool: newState.nearestPool,
+          nearestPoolDistance: newState.nearestPoolDistance,
+          nearestPoolVolume: newState.nearestPoolVolume,
+          nearestPoolSide: newState.nearestPoolSide,
+          message: newState.message,
+          sweepCandidate: newState.sweepCandidate || null,
+          probabilityBreakdown: newState.probabilityBreakdown || null
+        };
+        
+        sweepHistory.unshift(entry);
+        if (sweepHistory.length > 200) {
+          sweepHistory.pop();
+        }
+        saveSweepHistory(sweepHistory);
       }
-      saveSweepHistory(sweepHistory);
     }
   }
 }
@@ -5576,7 +5620,7 @@ function extractTopPoolsForServer(cache, currentPrice) {
   if (!heatmapSeries || !heatmapSeries.data) return { above: [], below: [] };
 
   const latestXIdx = data.xAxis.length - 1;
-  const startXIdx = Math.max(0, latestXIdx - 15);
+  const startXIdx = Math.max(0, latestXIdx - 40);
 
   heatmapSeries.data.forEach(item => {
     const v = Array.isArray(item) ? item : (item.value || []);
@@ -7092,6 +7136,7 @@ async function runBotCycle() {
         autoTradeStrategyBackend(result.data, klines15m);
         autoJdaTradeStrategyBackend(result.data, klines15m);
         const newPhase = botPhaseState?.phase;
+        setBotPhaseState(botPhaseState, oldPhase);
 
         // Push bot phase state and reversal probability to VPS
         pushToVps('/api/bot-phase/update', {
