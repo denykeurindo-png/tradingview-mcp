@@ -5221,6 +5221,10 @@ function autoJdaTradeStrategyBackend(heatmapData, klines15m) {
 // ─── Global Bot Phase State (for API reporting) ─────────────
 const SWEEP_HISTORY_FILE = path.join(__dirname, 'sweep_history.json');
 let sweepHistory = [];
+
+// ─── Pool Change Tracking (persists between bot cycles) ──────────────────────
+let lastTrackedPoolPrice = null;
+let lastTrackedPoolSide  = null;
 let lastSweepHistoryKey = null;
 let lastSweepHistoryTime = 0;
 
@@ -5765,6 +5769,61 @@ function autoTradeStrategyBackend(heatmapData) {
   }
 
   const poolSide = closestPool.distance > 0 ? 'RESISTANCE' : 'SUPPORT';
+
+  // ─── Pool Change Detection ──────────────────────────────────────────────────
+  if (lastTrackedPoolPrice !== null) {
+    const priceDiff    = Math.abs(closestPool.price - lastTrackedPoolPrice);
+    const priceDiffPct = (priceDiff / lastTrackedPoolPrice) * 100;
+
+    if (priceDiffPct > 0.2) { // >0.2% = meaningfully different pool
+      // Did any candle in the last 20 bars TOUCH the old pool?
+      const allRecentCandles = cs.data.slice(Math.max(0, cs.data.length - 20));
+      const oldPoolTouched = allRecentCandles.some(c => {
+        const lo = parseFloat(c[2]), hi = parseFloat(c[3]);
+        return lastTrackedPoolPrice >= lo && lastTrackedPoolPrice <= hi;
+      });
+
+      // Did price actually PASS the old pool level?
+      const pricePastOld =
+        (lastTrackedPoolSide === 'RESISTANCE' && currentPrice > lastTrackedPoolPrice) ||
+        (lastTrackedPoolSide === 'SUPPORT'    && currentPrice < lastTrackedPoolPrice);
+
+      // Is the new pool in the same cluster? (heatmap recalculation, small shift)
+      const sameCluster = priceDiffPct < 0.5 && poolSide === lastTrackedPoolSide;
+
+      let changeReason, changeDetail;
+      if (pricePastOld) {
+        changeReason = 'CONSUMED — price passed pool';
+        changeDetail = `Price $${currentPrice.toFixed(0)} melewati pool ${lastTrackedPoolSide} $${lastTrackedPoolPrice.toFixed(0)} tanpa sweep candle terdeteksi dalam window. Pool baru: ${poolSide} $${closestPool.price.toFixed(0)}.`;
+      } else if (oldPoolTouched) {
+        changeReason = 'CONSUMED — touched, no sweep';
+        changeDetail = `Pool ${lastTrackedPoolSide} $${lastTrackedPoolPrice.toFixed(0)} disentuh candle (20 bar terakhir) tapi tidak ada sweep yang valid (wick+close). Pool baru: ${poolSide} $${closestPool.price.toFixed(0)}.`;
+      } else if (sameCluster) {
+        changeReason = 'RECALCULATED — heatmap refresh';
+        const shift = (closestPool.price - lastTrackedPoolPrice).toFixed(0);
+        changeDetail = `Heatmap refresh → cluster ${lastTrackedPoolSide} bergeser ${shift >= 0 ? '+' : ''}$${shift}: $${lastTrackedPoolPrice.toFixed(0)} → $${closestPool.price.toFixed(0)}.`;
+      } else {
+        changeReason = 'REPLACED — new pool';
+        changeDetail = `Pool ${lastTrackedPoolSide} $${lastTrackedPoolPrice.toFixed(0)} keluar dari range. Pool baru berbeda cluster: ${poolSide} $${closestPool.price.toFixed(0)} (selisih $${priceDiff.toFixed(0)}).`;
+      }
+
+      setBotPhaseState({
+        phase: 'POOL_CHANGED',
+        nearestPool: closestPool.price,
+        nearestPoolDistance: closestPool.distance.toFixed(2) + '%',
+        nearestPoolVolume: closestPool.volume,
+        nearestPoolSide: poolSide,
+        sweepCandidate: null,
+        message: `[${changeReason}] ${changeDetail}`,
+        lastUpdate: new Date().toISOString()
+      }, botPhaseState?.phase);
+
+      console.log(`[LSR Bot] POOL_CHANGED (${changeReason}) — ${lastTrackedPoolSide} $${lastTrackedPoolPrice.toFixed(0)} → ${poolSide} $${closestPool.price.toFixed(0)}`);
+    }
+  }
+  // Update tracker for next cycle
+  lastTrackedPoolPrice = closestPool.price;
+  lastTrackedPoolSide  = poolSide;
 
   // Calculate preview probability using closest pool as proxy sweep candidate
   const previewSweep = {

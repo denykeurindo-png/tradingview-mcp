@@ -45,6 +45,7 @@ function renderSweepHistory() {
     TRADE_EXECUTED: '#0090FF', SWEEP_REJECTED: '#FF453A',
     CONFLICTING_SWEEP: '#FF6B6B', COOLDOWN: '#BF5AF2',
     MAX_ACTIVE: '#FFD60A', DISABLED: '#636366',
+    POOL_CHANGED: '#5AC8FA',
   };
 
   let html = '';
@@ -94,6 +95,13 @@ function renderSweepHistory() {
     } else if (entry.phase === 'ALERT') {
       skipColor = '#FF9F0A';
       skipReason = 'Price approaching pool — watching for sweep candle';
+    } else if (entry.phase === 'POOL_CHANGED') {
+      skipColor = '#5AC8FA';
+      if (msg.includes('CONSUMED — price passed'))       skipReason = '🔄 Pool consumed — harga melewati level tanpa sweep candle';
+      else if (msg.includes('CONSUMED — touched'))       skipReason = '🔄 Pool consumed — disentuh candle, sweep tidak memenuhi syarat';
+      else if (msg.includes('RECALCULATED'))             skipReason = '🔄 Pool recalculated — heatmap refresh geser level (cluster sama)';
+      else if (msg.includes('REPLACED'))                 skipReason = '🔄 Pool replaced — pool lama keluar range, pool baru aktif';
+      else                                               skipReason = '🔄 ' + msg.substring(0, 80);
     } else {
       skipReason = msg.substring(0, 80) + (msg.length > 80 ? '…' : '');
     }
