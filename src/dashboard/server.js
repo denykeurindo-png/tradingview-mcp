@@ -7138,13 +7138,14 @@ async function runBotCycle() {
         const newPhase = botPhaseState?.phase;
         setBotPhaseState(botPhaseState, oldPhase);
 
-        // Push bot phase state and reversal probability to VPS
+        // Push bot phase state, metrics, and sweep history to VPS
         pushToVps('/api/bot-phase/update', {
           botPhaseState,
           botMetrics: {
             reversalProbability: botMetrics.reversalProbability,
             probabilityBreakdown: botMetrics.probabilityBreakdown
-          }
+          },
+          sweepHistory
         }).catch(err => console.error('[VPS Push] Failed to push bot phase:', err.message));
 
         if (lastTelegramPhase === null) {
