@@ -1926,46 +1926,52 @@ async function updateSweepHistory() {
         probStr = `${prob.toFixed(2)}%`;
       }
 
-      // Nearest Pool Price
+      // Nearest Pool Price — formatted with side color
       let priceStr = '--';
+      let priceColor = '#848E9C';
       if (item.nearestPool) {
         const price = parseFloat(item.nearestPool);
-        priceStr = isNaN(price) ? String(item.nearestPool) : formatUSD(price);
+        if (!isNaN(price)) {
+          priceStr = '$' + price.toLocaleString(undefined, { minimumFractionDigits: 0, maximumFractionDigits: 0 });
+          priceColor = item.nearestPoolSide === 'RESISTANCE' ? '#F6465D' : '#0ECB81';
+        }
       }
 
-      // Trigger level or status
-      let triggerStr = item.phase || 'SCANNING';
-      let triggerClass = 'status-badge';
-      let styleText = '';
-      if (triggerStr === 'ENTRY_PENDING') {
-        styleText = 'background: rgba(240, 185, 11, 0.15); color: #F0B90B; border-color: rgba(240, 185, 11, 0.3);';
-      } else if (triggerStr === 'IN_POSITION') {
-        styleText = 'background: rgba(14, 203, 129, 0.15); color: #0ECB81; border-color: rgba(14, 203, 129, 0.3);';
-      } else if (triggerStr === 'SWEEP_REJECTED') {
-        styleText = 'background: rgba(255, 69, 58, 0.15); color: #FF453A; border-color: rgba(255, 69, 58, 0.3);';
-      } else if (triggerStr === 'STANDBY') {
-        styleText = 'background: rgba(255, 255, 255, 0.05); color: var(--text-muted); border-color: rgba(255, 255, 255, 0.1);';
-      } else {
-        styleText = 'background: rgba(0, 229, 255, 0.15); color: #00E5FF; border-color: rgba(0, 229, 255, 0.3);';
-      }
+      // Phase badge
+      const phaseColors = {
+        'STANDBY':          'background:rgba(132,142,156,.15);color:#848E9C;',
+        'ALERT':            'background:rgba(255,159,10,.18);color:#FF9F0A;',
+        'SWEEP_DETECTED':   'background:rgba(14,203,129,.18);color:#0ECB81;',
+        'TRADE_EXECUTED':   'background:rgba(0,144,255,.18);color:#0090FF;',
+        'SWEEP_REJECTED':   'background:rgba(246,70,93,.18);color:#F6465D;',
+        'CONFLICTING_SWEEP':'background:rgba(255,107,107,.15);color:#FF6B6B;',
+        'COOLDOWN':         'background:rgba(191,90,242,.18);color:#BF5AF2;',
+        'MAX_ACTIVE':       'background:rgba(255,214,10,.15);color:#FFD60A;',
+        'POOL_CHANGED':     'background:rgba(90,200,250,.15);color:#5AC8FA;',
+        'DISABLED':         'background:rgba(99,99,102,.12);color:#636366;',
+      };
+      const triggerStr   = item.phase || 'SCANNING';
+      const triggerStyle = phaseColors[triggerStr] || 'background:rgba(0,229,255,.15);color:#00E5FF;';
 
-      // Highlight ignored reasons
-      let messageHtml = item.message;
-      if (messageHtml.includes('Ignored') || messageHtml.includes('blocked') || messageHtml.includes('REJECTED')) {
-        messageHtml = `<span style="color: #ff9f0a;">${messageHtml}</span>`;
+      // Message — highlight skip/reject reasons
+      let messageHtml = item.message || '';
+      if (messageHtml.includes('blocked') || messageHtml.includes('REJECTED') || messageHtml.includes('Skipping')) {
+        messageHtml = `<span style="color:#FF9F0A;">${messageHtml}</span>`;
+      } else if (messageHtml.includes('CONSUMED') || messageHtml.includes('RECALCULATED') || messageHtml.includes('REPLACED')) {
+        messageHtml = `<span style="color:#5AC8FA;">${messageHtml}</span>`;
       }
 
       html += `
         <tr>
-          <td style="white-space: nowrap;">${dateStr}</td>
-          <td><span style="font-weight: 600; color: #fff;">${symbol}</span></td>
-          <td><span class="${dirClass}" style="font-weight: 700;">${direction}</span></td>
-          <td><span style="color: #00d2ff; font-weight: 600;">${volStr}</span></td>
-          <td><span style="color: #fff;">${priceStr}</span></td>
-          <td>${distStr}</td>
-          <td style="font-weight: 700; color: ${prob >= 60 ? 'var(--accent-success)' : 'var(--text-muted)'}">${probStr}</td>
-          <td><span class="${triggerClass}" style="${styleText}">${triggerStr}</span></td>
-          <td style="font-family: inherit; font-size: 11.5px; text-align: left; max-width: 450px; overflow: hidden; text-overflow: ellipsis; white-space: normal;" title="${item.message}">${messageHtml}</td>
+          <td style="white-space:nowrap;color:#636366;font-size:11px;">${dateStr}</td>
+          <td style="font-weight:600;color:#848E9C;font-size:11px;">${symbol}</td>
+          <td><span class="${dirClass}" style="font-weight:700;">${direction}</span></td>
+          <td style="color:#00d2ff;font-weight:600;font-family:var(--font-mono);">${volStr}</td>
+          <td style="color:${priceColor};font-weight:700;font-family:var(--font-mono);font-size:13px;">${priceStr}</td>
+          <td style="color:#F0B90B;font-family:var(--font-mono);">${distStr}</td>
+          <td style="font-weight:700;color:${prob !== null && prob >= 65 ? '#0ECB81' : prob !== null && prob >= 50 ? '#F0B90B' : '#848E9C'};">${probStr}</td>
+          <td><span style="display:inline-block;padding:2px 8px;border-radius:10px;font-size:10px;font-weight:700;${triggerStyle}">${triggerStr.replace(/_/g,' ')}</span></td>
+          <td style="font-size:11px;max-width:400px;white-space:normal;line-height:1.4;" title="${(item.message||'').replace(/"/g,"'")}">${messageHtml}</td>
         </tr>
       `;
     });
