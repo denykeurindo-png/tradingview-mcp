@@ -375,10 +375,24 @@
     </div>
 
 
-    <!-- ══ SWEEP EVENT LOG (collapsible) ════════════════════════════════ -->
-    <div class="wcard">
-      <div class="wcard-title" style="cursor:pointer;user-select:none;" onclick="toggleSweepLog()">
-        <span>🔥 Liquidation Sweep &amp; Reversal Event Log</span>
+    <!-- ══ HEATMAP + SWEEP LOG ROW ═══════════════════════════════════════ -->
+    <div style="display:grid;grid-template-columns:360px 1fr;gap:10px;margin-bottom:10px;">
+
+      <!-- LEFT: 24H Liquidity Sweep Map -->
+      <div class="wcard" style="padding:10px 8px 8px;">
+        <div class="wcard-title">
+          <span>24H Liquidity Sweep Map</span>
+          <button onclick="triggerManualRefresh(this)" style="background:none;border:none;color:#636366;cursor:pointer;display:flex;align-items:center;padding:2px;" title="Refresh">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="refresh-icon"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+          </button>
+        </div>
+        <div id="chart-mini-heatmap-24h" style="width:100%;height:340px;"></div>
+      </div>
+
+      <!-- RIGHT: Sweep Event Log -->
+      <div class="wcard">
+        <div class="wcard-title" style="cursor:pointer;user-select:none;" onclick="toggleSweepLog()">
+          <span>🔥 Liquidation Sweep &amp; Reversal Event Log</span>
         <div style="display:flex;align-items:center;gap:10px;">
           <button id="btn-clear-sweep-history" class="btn-action-sm danger"
             style="font-size:10px;padding:3px 10px;"
@@ -410,13 +424,14 @@
           </tbody>
         </table>
       </div>
-    </div>
+      </div><!-- /sweep log wcard -->
+
+    </div><!-- /heatmap + sweep log grid -->
 
   </div><!-- /app-container -->
 
   <!-- ══ HIDDEN STUBS — required by cockpit.js to avoid null errors ══════ -->
   <div style="display:none;">
-    <div id="chart-mini-heatmap-24h"></div>
     <div id="chart-mini-heatmap-3d"></div>
     <div id="depth-bar-bid"></div>
     <div id="depth-bar-ask"></div>
