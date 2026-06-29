@@ -256,25 +256,76 @@ Reusable workflows in `skills/`:
 - Maintain a `24px` spacing/gap between the sidebar menu and content cards in `style.css`.
 - Ensure no duplicate items exist in the sidebar navigation menu.
 
-### Market Direction Bias Widget (Cockpit Page)
-- **Position**: Located directly below the **LSR Bot Status & Orderbook** widget card in Column 1 of `cockpit.html`.
-- **Trigger**: Automatically recalculated and re-rendered via `updateMarketBiasConclusion()` whenever underlying data changes from:
-  - `updateJdaMtfStatus()` (/api/jda-signal)
-  - `fetchOrderbookRatio()` (/api/orderbook-data)
-  - `renderActivePosition()` (/api/trades)
-- **Scoring Logic**: Computes a combined score from `-100` to `+100` using:
-  1. **JDA MTF Strategy Bias (30%)**: `BULLISH` = `+30`, `BEARISH` = `-30`, other = `0`.
-  2. **Whale Flow 15M (25%)**: `ACCUMULATION` or NetFlow > 0 = `+25`, `DISTRIBUTION` or NetFlow < 0 = `-25`, other = `0`.
-  3. **Orderbook 1% Depth Ratio (20%)**: Clamped value of `(Bid % - 50) * 2` (ranges from `-20` to `+20`).
-  4. **LSR Reversal Probability & Pool / Active Position (25%)**:
-     - Active trade: `LONG` = `+25`, `SHORT` = `-25`.
-     - No trade (scanning): Support pool approaching = `+(reversalProbability / 100) * 25`; Resistance pool = `-(reversalProbability / 100) * 25`.
-- **Conversion Formula**:
-  - `LONG % = 50 + (TotalScore / 2)`
-  - `SHORT % = 100 - LONG %`
-- **UI Elements**: Uses a dual-color progress bar (green/red) and details table in Indonesian.
+### cockpit.html — LSR Strategy Flow Cockpit (redesigned)
+Full-page visual representation of the LSR strategy pipeline. Layout top → bottom:
+
+1. **Hero Row** — BTC price (large) · Phase badge (color-coded) · Reversal Prob · Nearest Pool · Distance · System lights (CDP/WS/Fut/TG)
+2. **5-Stage Pipeline** — visual flow with arrows, active stage glows:
+   - Stage 1: Pool Detection (nearest pool price, distance, volume)
+   - Stage 2: Price Alert (< 0.5% threshold)
+   - Stage 3: Sweep Detection (wick candle + close reversal, 3-candle window)
+   - Stage 4: Filter Gates (R:R ≥ 1.2 · Prob ≥ 65% · CB Premium · HTF Trend) — live ✅/❌
+   - Stage 5: Trade Active (entry/TP/SL/RR, cooldown, max active)
+3. **Bot Message Bar** — current bot message + auto-trade toggle
+4. **Heatmap Row** — 24H Liquidity Sweep Map | 3D Liquidity Sweep Map (side by side, 1fr/1fr)
+5. **Sweep Event Log** — full-width collapsible table (9 columns: Time · Symbol · Side · Volume · **Pool Price** · Dist · Prob% · Phase · Decision)
+
+Pipeline stage CSS classes: `active` (gold glow + pulse) · `pass` (green) · `reject` (red) · `cooldown` (purple) · default (dimmed).
+
+Pipeline is updated every 15s by inline `pollPipeline()` function fetching `/api/bot-status`.
+
+### LSR Strategy Parameters (current)
+Stored in `src/dashboard/settings.json` (gitignored — deploy via `node scripts/deploy_settings.js`):
+- `minReversalProbability`: **65%** (was 70%)
+- `sweepConfirmCandles`: **3** (was 5 — now 45-min lookback window)
+- `minCoinbasePremiumForLongs`: **-0.15%** (was -0.05%)
+- `maxCoinbasePremiumForShorts`: 0.05%
+- CB Premium scoring penalty: capped at **-10** (was -20) to prevent single factor dominating
+
+### LSR Probability Scoring (100-point system)
+11 factors in `calculateReversalProbability()` in `server.js`:
+1. Base: 40 pts
+2. Pool Volume (0–15): `vol / 1e6 * 0.75`
+3. Rejection Strength (0–15): wick close-back ratio
+4. OI Change 15m (±10): OI drop during LONG sweep = squeeze = +10
+5. Spot CVD 15m (±10): spot buying during LONG = +10
+6. HTF Trend 1h/4h (0–10): EMA50 alignment, 5pts each
+7. CB Premium / Funding Rate (±5 or +15): capped at -10 max penalty
+8. Coinbase Premium Index (±10 or +15): direction confirmation
+9. Depth Delta 1% (±15): orderbook bid/ask imbalance
+10. Whale Wall (0–5): nearby large order
+11. Liquidations (0–10): recent forced liq volume
+
+### Sweep History Logging (`sweep_history.json`)
+- Stored at `src/dashboard/sweep_history.json`, max 200 entries, newest first
+- **Fix (2026-06-29)**: `setBotPhaseState(botPhaseState, oldPhase)` now called after `autoTradeStrategyBackend()` to ensure all phase transitions are logged
+- Synced to VPS via `sweepHistory` field in `/api/bot-phase/update` push payload
+- Phase types logged: `STANDBY · ALERT · SWEEP_DETECTED · SWEEP_REJECTED · TRADE_EXECUTED · COOLDOWN · MAX_ACTIVE · CONFLICTING_SWEEP · POOL_CHANGED · DISABLED`
+
+### POOL_CHANGED Event (new)
+Logged when `closestPool` changes by >0.2% between bot cycles. Four reason categories:
+- **CONSUMED — price passed pool**: price crossed pool level, no sweep candle in window
+- **CONSUMED — touched, no sweep**: pool within candle range but wick+close condition not met
+- **RECALCULATED — heatmap refresh**: same cluster, level shifted <0.5% due to CoinGlass data update
+- **REPLACED — new pool**: clearly different pool, old one left distance range (>0.2% shift)
+
+Tracked via module-level `lastTrackedPoolPrice` / `lastTrackedPoolSide` in `server.js`.
+
+### trades.html — Live Trade Journal (updated)
+Now has 3 tabs:
+- **Trade Journal** — live trade table with manual add + cut
+- **Sweep History** — strategy review cards + rejection breakdown bars + event log table
+- **Backtest Simulator** — fetch Binance 15m candles, simulate LSR on swing levels, import results to journal
+
+### Deploy Settings to VPS
+`settings.json` is gitignored (contains credentials). Use:
+```bash
+node scripts/deploy_settings.js   # SFTP upload + pm2 restart
+```
+Script reads SSH credentials from `scripts/deploy_ssh.js` automatically.
 
 ### Git Repositories Synchronization
 - Running workspace: `C:\Gemini\TvMonitor`
 - Git backup repository: `C:\Gemini\TVMONITOR_GIT`
 - When modifying dashboard assets (`src/dashboard/public/*.html|js|css`), ensure changes are mirrored to both paths to prevent repository divergence.
+- `settings.json` and `sweep_history.json` are gitignored — deploy separately via `deploy_settings.js`.
