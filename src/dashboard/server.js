@@ -4510,7 +4510,7 @@ function calculateReversalProbability(sweepDetail, oiChange15m, spotCvd15m, tren
   // 7. Long/Short Ratio (Up to 10 points) - Deprecated in strategy calculation (set to 0 for backwards compatibility)
   let lsRatioPoints = 0;
 
-  // 8. Coinbase Premium Index (Reactivated for Directional Filtering)
+  // 8. Coinbase Premium Index — cap penalty at -10 to avoid over-dominance
   let coinbasePremiumPoints = 0;
   const cbPremium = getLatestCoinbasePremium();
   if (cbPremium !== null) {
@@ -4518,17 +4518,17 @@ function calculateReversalProbability(sweepDetail, oiChange15m, spotCvd15m, tren
       if (cbPremium > 0.01) {
         coinbasePremiumPoints = 15;
       } else if (cbPremium < -0.05) {
-        coinbasePremiumPoints = -20;
-      } else if (cbPremium < -0.01) {
         coinbasePremiumPoints = -10;
+      } else if (cbPremium < -0.01) {
+        coinbasePremiumPoints = -5;
       }
     } else if (sweepDetail.direction === 'SHORT') {
       if (cbPremium < -0.01) {
         coinbasePremiumPoints = 15;
       } else if (cbPremium > 0.05) {
-        coinbasePremiumPoints = -20;
-      } else if (cbPremium > 0.01) {
         coinbasePremiumPoints = -10;
+      } else if (cbPremium > 0.01) {
+        coinbasePremiumPoints = -5;
       }
     }
   }
