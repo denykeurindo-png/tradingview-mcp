@@ -5711,7 +5711,9 @@ function extractTopPoolsForServer(cache, currentPrice) {
   const cs = data.series.find(s => s.type === 'candlestick');
   let recentCandles = [];
   if (cs && cs.data) {
-    recentCandles = cs.data.slice(-40);
+    // Exclude the still-forming last candle (see autoTradeStrategyBackend) so the "LIQ"
+    // classification doesn't flip on before the bar's true close is known.
+    recentCandles = cs.data.slice(0, -1).slice(-40);
   }
 
   // A level is only "liquidated" (already swept) if a recent candle did a REAL
@@ -5824,10 +5826,17 @@ function autoTradeStrategyBackend(heatmapData) {
   const nearestBelow = findNearestQualifyingPool(pools24h.below, pools3d.below);
 
   // ─── Step 4: Phase Detection ──────────────────────────────
+  // heatmapDataCache is re-scraped live from CoinGlass's own chart every ~30s (runBotCycle),
+  // so cs.data's last candle is almost always still forming, not closed. Confirming a sweep
+  // against it lets the bot enter on a wick that hasn't finished playing out yet — the position
+  // can then get stopped by further intra-candle movement that the eventual close would have
+  // reversed. Sweep confirmation (and its SL basis, sweepLow/sweepHigh) only ever looks at
+  // candles up to (but excluding) that live bar; currentPrice above still tracks it live.
+  const closedCandles = cs.data.slice(0, -1);
   const sweepConfirmCandles = settings.sweepConfirmCandles || 3;
-  const recentCandles = cs.data.slice(Math.max(0, cs.data.length - sweepConfirmCandles));
+  const recentCandles = closedCandles.slice(Math.max(0, closedCandles.length - sweepConfirmCandles));
   // Historical candles for "already swept" check (older candles, NOT the recent sweep window)
-  const olderCandles = cs.data.slice(Math.max(0, cs.data.length - 15), Math.max(0, cs.data.length - sweepConfirmCandles));
+  const olderCandles = closedCandles.slice(Math.max(0, closedCandles.length - 15), Math.max(0, closedCandles.length - sweepConfirmCandles));
   
   // Determine closest pool overall. Hysteresis: once locked onto a side (SUPPORT/RESISTANCE),
   // keep tracking it unless the other side becomes meaningfully closer (>20%) — otherwise price
