@@ -267,19 +267,32 @@ body {
   }
 }
 
-/* Two-column sentiment/flow grid (raw-data.html) -- collapses to a single
-   stacked column on narrow viewports instead of squeezing both columns. */
+/* Two-column sentiment/flow grid (raw-data.html) -- mirrors .kpi-row's 3-column
+   track sizing (same gap) so column edges line up with the KPI cards above.
+   Left stack spans 1 track, JDA MTF panel spans the remaining 2. */
 .sentiment-flow-grid {
   display: grid;
-  grid-template-columns: minmax(320px, 480px) 1fr;
-  gap: var(--spacing-md);
+  grid-template-columns: repeat(3, 1fr);
+  gap: var(--spacing-sm);
   align-items: stretch;
   margin-bottom: var(--spacing-md);
+}
+
+.sentiment-flow-grid > :first-child {
+  grid-column: span 1;
+}
+
+.sentiment-flow-grid > :last-child {
+  grid-column: span 2;
 }
 
 @media (max-width: 900px) {
   .sentiment-flow-grid {
     grid-template-columns: 1fr;
+  }
+  .sentiment-flow-grid > :first-child,
+  .sentiment-flow-grid > :last-child {
+    grid-column: span 1;
   }
 }
 
