@@ -7523,6 +7523,46 @@ async function runBotCycle() {
   }
 }
 
+// Alerts once when a table goes stale, then again once it recovers -- not on
+// every check -- so an ongoing outage doesn't spam Telegram every 3 minutes.
+let dbHealthAlertActive = { pool_snapshots: false, candles: false };
+
+function checkDatabaseHealth() {
+  if (!sweepEventsDb) return;
+  try {
+    const now = Date.now();
+    const checks = [
+      { name: 'pool_snapshots', label: 'Pool Snapshots', maxAgeMs: 3 * 60 * 1000,
+        getLastTs: () => sweepEventsDb.prepare('SELECT MAX(timestamp) mx FROM pool_snapshots').get().mx },
+      { name: 'candles', label: 'Candles (OHLC)', maxAgeMs: 30 * 60 * 1000,
+        getLastTs: () => sweepEventsDb.prepare('SELECT MAX(open_time) mx FROM candles').get().mx }
+    ];
+
+    checks.forEach(check => {
+      const lastTs = check.getLastTs();
+      const ageMs = lastTs ? now - lastTs : Infinity;
+      const isStale = ageMs > check.maxAgeMs;
+
+      if (isStale && !dbHealthAlertActive[check.name]) {
+        dbHealthAlertActive[check.name] = true;
+        const ageMin = lastTs ? Math.round(ageMs / 60000) : null;
+        console.error(`[DB Health] ${check.label} STALE (${ageMin ?? 'never received data'} min)`);
+        sendTelegramAlert(
+          `⚠️ <b>Database Health Alert</b>\n` +
+          `Tabel <b>${check.label}</b> ${lastTs ? `tidak menerima data baru selama <b>${ageMin} menit</b>` : 'belum pernah menerima data sama sekali'}.\n` +
+          `Kemungkinan Chrome/CDP mati, scraper gagal, atau bot cycle berhenti.`
+        );
+      } else if (!isStale && dbHealthAlertActive[check.name]) {
+        dbHealthAlertActive[check.name] = false;
+        console.log(`[DB Health] ${check.label} recovered`);
+        sendTelegramAlert(`✅ <b>Database Health Recovered</b>\nTabel <b>${check.label}</b> sudah menerima data lagi.`);
+      }
+    });
+  } catch (e) {
+    console.error('[DB Health] Check failed:', e.message);
+  }
+}
+
 async function startBackgroundBot() {
   const settings = loadSettings();
   const isScraperEnabled = !settings.disableScraper && process.env.DISABLE_SCRAPER !== 'true';
@@ -7532,7 +7572,7 @@ async function startBackgroundBot() {
   } else {
     console.log('Background bot cycle scheduler started (Query/REST-only mode). Running every 30 seconds.');
   }
-  
+
   // Run once immediately on startup
   setTimeout(async () => {
     await runBotCycle();
@@ -7541,6 +7581,13 @@ async function startBackgroundBot() {
   setInterval(async () => {
     await runBotCycle();
   }, 30000); // 30 seconds
+
+  // Only the scraping instance actually writes pool_snapshots/candles -- on VPS
+  // (view-only mode) these tables never populate at all, so the health check
+  // would false-positive there.
+  if (isScraperEnabled) {
+    setInterval(checkDatabaseHealth, 3 * 60 * 1000); // every 3 minutes
+  }
 }
 
 app.listen(PORT, () => {
