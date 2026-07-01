@@ -91,27 +91,6 @@
       border-color: var(--accent-primary);
     }
 
-    /* Modern Sentiment and Bot Phase Badges */
-    .phase-badge {
-      display: inline-block;
-      padding: 4px 10px;
-      border-radius: 4px;
-      font-size: 11px;
-      font-weight: 700;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-    }
-    .phase-STANDBY    { background: rgba(132,142,156,0.15); color: #848E9C; }
-    .phase-ALERT      { background: rgba(240,185,11,0.2);   color: #F0B90B; }
-    .phase-SWEEP_DETECTED { background: rgba(14,203,129,0.2); color: #0ECB81; }
-    .phase-TRADE_EXECUTED { background: rgba(0,229,255,0.25); color: #00E5FF; }
-    .phase-COOLDOWN   { background: rgba(191,90,242,0.2);   color: #BF5AF2; }
-    .phase-SWEEP_REJECTED { background: rgba(246,70,93,0.15); color: #F6465D; }
-    .phase-CONFLICTING_SWEEP { background: rgba(246,70,93,0.1); color: #F6465D; }
-    .phase-MAX_ACTIVE { background: rgba(255,214,10,0.15);  color: #FFD60A; }
-    .phase-DISABLED   { background: rgba(132,142,156,0.1);  color: #636366; }
-    .phase-default    { background: rgba(132,142,156,0.1);  color: #636366; }
-
     .signal-pill {
       display: inline-block;
       padding: 4px 10px;
@@ -127,52 +106,6 @@
     .sig-BULLISH      { background: rgba(14,203,129,0.2); color: #0ECB81; }
     .sig-BEARISH      { background: rgba(246,70,93,0.15); color: #F6465D; }
     .sig-MIXED        { background: rgba(240,185,11,0.2);   color: #F0B90B; }
-
-    .metrics-panel-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 15px;
-      margin-top: 15px;
-      margin-bottom: 15px;
-    }
-    @media (max-width: 1024px) {
-      .metrics-panel-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
-    }
-    @media (max-width: 480px) {
-      .metrics-panel-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-    
-    .breakdown-grid {
-      display: grid;
-      grid-template-columns: repeat(4, 1fr);
-      gap: 12px;
-    }
-    @media (max-width: 1024px) {
-      .breakdown-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
-    }
-    @media (max-width: 480px) {
-      .breakdown-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-    
-    .wick-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 15px;
-      font-size: 11px;
-    }
-    @media (max-width: 480px) {
-      .wick-grid {
-        grid-template-columns: 1fr;
-      }
-    }
 
     .whale-grid {
       display: grid;
@@ -638,71 +571,6 @@
       </div>
     </section>
 
-    <!-- ── LSR Bot Status Card ─────────────────────────── -->
-    <section style="margin-bottom: var(--spacing-md);">
-      <div class="card">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
-          <div>
-            <h3 style="font-size:16px; font-weight:700; color:var(--accent-primary);">🎯 LSR Bot Status</h3>
-            <span style="font-size:11px; color:var(--text-muted);">Liquidity Sweep Reversal — Real-time Phase</span>
-          </div>
-          <div id="bot-phase-badge" class="phase-badge phase-default">INITIALIZING</div>
-        </div>
-
-        <div class="metrics-panel-grid">
-          <div class="metric-panel-item">
-            <div class="metric-panel-label">Nearest Pool</div>
-            <div id="bot-nearest-pool" class="metric-panel-value">--</div>
-            <div id="bot-pool-side" style="font-size:10px; font-weight:600; margin-top:2px; color:var(--text-muted);">--</div>
-          </div>
-          <div class="metric-panel-item">
-            <div class="metric-panel-label">Distance</div>
-            <div id="bot-pool-dist" class="metric-panel-value" style="color: #F0B90B;">--</div>
-          </div>
-          <div class="metric-panel-item">
-            <div class="metric-panel-label">Reversal Prob</div>
-            <div id="bot-reversal-prob" class="metric-panel-value">--</div>
-          </div>
-          <div class="metric-panel-item">
-            <div class="metric-panel-label">Sweep R:R</div>
-            <div id="bot-sweep-rr" class="metric-panel-value">--</div>
-          </div>
-        </div>
-
-        <!-- Reversal Probability Score Breakdown -->
-        <div style="margin-top: 15px; margin-bottom: 15px; border-top: 1px dashed var(--border-color); padding-top: 15px;">
-          <div style="font-size: 11px; font-weight: 700; color: var(--accent-primary); margin-bottom: 10px; text-transform: uppercase; letter-spacing: .5px;">📊 Reversal Probability Breakdown (100-Point Model)</div>
-          <div class="breakdown-grid" id="prob-breakdown-container">
-            <div style="font-size: 11px; color: var(--text-muted);">Loading breakdown...</div>
-          </div>
-        </div>
-
-        <!-- Wick Rejection & Sweep Details (only visible when sweepCandidate is active) -->
-        <div id="wick-details-panel" style="display: none; margin-bottom: 15px; background: rgba(14, 203, 129, 0.04); border: 1px solid rgba(14, 203, 129, 0.15); border-radius: 6px; padding: 12px 14px;">
-          <div style="font-size: 11px; font-weight: 700; color: #0ECB81; margin-bottom: 8px; text-transform: uppercase; letter-spacing: .5px;">⚡ Active Sweep Candle Details</div>
-          <div class="wick-grid">
-            <div>
-              <span style="color: var(--text-muted);">Rejection Strength</span>
-              <div id="wick-rej-val" style="font-family: var(--font-mono); font-weight: 700; color: #0ECB81; margin-top: 2px;">--</div>
-            </div>
-            <div>
-              <span style="color: var(--text-muted);">Wick Depth</span>
-              <div id="wick-depth-val" style="font-family: var(--font-mono); font-weight: 700; color: #0ECB81; margin-top: 2px;">--</div>
-            </div>
-            <div>
-              <span style="color: var(--text-muted);">Confirm Candles</span>
-              <div id="wick-confirm-val" style="font-family: var(--font-mono); font-weight: 700; color: #fff; margin-top: 2px;">--</div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Msg Block -->
-        <div style="background: rgba(0, 0, 0, 0.3); border-left: 3px solid var(--border-color); padding: 10px 14px; font-family: var(--font-mono); font-size: 12px; color: var(--text-main); border-radius: 4px;">
-          <span style="color: var(--text-muted); font-weight: 600;">MSG ›</span> <span id="bot-status-msg">Waiting for data...</span>
-        </div>
-      </div>
-    </section>
-
     <!-- ── Two Column Sentiment & Flow Grid ─────────────────────────── -->
     <section class="raw-grid" style="margin-bottom: var(--spacing-md);">
       
@@ -881,120 +749,6 @@
           </div>
         </div>
 
-      </div>
-    </section>
-
-    <!-- Trade Form + Log -->
-    <section style="margin-top: 16px;">
-      <div class="card">
-        <div class="backtest-header">
-          <h3>Live Trade Journal</h3>
-          <button id="btn-clear-backtest-log" class="btn-action-sm danger">Clear All</button>
-        </div>
-
-        <!-- Manual Add Trade Form -->
-        <div class="trade-add-form">
-          <div class="trade-add-row">
-            <div class="form-group-inline">
-              <label>Direction</label>
-              <div class="direction-toggle-sm">
-                <button type="button" id="btn-toggle-long" class="toggle-btn-sm long active">LONG</button>
-                <button type="button" id="btn-toggle-short" class="toggle-btn-sm short">SHORT</button>
-              </div>
-            </div>
-            <div class="form-group-inline">
-              <label>TF</label>
-              <select id="input-tf-select" style="background:#2B3139; color:#fff; border:1px solid var(--border-color); border-radius:4px; padding:4px 8px; font-size:12px; height:28px; outline:none; cursor:pointer; min-width: 60px;">
-                <option value="15m">15m</option>
-                <option value="1H">1H</option>
-                <option value="4H">4H</option>
-                <option value="1D">1D</option>
-                <option value="1W">1W</option>
-              </select>
-            </div>
-            <div class="form-group-inline">
-              <label>Entry ($)</label>
-              <input type="number" id="input-entry" placeholder="Entry..." step="0.01">
-            </div>
-            <div class="form-group-inline">
-              <label>TP ($)</label>
-              <input type="number" id="input-tp" placeholder="Take Profit..." step="0.01">
-            </div>
-            <div class="form-group-inline">
-              <label>SL ($)</label>
-              <input type="number" id="input-sl" placeholder="Stop Loss..." step="0.01">
-            </div>
-            <div class="form-group-inline">
-              <label>Capital ($)</label>
-              <input type="number" id="input-capital-form" value="1000" min="1" step="100">
-            </div>
-            <div class="form-group-inline">
-              <label>Risk %</label>
-              <input type="number" id="input-risk-form" value="1.0" min="0.1" max="100" step="0.1">
-            </div>
-            <button type="button" id="btn-add-trade" class="btn btn-add-trade" style="background:#F0B90B; color:#000; font-weight:700;">+ Add Trade</button>
-          </div>
-        </div>
-
-        <!-- Stats Summary -->
-        <div class="backtest-summary">
-          <div class="backtest-stat-card">
-            <span class="backtest-stat-label">Total Trades</span>
-            <span class="backtest-stat-value" id="stat-total-trades">0</span>
-          </div>
-          <div class="backtest-stat-card">
-            <span class="backtest-stat-label">Win Rate</span>
-            <span class="backtest-stat-value winrate" id="stat-winrate">0.0%</span>
-          </div>
-          <div class="backtest-stat-card">
-            <span class="backtest-stat-label">Hit TP</span>
-            <span class="backtest-stat-value" id="stat-hit-tp" style="color:#32D74B;">0</span>
-          </div>
-          <div class="backtest-stat-card">
-            <span class="backtest-stat-label">Hit SL</span>
-            <span class="backtest-stat-value" id="stat-hit-sl" style="color:#FF453A;">0</span>
-          </div>
-          <div class="backtest-stat-card">
-            <span class="backtest-stat-label">Cut Loss</span>
-            <span class="backtest-stat-value" id="stat-cut-loss" style="color:#FF9F0A;">0</span>
-          </div>
-          <div class="backtest-stat-card">
-            <span class="backtest-stat-label">Net PnL (USD)</span>
-            <span class="backtest-stat-value" id="stat-net-profit-usd">$0.00</span>
-          </div>
-          <div class="backtest-stat-card">
-            <span class="backtest-stat-label">Net PnL (Rp)</span>
-            <span class="backtest-stat-value" id="stat-net-profit-idr">Rp 0.00</span>
-          </div>
-        </div>
-
-        <!-- Trade Log Table -->
-        <div class="backtest-table-container">
-          <table class="backtest-table" id="backtest-log-table">
-            <thead>
-              <tr>
-                <th>Time</th>
-                <th>Type</th>
-                <th>TF</th>
-                <th>Entry</th>
-                <th>TP</th>
-                <th>SL</th>
-                <th>Size (USD)</th>
-                <th>R:R</th>
-                <th>Status</th>
-                <th>Mark Price</th>
-                <th>PnL (USD)</th>
-                <th>PnL (Rp)</th>
-                <th>Actions</th>
-              </tr>
-            </thead>
-            <tbody id="backtest-log-tbody">
-              <tr>
-                <td colspan="13" style="text-align:center; color:var(--text-muted); padding:20px;">No trades logged yet.</td>
-              </tr>
-            </tbody>
-          </table>
-        </div>
       </div>
     </section>
 
