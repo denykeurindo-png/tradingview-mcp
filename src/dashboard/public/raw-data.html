@@ -89,54 +89,9 @@
       text-transform: uppercase;
     }
     .sig-NEUTRAL      { background: rgba(132,142,156,0.15); color: #848E9C; }
-    .sig-ACCUMULATION { background: rgba(14,203,129,0.2); color: #0ECB81; }
-    .sig-DISTRIBUTION { background: rgba(246,70,93,0.15); color: #F6465D; }
     .sig-BULLISH      { background: rgba(14,203,129,0.2); color: #0ECB81; }
     .sig-BEARISH      { background: rgba(246,70,93,0.15); color: #F6465D; }
     .sig-MIXED        { background: rgba(240,185,11,0.2);   color: #F0B90B; }
-
-    .whale-grid {
-      display: grid;
-      grid-template-columns: repeat(3, 1fr);
-      gap: 15px;
-      margin-top: 15px;
-      margin-bottom: 15px;
-    }
-    @media (max-width: 1024px) {
-      .whale-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
-      .whale-grid > div:nth-child(3) {
-        grid-column: span 2;
-      }
-    }
-    @media (max-width: 480px) {
-      .whale-grid {
-        grid-template-columns: 1fr;
-      }
-      .whale-grid > div:nth-child(3) {
-        grid-column: span 1;
-      }
-    }
-
-    .metric-panel-item {
-      background: rgba(0, 0, 0, 0.2);
-      border: 1px solid var(--border-color);
-      border-radius: 6px;
-      padding: 10px 14px;
-    }
-    .metric-panel-label {
-      font-size: 10px;
-      color: var(--text-muted);
-      margin-bottom: 4px;
-      text-transform: uppercase;
-      letter-spacing: .5px;
-    }
-    .metric-panel-value {
-      font-size: 16px;
-      font-weight: 700;
-      font-family: var(--font-mono);
-    }
   </style>
   <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
 </head>
@@ -571,36 +526,6 @@
       </div>
     </section>
 
-    <!-- ── Whale Trade Detector Card ─────────────────────────── -->
-    <section style="margin-bottom: var(--spacing-md);">
-      <div class="card">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
-          <div>
-            <h3 style="font-size:16px; font-weight:700; color:var(--accent-primary);">🐳 Whale Trade Detector</h3>
-            <span style="font-size:11px; color:var(--text-muted);">Binance aggTrades · Last 15 min · Threshold $500K</span>
-          </div>
-          <div id="whale-signal-pill" class="signal-pill sig-NEUTRAL">NEUTRAL</div>
-        </div>
-
-        <div class="whale-grid">
-          <div class="metric-panel-item" style="border-left:3px solid #0ECB81;">
-            <div class="metric-panel-label" style="color:#0ECB81; font-weight:600;">Whale Buys</div>
-            <div id="whale-buy-count" class="metric-panel-value" style="color:#0ECB81; font-size:20px;">0</div>
-            <div id="whale-buy-vol" style="font-size:11px; color:var(--text-muted); margin-top:2px;">$0.00</div>
-          </div>
-          <div class="metric-panel-item" style="border-left:3px solid #F6465D;">
-            <div class="metric-panel-label" style="color:#F6465D; font-weight:600;">Whale Sells</div>
-            <div id="whale-sell-count" class="metric-panel-value" style="color:#F6465D; font-size:20px;">0</div>
-            <div id="whale-sell-vol" style="font-size:11px; color:var(--text-muted); margin-top:2px;">$0.00</div>
-          </div>
-          <div class="metric-panel-item">
-            <div class="metric-panel-label">Net Whale Flow</div>
-            <div id="whale-net-flow" class="metric-panel-value" style="font-size:20px;">$0.00</div>
-            <div id="whale-lsr-hint" style="font-size:10px; color:var(--text-muted); margin-top:4px;">No dominant whale direction</div>
-          </div>
-        </div>
-      </div>
-    </section>
 
     <!-- ── JDA MTF Signal Validation Panel ─────────────────────────── -->
     <section>

@@ -105,6 +105,12 @@ async function updateData() {
     const trades = tradesObj.data || [];
     updateActivePosition(trades);
 
+    const botStatusRes = await fetch('/api/bot-status');
+    if (botStatusRes.ok) {
+      const botStatusObj = await botStatusRes.json();
+      renderWhaleTradeDetector(botStatusObj.whaleData);
+    }
+
     // Update settings check
     if (!isSavingSettings) {
       const settingsRes = await fetch('/api/settings');
@@ -299,6 +305,48 @@ function detectDisappearedWalls(newBuys, newSells, currentPrice) {
   // Save current lists for next comparison
   previousBuyWalls = [...newBuys];
   previousSellWalls = [...newSells];
+}
+
+// Whale Trade Detector (moved from raw-data.html) — individual Binance Futures
+// aggTrades >=$500K in the last 15 minutes, separate from the order-book whale
+// walls above (resting limit orders vs. actually executed trades).
+function renderWhaleTradeDetector(w) {
+  if (!w) return;
+
+  const set = (id, val) => { const el = document.getElementById(id); if (el) el.innerText = val; };
+
+  set('whale-buy-count', w.buyCount || 0);
+  set('whale-sell-count', w.sellCount || 0);
+  set('whale-buy-vol', formatUSD(w.buyVol || 0));
+  set('whale-sell-vol', formatUSD(w.sellVol || 0));
+
+  const netEl = document.getElementById('whale-net-flow');
+  if (netEl) {
+    const net = w.netFlow || 0;
+    netEl.innerText = (net >= 0 ? '+' : '') + formatUSD(net);
+    netEl.style.color = net > 0 ? '#0ECB81' : net < 0 ? '#F6465D' : '#EAECEF';
+  }
+
+  const sigEl = document.getElementById('whale-signal-pill');
+  if (sigEl) {
+    const sig = w.signal || 'NEUTRAL';
+    sigEl.innerText = sig;
+    sigEl.className = 'signal-pill sig-' + sig;
+  }
+
+  const hintEl = document.getElementById('whale-lsr-hint');
+  if (hintEl) {
+    if (w.signal === 'ACCUMULATION') {
+      hintEl.innerText = '🟢 Whale buying → supports LONG sweep reversal';
+      hintEl.style.color = '#0ECB81';
+    } else if (w.signal === 'DISTRIBUTION') {
+      hintEl.innerText = '🔴 Whale selling → supports SHORT sweep reversal';
+      hintEl.style.color = '#F6465D';
+    } else {
+      hintEl.innerText = '⚪ No dominant whale direction';
+      hintEl.style.color = '#848E9C';
+    }
+  }
 }
 
 function updateOrderbookAndWhales(summary) {
