@@ -1847,12 +1847,14 @@ async function scrapeWhaleOrders() {
   try {
     await cdp('Page.enable');
 
+    // The order list is a virtualized/windowed scroll container (CoinGlass renders only
+    // the rows currently in view), so a single DOM query only captures whatever the
+    // scroll position happens to show -- often all-buy or all-sell. This scrolls the
+    // container from top to bottom in steps, sampling rows at each stop and merging
+    // them by (marketType, price, valueUsd, exchange) so the full order set is captured.
     const domExpression = `
-      (() => {
+      (async () => {
         try {
-          var rows = [];
-          var items = document.querySelectorAll('.large-order-item');
-          
           var parseVal = function(str) {
             if (!str) return 0;
             var clean = str.replace(/\\$|,/g, '').toUpperCase().trim();
@@ -1875,38 +1877,82 @@ async function scrapeWhaleOrders() {
             return filename.split('.')[0].toUpperCase();
           };
 
-          items.forEach(function(el) {
-            var img = el.querySelector('img');
-            var exchange = img ? getExchangeName(img.src) : 'Binance';
-            
-            var text = (el.innerText || '').trim();
-            var tokens = text.split(/\\s+/).map(function(t) { return t.trim(); }).filter(function(t) { return t.length > 0; });
-            
-            if (tokens.length >= 4) {
-              var type = tokens[0]; // P or S
-              var price = parseFloat(tokens[1].replace(/,/g, '')) || 0;
-              var valueUsd = parseVal(tokens[2]);
-              var age = tokens.slice(3).join(' ');
-              
-              var side = 'buy';
-              if (el.querySelector('[class*=\"ovv2-item-bg-s\"]')) {
-                side = 'sell';
-              } else if (el.querySelector('[class*=\"ovv2-item-bg-b\"]')) {
-                side = 'buy';
-              }
+          var collected = {};
+          var sampleVisible = function() {
+            var items = document.querySelectorAll('.large-order-item');
+            items.forEach(function(el) {
+              var img = el.querySelector('img');
+              var exchange = img ? getExchangeName(img.src) : 'Binance';
 
-              if (price > 0 && valueUsd > 0) {
-                rows.push({
-                  exchange: exchange,
-                  marketType: type,
-                  price: price,
-                  valueUsd: valueUsd,
-                  age: age,
-                  side: side
-                });
+              var text = (el.innerText || '').trim();
+              var tokens = text.split(/\\s+/).map(function(t) { return t.trim(); }).filter(function(t) { return t.length > 0; });
+
+              if (tokens.length >= 4) {
+                var type = tokens[0]; // P or S
+                var price = parseFloat(tokens[1].replace(/,/g, '')) || 0;
+                var valueUsd = parseVal(tokens[2]);
+                var age = tokens.slice(3).join(' ');
+
+                var side = 'buy';
+                if (el.querySelector('[class*=\"ovv2-item-bg-s\"]')) {
+                  side = 'sell';
+                } else if (el.querySelector('[class*=\"ovv2-item-bg-l\"]')) {
+                  side = 'buy';
+                }
+
+                if (price > 0 && valueUsd > 0) {
+                  var key = type + '|' + price + '|' + valueUsd + '|' + exchange + '|' + side;
+                  collected[key] = {
+                    exchange: exchange,
+                    marketType: type,
+                    price: price,
+                    valueUsd: valueUsd,
+                    age: age,
+                    side: side
+                  };
+                }
               }
+            });
+          };
+
+          var wait = function(ms) { return new Promise(function(r) { setTimeout(r, ms); }); };
+
+          var sample = document.querySelector('.large-order-item');
+          var container = document.querySelector('.orderbook');
+          if (!container && sample) {
+            var node = sample.parentElement;
+            while (node) {
+              var cs = getComputedStyle(node);
+              if ((cs.overflowY === 'auto' || cs.overflowY === 'scroll') && node.scrollHeight > node.clientHeight) {
+                container = node;
+                break;
+              }
+              node = node.parentElement;
             }
-          });
+          }
+
+          if (!container) {
+            sampleVisible();
+          } else {
+            var originalScrollTop = container.scrollTop;
+            var maxScroll = container.scrollHeight - container.clientHeight;
+            var step = Math.max(container.clientHeight * 0.85, 200);
+
+            container.scrollTop = 0;
+            await wait(300);
+            sampleVisible();
+
+            var pos = 0;
+            while (pos < maxScroll) {
+              pos = Math.min(pos + step, maxScroll);
+              container.scrollTop = pos;
+              await wait(300);
+              sampleVisible();
+            }
+            container.scrollTop = originalScrollTop;
+          }
+
+          var rows = Object.keys(collected).map(function(k) { return collected[k]; });
           return JSON.stringify(rows);
         } catch (e) {
           return JSON.stringify({ error: e.message });
@@ -1920,10 +1966,11 @@ async function scrapeWhaleOrders() {
       await new Promise(r => setTimeout(r, 15000));
     }
 
-    console.log('[Scraper] Polling Whale Orders from DOM...');
+    console.log('[Scraper] Polling Whale Orders from DOM (scrolling full list)...');
     const result = await cdp('Runtime.evaluate', {
       expression: domExpression,
-      returnByValue: true
+      returnByValue: true,
+      awaitPromise: true
     });
 
     const val = result?.result?.value;
