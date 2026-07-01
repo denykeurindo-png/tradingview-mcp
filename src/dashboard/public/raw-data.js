@@ -26,6 +26,12 @@ const footLsPercentage = document.getElementById('foot-ls-percentage');
 let cachedBotStatus = null;
 let cachedHeatmapData = null;
 
+// Cross-indicator synthesis for the Kesimpulan & Summary card -- populated by
+// loadBotStatus/loadJDASignal/loadMarketExtras, each of which re-renders it.
+let lastMetrics = null;
+let lastJdaData = null;
+let lastFng = null;
+
 // Formatter Helpers
 const formatUSD = (valUsd) => {
   if (valUsd === 0 || valUsd === undefined || valUsd === null) return '$0.00';
@@ -78,6 +84,7 @@ async function loadBotStatus() {
     // Update KPI panels
     if (cachedBotStatus.metrics) {
       const m = cachedBotStatus.metrics;
+      lastMetrics = m;
       valOiVal.innerText = formatUSD(m.openInterest || 0);
       
       const oiChange = m.oiChange1h || 0;
@@ -135,6 +142,7 @@ async function loadBotStatus() {
         topTraderEl.innerText = `Top Traders: ${m.topTraderRatio.toFixed(2)} (${topLongPct.toFixed(1)}% L / ${topShortPct.toFixed(1)}% S)`;
         topTraderEl.style.color = m.topTraderRatio > lsRatio ? '#0ECB81' : (m.topTraderRatio < lsRatio ? '#F6465D' : '#98989D');
       }
+      updateSummaryCard();
     }
     updateStatus('normal', 'Live');
   } catch (err) {
@@ -234,6 +242,7 @@ async function loadJDASignal() {
     const json = await res.json();
     const d = json.data;
     if (!d) return;
+    lastJdaData = d;
 
     const tfs = d.timeframes;
 
@@ -314,6 +323,7 @@ async function loadJDASignal() {
     const timeEl = document.getElementById('jda-update-time');
     if (timeEl) timeEl.innerText = 'Updated: ' + new Date(d.fetchTime).toLocaleTimeString();
 
+    updateSummaryCard();
   } catch (e) {
     console.error('[JDA] UI error:', e);
   }
@@ -328,6 +338,7 @@ async function loadMarketExtras() {
 
     // Fear & Greed
     if (json.fng) {
+      lastFng = json.fng;
       const val = json.fng.value;
       const label = json.fng.label;
 
@@ -386,11 +397,87 @@ async function loadMarketExtras() {
           hintEl.style.color = '#848E9C';
         }
       }
+      updateSummaryCard();
     }
 
   } catch (e) {
     console.error('[Market Extras] UI error:', e);
   }
+}
+
+// ── Kesimpulan & Summary Card ────────────────────────────────────────────
+// Synthesizes Fear & Greed, funding/CVD/L-S metrics, and the JDA MTF signal
+// into a plain-language bullish/bearish bullet list, so the reader doesn't
+// have to manually cross-reference the cards above (same reasoning pattern
+// used when explaining this data conversationally).
+function updateSummaryCard() {
+  const bullishEl = document.getElementById('summary-bullish-list');
+  const bearishEl = document.getElementById('summary-bearish-list');
+  const concEl = document.getElementById('summary-conclusion-text');
+  const pillEl = document.getElementById('summary-verdict-pill');
+  if (!bullishEl || !bearishEl || !concEl || !pillEl) return;
+  if (!lastMetrics || !lastJdaData || !lastFng) return;
+
+  const m = lastMetrics;
+  const d = lastJdaData;
+  const fng = lastFng;
+  const bullish = [];
+  const bearish = [];
+
+  if (fng.value <= 25) {
+    bullish.push(`Fear &amp; Greed <b>${fng.value} (Extreme Fear)</b> — area kontrarian bullish, butuh sweep LONG untuk konfirmasi`);
+  } else if (fng.value >= 75) {
+    bearish.push(`Fear &amp; Greed <b>${fng.value} (Extreme Greed)</b> — area kontrarian bearish, butuh sweep SHORT untuk konfirmasi`);
+  }
+
+  const lsRatio = m.longShortRatio || 1;
+  if (lsRatio > 1.5) {
+    bullish.push(`Long/Short Ratio <b>${lsRatio.toFixed(2)}</b> — posisi crowded Long, rawan liquidation cascade ke bawah (setup sweep LONG)`);
+  } else if (lsRatio < 0.7) {
+    bearish.push(`Long/Short Ratio <b>${lsRatio.toFixed(2)}</b> — posisi crowded Short, rawan short squeeze`);
+  }
+
+  const cvd15m = m.spotCvd15m || 0;
+  if (cvd15m < 0) bearish.push(`CVD Spot 15m <b>${formatUSD(cvd15m)}</b> — tekanan jual spot jangka pendek`);
+  else if (cvd15m > 0) bullish.push(`CVD Spot 15m <b>${formatUSD(cvd15m)}</b> — tekanan beli spot jangka pendek`);
+
+  if (d.emaFilter) {
+    if (d.emaFilter.status.includes('ABOVE')) bullish.push(`EMA50 (4H) Filter <b>${d.emaFilter.status}</b> — tren menengah mendukung Long`);
+    else bearish.push(`EMA50 (4H) Filter <b>${d.emaFilter.status}</b> — harga di bawah EMA50 4H, tren menengah menahan Long`);
+  }
+
+  if (d.crossFilter) {
+    if (d.crossFilter.status.includes('GOLDEN')) bullish.push(`EMA13/SMA50 (15m) <b>Golden Cross</b> — momentum jangka pendek bullish`);
+    else bearish.push(`EMA13/SMA50 (15m) <b>Death Cross</b> — momentum jangka pendek bearish`);
+  }
+
+  const tfs = d.timeframes || {};
+  ['1d', '1w'].forEach(tf => {
+    const t = tfs[tf];
+    if (!t) return;
+    if (t.zone === 'OS') bullish.push(`Timeframe ${tf.toUpperCase()} zone <b>Oversold</b> — rawan bounce`);
+    else if (t.zone === 'OB') bearish.push(`Timeframe ${tf.toUpperCase()} zone <b>Overbought</b> — rawan koreksi`);
+  });
+
+  bullishEl.innerHTML = bullish.length
+    ? bullish.map(b => `<li>${b}</li>`).join('')
+    : '<li style="color:var(--text-muted);">Tidak ada faktor bullish signifikan saat ini</li>';
+  bearishEl.innerHTML = bearish.length
+    ? bearish.map(b => `<li>${b}</li>`).join('')
+    : '<li style="color:var(--text-muted);">Tidak ada faktor bearish signifikan saat ini</li>';
+
+  const action = d.action || 'WAIT';
+  pillEl.innerText = action;
+  pillEl.className = 'signal-pill ' + (action.includes('LONG') ? 'sig-BULLISH' : action.includes('SHORT') ? 'sig-BEARISH' : 'sig-MIXED');
+
+  let conclusion;
+  if (!d.aligned) {
+    conclusion = `Timeframe saling bertentangan (<b>MIXED</b>), phase <b>${d.phase}</b>, confidence JDA hanya <b>${d.conf}% (${d.confLevel})</b>. `
+      + `Sistem merekomendasikan <b>${action}</b> — lebih baik tunggu konfirmasi breakout atau sweep pool LSR sebelum entry berdasarkan sinyal makro ini saja.`;
+  } else {
+    conclusion = `Timeframe cukup selaras (<b>ALIGNED</b>), bias <b>${d.marketBias}</b> dengan confidence <b>${d.conf}% (${d.confLevel})</b>. Final call: <b>${action}</b>.`;
+  }
+  concEl.innerHTML = conclusion;
 }
 
 // Auto-refresh JDA every 3 minutes

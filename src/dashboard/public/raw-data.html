@@ -494,6 +494,8 @@
 
     <!-- ── Two Column Sentiment & Flow Grid ─────────────────────────── -->
     <section style="margin-bottom: var(--spacing-md); display:grid; grid-template-columns: minmax(320px, 480px) 1fr; gap: var(--spacing-md); align-items:start;">
+      <!-- LEFT column stack: Fear & Greed + Kesimpulan Summary -->
+      <div style="display:flex; flex-direction:column; gap:var(--spacing-md);">
       <!-- Fear & Greed Card -->
       <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
@@ -523,6 +525,36 @@
         <div id="fng-lsr-hint" style="font-size:11px; color:var(--text-muted); line-height:1.4; padding:10px 12px; background:rgba(0,0,0,0.2); border-radius:4px; border-left:3px solid var(--border-color);">
           Awaiting Fear & Greed index data...
         </div>
+      </div>
+
+      <!-- Kesimpulan & Summary Card -->
+      <div class="card" style="flex:1;">
+        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
+          <div>
+            <h3 style="font-size:16px; font-weight:700; color:var(--accent-primary);">🧭 Kesimpulan & Summary</h3>
+            <span style="font-size:11px; color:var(--text-muted);">Sintesis otomatis dari indikator di halaman ini</span>
+          </div>
+          <div id="summary-verdict-pill" class="signal-pill sig-NEUTRAL">WAIT</div>
+        </div>
+
+        <div style="margin-bottom:10px;">
+          <div style="font-size:9.5px; color:var(--text-muted); font-weight:600; text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px;">Faktor Pendukung Bullish</div>
+          <ul id="summary-bullish-list" style="margin:0; padding-left:18px; font-size:11px; color:#0ECB81; line-height:1.6;">
+            <li style="color:var(--text-muted);">Menghitung...</li>
+          </ul>
+        </div>
+
+        <div style="margin-bottom:12px;">
+          <div style="font-size:9.5px; color:var(--text-muted); font-weight:600; text-transform:uppercase; letter-spacing:.5px; margin-bottom:6px;">Faktor Penahan / Bearish</div>
+          <ul id="summary-bearish-list" style="margin:0; padding-left:18px; font-size:11px; color:#F6465D; line-height:1.6;">
+            <li style="color:var(--text-muted);">Menghitung...</li>
+          </ul>
+        </div>
+
+        <div id="summary-conclusion-text" style="font-size:11px; color:var(--text-muted); line-height:1.5; padding:10px 12px; background:rgba(0,0,0,0.2); border-radius:4px; border-left:3px solid var(--border-color);">
+          Menunggu data lengkap untuk menyusun kesimpulan...
+        </div>
+      </div>
       </div>
 
       <!-- JDA MTF Signal Validation Panel -->
