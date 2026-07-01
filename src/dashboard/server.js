@@ -5568,6 +5568,8 @@ function insertTradeCloseToDb(trade, closeMessage) {
 // ─── Pool Change Tracking (persists between bot cycles) ──────────────────────
 let lastTrackedPoolPrice = null;
 let lastTrackedPoolSide  = null;
+let lastTrackedPoolVolume = null;
+let lastTrackedPoolIntensityRatio = null;
 let lastSweepHistoryKey = null;
 let lastSweepHistoryTime = 0;
 
@@ -6099,7 +6101,7 @@ function autoTradeStrategyBackend(heatmapData, klines15m) {
   // 24H pools are preferred: the sweep-confirm window is only 3x15m candles (~45min),
   // which matches freshly-built liquidity far better than a level that accumulated over
   // 3 days. 3D is only used as a fallback when no qualifying 24H pool exists on that side.
-  function findNearestQualifyingPool(primaryList, fallbackList) {
+  function findNearestQualifyingPool(primaryList, fallbackList, trackedSide) {
     const pickNearest = (list) => {
       let nearest = null;
       list.forEach(p => {
@@ -6112,12 +6114,44 @@ function autoTradeStrategyBackend(heatmapData, klines15m) {
       });
       return nearest;
     };
-    return pickNearest(primaryList)
+    let result = pickNearest(primaryList)
       || (() => { const f = pickNearest(fallbackList); return f ? { ...f, source: '3D' } : null; })();
+
+    // Pool Lock: a pool that already pulled price into ALERT range shouldn't get dropped
+    // just because it fell out of the heatmap's Top-5 ranking (volume decay, cluster
+    // reshuffle) -- as long as it's still within qualifying distance, keep offering it as
+    // a candidate so a near-miss isn't silently replaced by a lower-priority pool.
+    if (trackedSide && lastTrackedPoolSide === trackedSide && lastTrackedPoolPrice !== null) {
+      const stillListed = [...primaryList, ...fallbackList].some(p => Math.abs(p.price - lastTrackedPoolPrice) < 1);
+      if (!stillListed) {
+        const distPercent = ((lastTrackedPoolPrice - currentPrice) / currentPrice) * 100;
+        const absDist = Math.abs(distPercent);
+        if (absDist >= 0.1 && absDist <= settings.maxDist && (!result || absDist < Math.abs(result.distance))) {
+          result = {
+            price: lastTrackedPoolPrice,
+            distance: distPercent,
+            volume: lastTrackedPoolVolume || 0,
+            intensityRatio: lastTrackedPoolIntensityRatio || 0,
+            source: 'LOCKED'
+          };
+        }
+      }
+    }
+    return result;
   }
 
-  const nearestAbove = findNearestQualifyingPool(pools24h.above, pools3d.above);
-  const nearestBelow = findNearestQualifyingPool(pools24h.below, pools3d.below);
+  const nearestAbove = findNearestQualifyingPool(pools24h.above, pools3d.above, 'RESISTANCE');
+  const nearestBelow = findNearestQualifyingPool(pools24h.below, pools3d.below, 'SUPPORT');
+
+  // If the lock kept a delisted pool alive, also feed it into the sweep-candidate scan list
+  // (visibleAbove/visibleBelow) so a genuine wick+close sweep on it still gets detected even
+  // though it's no longer in the heatmap's Top-5.
+  if (nearestAbove && nearestAbove.source === 'LOCKED' && !visibleAbove.some(p => Math.abs(p.price - nearestAbove.price) < 1)) {
+    visibleAbove.push({ price: nearestAbove.price, leverage: nearestAbove.volume, maxLeverage: pools24h.maxLeverage || 1 });
+  }
+  if (nearestBelow && nearestBelow.source === 'LOCKED' && !visibleBelow.some(p => Math.abs(p.price - nearestBelow.price) < 1)) {
+    visibleBelow.push({ price: nearestBelow.price, leverage: nearestBelow.volume, maxLeverage: pools24h.maxLeverage || 1 });
+  }
 
   // ─── Step 4: Phase Detection ──────────────────────────────
   // heatmapDataCache is re-scraped live from CoinGlass's own chart every ~30s (runBotCycle),
@@ -6225,6 +6259,8 @@ function autoTradeStrategyBackend(heatmapData, klines15m) {
   // Update tracker for next cycle
   lastTrackedPoolPrice = closestPool.price;
   lastTrackedPoolSide  = poolSide;
+  lastTrackedPoolVolume = closestPool.volume;
+  lastTrackedPoolIntensityRatio = closestPool.intensityRatio || 0;
 
   // Calculate preview probability using closest pool as proxy sweep candidate
   const previewSweep = {
