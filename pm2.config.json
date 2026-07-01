@@ -3,6 +3,7 @@
     {
       "name": "tv-monitor",
       "script": "src/dashboard/server.js",
+      "log_date_format": "YYYY-MM-DD HH:mm:ss",
       "env": {
         "NODE_ENV": "production"
       }
