@@ -834,7 +834,7 @@ function renderSingleMiniChart(chartInstance, title, heatmapData, is3d = false) 
     },
     axisPointer: {
       show: true,
-      type: 'cross',
+      type: 'line',
       lineStyle: { color: is3d ? '#F0B90B' : '#bfdc21', width: 1, type: 'dashed' }
     },
     tooltip: {

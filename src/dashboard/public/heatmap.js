@@ -392,7 +392,7 @@ function renderHeatmap(data) {
     backgroundColor: '#010409',
     axisPointer: {
       show: true,
-      type: 'cross',
+      type: 'line',
       lineStyle: { color: '#bfdc21', width: 1, type: 'dashed' }
     },
     tooltip: {
@@ -908,7 +908,7 @@ function renderHeatmap3D(data) {
 
   myChart3D.setOption({
     backgroundColor: '#010409',
-    axisPointer: { show: true, type: 'cross', lineStyle: { color: '#F0B90B', width: 1, type: 'dashed' } },
+    axisPointer: { show: true, type: 'line', lineStyle: { color: '#F0B90B', width: 1, type: 'dashed' } },
     grid: { top: '5%', bottom: '10%', left: '8%', right: '4%', show: true, backgroundColor: '#46035c', borderColor: 'transparent' },
     tooltip: {
       trigger: 'item',
