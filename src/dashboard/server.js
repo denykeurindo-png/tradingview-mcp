@@ -3117,21 +3117,22 @@ app.get('/api/coinglass-summary', (req, res) => {
   // Dynamic explanation generation
   let explanation = `Sentimen pasar keseluruhan saat ini dinilai **${verdict}** berdasarkan analisis 6 indikator utama CoinGlass. `;
   
+  // Bullet order mirrors the CoinGlass Market Indicators card row order on cockpit2.html.
   const bulletPoints = [];
-  if (metrics.depthDelta?.sentiment !== 'neutral') {
-    bulletPoints.push(`Orderbook Depth Delta menunjukkan dominasi ${metrics.depthDelta.sentiment === 'bullish' ? '<b>Dinding Beli (Bid)</b>' : '<b>Dinding Jual (Ask)</b>'} (${metrics.depthDelta.formatted})`);
-  }
   if (metrics.coinbasePremium?.sentiment !== 'neutral') {
     bulletPoints.push(`Coinbase Premium Index berada di level ${metrics.coinbasePremium.formatted} (${metrics.coinbasePremium.sentiment.toUpperCase()})`);
   }
-  if (metrics.whaleOrders?.sentiment !== 'neutral') {
-    bulletPoints.push(`Peta order whale aktif bias ke arah ${metrics.whaleOrders.sentiment === 'bullish' ? '<b>BELI (Buy)</b>' : '<b>JUAL (Sell)</b>'} (${metrics.whaleOrders.formatted})`);
+  if (metrics.depthDelta?.sentiment !== 'neutral') {
+    bulletPoints.push(`Orderbook Depth Delta menunjukkan dominasi ${metrics.depthDelta.sentiment === 'bullish' ? '<b>Dinding Beli (Bid)</b>' : '<b>Dinding Jual (Ask)</b>'} (${metrics.depthDelta.formatted})`);
+  }
+  if (metrics.topTraderLs?.sentiment !== 'neutral') {
+    bulletPoints.push(`Rata-rata rasio Long/Short Top Trader di exchange Binance/OKX berada di angka **${metrics.topTraderLs.formatted}**`);
   }
   if (metrics.whaleRetail?.sentiment !== 'neutral') {
     bulletPoints.push(`Whale vs Retail Delta mengindikasikan ${metrics.whaleRetail.sentiment === 'bullish' ? '<b>Whale mendominasi posisi LONG</b> sedangkan retail cenderung Short' : '<b>Whale mendominasi posisi SHORT</b> sedangkan retail cenderung Long'} (${metrics.whaleRetail.formatted})`);
   }
-  if (metrics.topTraderLs?.sentiment !== 'neutral') {
-    bulletPoints.push(`Rata-rata rasio Long/Short Top Trader di exchange Binance/OKX berada di angka **${metrics.topTraderLs.formatted}**`);
+  if (metrics.whaleOrders?.sentiment !== 'neutral') {
+    bulletPoints.push(`Peta order whale aktif bias ke arah ${metrics.whaleOrders.sentiment === 'bullish' ? '<b>BELI (Buy)</b>' : '<b>JUAL (Sell)</b>'} (${metrics.whaleOrders.formatted})`);
   }
   if (metrics.combinedDepth?.sentiment !== 'neutral') {
     bulletPoints.push(`Orderbook Combined Depth (2% Range) menunjukkan bias ${metrics.combinedDepth.sentiment === 'bullish' ? '<b>BELI (Bid)</b>' : '<b>JUAL (Ask)</b>'} dengan rasio **${metrics.combinedDepth.formatted}**`);
