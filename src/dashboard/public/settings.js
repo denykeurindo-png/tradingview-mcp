@@ -218,6 +218,9 @@ window.addEventListener('DOMContentLoaded', async () => {
     'auto-cut-dist-threshold', 'auto-breakeven-enabled',
     'auto-min-cb-premium-long', 'auto-max-cb-premium-short', 'auto-htf-trend-mode',
     'tele-bot-token', 'tele-chat-id',
+    // Display-only scraper toggles
+    'scraper-whale-retail-delta', 'scraper-top-trader-ls',
+    'scraper-order-book-combined', 'scraper-etf',
     // JDA Settings
     'jda-min-confidence', 'jda-capital', 'jda-risk-percent', 'jda-sltp-method',
     'jda-atr-period', 'jda-atr-multiplier', 'jda-rr-ratio'
