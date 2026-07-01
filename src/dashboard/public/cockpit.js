@@ -814,6 +814,17 @@ async function updateMarketExtras() {
 function renderSingleMiniChart(chartInstance, title, heatmapData, is3d = false) {
   if (!chartInstance) return;
 
+  // Preserve the user's current zoom/pan across periodic data refreshes
+  let savedZoomStart = null;
+  let savedZoomEnd = null;
+  try {
+    const existingDataZoom = chartInstance.getOption().dataZoom;
+    if (existingDataZoom && existingDataZoom[0]) {
+      savedZoomStart = existingDataZoom[0].start;
+      savedZoomEnd = existingDataZoom[0].end;
+    }
+  } catch (e) { /* chart not yet initialized with options */ }
+
   const xAxisData = heatmapData.xAxis || [];
   const yAxisData = heatmapData.yAxis || [];
   const minPrice = yAxisData.length > 0 ? parseFloat(yAxisData[0]) : null;
@@ -979,8 +990,8 @@ function renderSingleMiniChart(chartInstance, title, heatmapData, is3d = false) 
         type: 'inside',
         xAxisIndex: 0,
         filterMode: 'filter',
-        start: Math.max(0, 100 - (72 / Math.max(xAxisData.length, 1)) * 100),
-        end: 100
+        start: savedZoomStart !== null ? savedZoomStart : Math.max(0, 100 - (72 / Math.max(xAxisData.length, 1)) * 100),
+        end: savedZoomEnd !== null ? savedZoomEnd : 100
       }
     ]
   };
