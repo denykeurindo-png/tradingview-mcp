@@ -6255,7 +6255,14 @@ function autoTradeStrategyBackend(heatmapData, klines15m) {
       if (!stillListed) {
         const distPercent = ((lastTrackedPoolPrice - currentPrice) / currentPrice) * 100;
         const absDist = Math.abs(distPercent);
-        if (absDist >= 0.1 && absDist <= settings.maxDist && (!result || absDist < Math.abs(result.distance))) {
+        // Keep the lock all the way down to a near-zero gap -- that's exactly the
+        // sweep-imminent moment a near-miss shouldn't be dropped. A flat "< 0.1%"
+        // floor used to release the lock right as price got closest (the moment
+        // it mattered most). Only requirement now: the pool must still be on its
+        // original side (price hasn't already crossed past it -- the CONSUMED
+        // check further down handles that transition) and within maxDist.
+        const stillOnSide = trackedSide === 'RESISTANCE' ? distPercent > 0 : distPercent < 0;
+        if (stillOnSide && absDist <= settings.maxDist && (!result || absDist < Math.abs(result.distance))) {
           result = {
             price: lastTrackedPoolPrice,
             distance: distPercent,
