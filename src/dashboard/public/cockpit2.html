@@ -421,104 +421,107 @@
           </div>
         </div>
 
-        <!-- Whale Large Orders & OB Depth -->
-        <div class="cockpit2-card w-whales-orders">
-          <div class="widget-title">
-            <span>📦 ANTRIAN ORDER BUKU & WHALE WALLS</span>
-            <span style="font-size: 10px; color: var(--text-muted);" id="ob-update-time">--:--:--</span>
-          </div>
-          
-          <div style="display: flex; flex-direction: column; gap: 10px; flex: 1;">
-            <!-- OB Depth Bid/Ask Ratio Bar -->
-            <div>
-              <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted); margin-bottom: 4px;">
-                <span>Antrean Beli (Bids)</span>
-                <span style="font-weight: 600;" id="depth-ratio-label">50% / 50%</span>
-                <span>Antrean Jual (Asks)</span>
-              </div>
-              <div class="depth-bar-container" style="margin-top: 0; height: 18px;">
-                <div class="depth-bar-bid" id="ob-depth-bid" style="width: 50%;">50%</div>
-                <div class="depth-bar-ask" id="ob-depth-ask" style="width: 50%;">50%</div>
-              </div>
+        <!-- Side-by-Side row: Whale Order Book Walls & Combined Depth -->
+        <div class="liquidity-row-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 0;">
+          <!-- Whale Large Orders & OB Depth -->
+          <div class="cockpit2-card w-whales-orders">
+            <div class="widget-title">
+              <span>📦 ANTRIAN ORDER BUKU & WHALE WALLS</span>
+              <span style="font-size: 10px; color: var(--text-muted);" id="ob-update-time">--:--:--</span>
             </div>
 
-            <div style="border-bottom: 1px dashed rgba(255,255,255,0.06); margin: 4px 0;"></div>
-
-            <!-- Whale Order Book Walls list -->
-            <div style="display: flex; flex-direction: column; gap: 6px; flex: 1; overflow-y: auto;">
-              <div style="font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Dinding Limit Order Terbesar (Whale Walls)</div>
-              
-              <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-family: 'JetBrains Mono', monospace; font-size: 11px;" id="whale-walls-grid-c2">
-                <!-- Bid walls and ask walls generated dynamically -->
-                <div style="color: var(--text-muted); text-align: center; grid-column: span 2; padding: 15px;">Loading whale orderbook walls...</div>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- Widget: Combined Depth Global Market Order Book -->
-        <div class="cockpit2-card w-combined-depth-c2" style="display: flex; flex-direction: column; padding: 12px 14px;">
-          <div class="widget-title" style="margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center;">
-            <span>Combined Depth <span style="font-size: 9px; color: var(--text-muted); font-weight: normal; margin-left: 4px;">Global Market Order Book</span></span>
-            <span style="font-size: 10px; color: var(--text-muted);" id="combined-depth-update-time">--:--:--</span>
-          </div>
-
-          <!-- Combined Depth Summary card -->
-          <div style="background: rgba(30, 35, 41, 0.5); border: 1px solid rgba(255, 255, 255, 0.08); border-left: 4px solid #F0B90B; padding: 10px 12px; border-radius: 6px; margin-bottom: 12px;" id="metric-summary-card">
-            <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 8px;">
-              <div style="display: flex; align-items: center; gap: 8px;">
-                <div style="background: rgba(240, 185, 11, 0.1); padding: 5px; border-radius: 4px; display: flex; align-items: center; justify-content: center;">
-                  <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#F0B90B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+            <div style="display: flex; flex-direction: column; gap: 10px; flex: 1;">
+              <!-- OB Depth Bid/Ask Ratio Bar -->
+              <div>
+                <div style="display: flex; justify-content: space-between; font-size: 10px; color: var(--text-muted); margin-bottom: 4px;">
+                  <span>Antrean Beli (Bids)</span>
+                  <span style="font-weight: 600;" id="depth-ratio-label">50% / 50%</span>
+                  <span>Antrean Jual (Asks)</span>
                 </div>
-                <div>
-                  <div style="font-size: 9px; color: #848E9C; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">COMBINED DEPTH SUMMARY</div>
-                  <div id="metric-summary-desc" style="font-size: 11px; color: #EAECEF; margin-top: 1px;">Loading summary...</div>
+                <div class="depth-bar-container" style="margin-top: 0; height: 18px;">
+                  <div class="depth-bar-bid" id="ob-depth-bid" style="width: 50%;">50%</div>
+                  <div class="depth-bar-ask" id="ob-depth-ask" style="width: 50%;">50%</div>
                 </div>
               </div>
-              <div style="display: flex; align-items: center; gap: 12px;">
-                <div style="text-align: right;">
-                  <div style="font-size: 8px; color: #848E9C; text-transform: uppercase;">Sentiment</div>
-                  <div id="metric-summary-sentiment" style="font-size: 11px; font-weight: bold; margin-top: 1px; font-family: 'JetBrains Mono', monospace; color: #F0B90B;">NEUTRAL</div>
-                </div>
-                <div style="text-align: right;">
-                  <div style="font-size: 8px; color: #848E9C; text-transform: uppercase;">Ratio</div>
-                  <div id="metric-summary-val" style="font-size: 11px; font-weight: bold; margin-top: 1px; font-family: 'JetBrains Mono', monospace;">1.02</div>
+
+              <div style="border-bottom: 1px dashed rgba(255,255,255,0.06); margin: 4px 0;"></div>
+
+              <!-- Whale Order Book Walls list -->
+              <div style="display: flex; flex-direction: column; gap: 6px; flex: 1; overflow-y: auto;">
+                <div style="font-size: 10px; font-weight: 600; color: var(--text-muted); text-transform: uppercase;">Dinding Limit Order Terbesar (Whale Walls)</div>
+
+                <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 10px; font-family: 'JetBrains Mono', monospace; font-size: 11px;" id="whale-walls-grid-c2">
+                  <!-- Bid walls and ask walls generated dynamically -->
+                  <div style="color: var(--text-muted); text-align: center; grid-column: span 2; padding: 15px;">Loading whale orderbook walls...</div>
                 </div>
               </div>
             </div>
-            
-            <!-- Top Walls inside Combined Depth drawer -->
-            <div id="metric-summary-walls-drawer" style="border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 8px; display: none;"></div>
           </div>
 
-          <!-- KPI row (4 boxes side-by-side in 1 row) -->
-          <div class="kpi-grid">
-            <!-- BTC Price -->
-            <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column;">
-              <span style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">BTC PRICE (BINANCE)</span>
-              <span id="val-btc-price" style="font-size: 13px; font-weight: bold; color: var(--accent-success); font-family: var(--font-mono); margin-top: 2px;">$0.00</span>
-              <span id="foot-btc-price" style="font-size: 8px; color: var(--text-muted); margin-top: 1px;">Spread: $0.00</span>
+          <!-- Widget: Combined Depth Global Market Order Book -->
+          <div class="cockpit2-card w-combined-depth-c2" style="display: flex; flex-direction: column; padding: 12px 14px;">
+            <div class="widget-title" style="margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center;">
+              <span>Combined Depth <span style="font-size: 9px; color: var(--text-muted); font-weight: normal; margin-left: 4px;">Global Market Order Book</span></span>
+              <span style="font-size: 10px; color: var(--text-muted);" id="combined-depth-update-time">--:--:--</span>
             </div>
 
-            <!-- Imbalance Ratio -->
-            <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column;">
-              <span style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">BIDS/ASKS DEPTH RATIO</span>
-              <span id="val-imbalance-ratio" style="font-size: 13px; font-weight: bold; color: #F0B90B; font-family: var(--font-mono); margin-top: 2px;">1.00</span>
-              <span id="foot-imbalance-text" style="font-size: 8px; color: var(--text-muted); margin-top: 1px;">50.0% Bids / 50.0% Asks</span>
+            <!-- Combined Depth Summary card -->
+            <div style="background: rgba(30, 35, 41, 0.5); border: 1px solid rgba(255, 255, 255, 0.08); border-left: 4px solid #F0B90B; padding: 10px 12px; border-radius: 6px; margin-bottom: 12px;" id="metric-summary-card">
+              <div style="display: flex; align-items: center; justify-content: space-between; gap: 15px; margin-bottom: 8px;">
+                <div style="display: flex; align-items: center; gap: 8px;">
+                  <div style="background: rgba(240, 185, 11, 0.1); padding: 5px; border-radius: 4px; display: flex; align-items: center; justify-content: center;">
+                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="#F0B90B" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2L2 7l10 5 10-5-10-5zM2 17l10 5 10-5M2 12l10 5 10-5"/></svg>
+                  </div>
+                  <div>
+                    <div style="font-size: 9px; color: #848E9C; font-weight: 600; text-transform: uppercase; letter-spacing: 0.5px;">COMBINED DEPTH SUMMARY</div>
+                    <div id="metric-summary-desc" style="font-size: 11px; color: #EAECEF; margin-top: 1px;">Loading summary...</div>
+                  </div>
+                </div>
+                <div style="display: flex; align-items: center; gap: 12px;">
+                  <div style="text-align: right;">
+                    <div style="font-size: 8px; color: #848E9C; text-transform: uppercase;">Sentiment</div>
+                    <div id="metric-summary-sentiment" style="font-size: 11px; font-weight: bold; margin-top: 1px; font-family: 'JetBrains Mono', monospace; color: #F0B90B;">NEUTRAL</div>
+                  </div>
+                  <div style="text-align: right;">
+                    <div style="font-size: 8px; color: #848E9C; text-transform: uppercase;">Ratio</div>
+                    <div id="metric-summary-val" style="font-size: 11px; font-weight: bold; margin-top: 1px; font-family: 'JetBrains Mono', monospace;">1.02</div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- Top Walls inside Combined Depth drawer -->
+              <div id="metric-summary-walls-drawer" style="border-top: 1px solid rgba(255, 255, 255, 0.05); padding-top: 8px; display: none;"></div>
             </div>
 
-            <!-- Total Bids -->
-            <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column;">
-              <span style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">TOTAL BIDS (PASIF BUY)</span>
-              <span id="val-total-bids" style="font-size: 13px; font-weight: bold; color: var(--accent-success); font-family: var(--font-mono); margin-top: 2px;">0 BTC</span>
-              <span id="foot-total-bids-usd" style="font-size: 8px; color: var(--text-muted); margin-top: 1px;">$0.00M (2% Range)</span>
-            </div>
+            <!-- KPI row (4 boxes side-by-side in 1 row) -->
+            <div class="kpi-grid">
+              <!-- BTC Price -->
+              <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column;">
+                <span style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">BTC PRICE (BINANCE)</span>
+                <span id="val-btc-price" style="font-size: 13px; font-weight: bold; color: var(--accent-success); font-family: var(--font-mono); margin-top: 2px;">$0.00</span>
+                <span id="foot-btc-price" style="font-size: 8px; color: var(--text-muted); margin-top: 1px;">Spread: $0.00</span>
+              </div>
 
-            <!-- Total Asks -->
-            <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column;">
-              <span style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">TOTAL ASKS (PASIF SELL)</span>
-              <span id="val-total-asks" style="font-size: 13px; font-weight: bold; color: var(--accent-alert); font-family: var(--font-mono); margin-top: 2px;">0 BTC</span>
-              <span id="foot-total-asks-usd" style="font-size: 8px; color: var(--text-muted); margin-top: 1px;">$0.00M (2% Range)</span>
+              <!-- Imbalance Ratio -->
+              <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column;">
+                <span style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">BIDS/ASKS DEPTH RATIO</span>
+                <span id="val-imbalance-ratio" style="font-size: 13px; font-weight: bold; color: #F0B90B; font-family: var(--font-mono); margin-top: 2px;">1.00</span>
+                <span id="foot-imbalance-text" style="font-size: 8px; color: var(--text-muted); margin-top: 1px;">50.0% Bids / 50.0% Asks</span>
+              </div>
+
+              <!-- Total Bids -->
+              <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column;">
+                <span style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">TOTAL BIDS (PASIF BUY)</span>
+                <span id="val-total-bids" style="font-size: 13px; font-weight: bold; color: var(--accent-success); font-family: var(--font-mono); margin-top: 2px;">0 BTC</span>
+                <span id="foot-total-bids-usd" style="font-size: 8px; color: var(--text-muted); margin-top: 1px;">$0.00M (2% Range)</span>
+              </div>
+
+              <!-- Total Asks -->
+              <div style="background: rgba(255, 255, 255, 0.02); border: 1px solid rgba(255, 255, 255, 0.04); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column;">
+                <span style="font-size: 8px; color: var(--text-muted); text-transform: uppercase; font-weight: 600;">TOTAL ASKS (PASIF SELL)</span>
+                <span id="val-total-asks" style="font-size: 13px; font-weight: bold; color: var(--accent-alert); font-family: var(--font-mono); margin-top: 2px;">0 BTC</span>
+                <span id="foot-total-asks-usd" style="font-size: 8px; color: var(--text-muted); margin-top: 1px;">$0.00M (2% Range)</span>
+              </div>
             </div>
           </div>
         </div>
