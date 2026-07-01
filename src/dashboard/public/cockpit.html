@@ -432,10 +432,10 @@
           <polyline points="18 15 12 9 6 15"></polyline>
         </svg>
       </div>
-      <div id="top-pools-body" style="max-height:420px;overflow-y:auto;transition:max-height .3s ease,opacity .3s;">
+      <div id="top-pools-body" style="max-height:760px;overflow-y:auto;transition:max-height .3s ease,opacity .3s;">
         <div class="top-pools-grid">
           <!-- Left Box: 24H Pools -->
-          <div style="display:flex;flex-direction:column;gap:8px;min-height:0;">
+          <div style="display:flex;flex-direction:column;gap:10px;min-height:0;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
               <div style="display:flex;align-items:center;">
                 <span style="font-weight:600;font-size:11px;color:#848E9C;letter-spacing:.3px;">24H POOLS</span>
@@ -443,24 +443,16 @@
               </div>
               <span style="font-size:9px;color:#636366;font-family:'JetBrains Mono',monospace;" id="liq-pools-update-24h">--:--:--</span>
             </div>
-            <!-- Resistance 24H -->
-            <div style="background:rgba(255,255,255,.01);border:1px solid var(--border-color);border-radius:6px;padding:6px 8px;display:flex;flex-direction:column;min-height:0;">
-              <div style="font-weight:700;color:#F6465D;text-transform:uppercase;letter-spacing:.3px;font-size:9px;margin-bottom:6px;">▲ Resistance 24H</div>
-              <div id="cockpit-resistance-pools" style="display:flex;flex-direction:column;gap:6px;justify-content:flex-start;margin-top:4px;overflow-y:auto;max-height:180px;">
-                <div style="color:#636366;text-align:center;padding:10px;font-size:10px;">Loading 24H...</div>
-              </div>
+            <div id="cockpit-resistance-pools">
+              <div style="color:#636366;text-align:center;padding:10px;font-size:10px;">Loading 24H...</div>
             </div>
-            <!-- Support 24H -->
-            <div style="background:rgba(255,255,255,.01);border:1px solid var(--border-color);border-radius:6px;padding:6px 8px;display:flex;flex-direction:column;min-height:0;">
-              <div style="font-weight:700;color:#0ECB81;text-transform:uppercase;letter-spacing:.3px;font-size:9px;margin-bottom:6px;">▼ Support 24H</div>
-              <div id="cockpit-support-pools" style="display:flex;flex-direction:column;gap:6px;justify-content:flex-start;margin-top:4px;overflow-y:auto;max-height:180px;">
-                <div style="color:#636366;text-align:center;padding:10px;font-size:10px;">Loading 24H...</div>
-              </div>
+            <div id="cockpit-support-pools">
+              <div style="color:#636366;text-align:center;padding:10px;font-size:10px;">Loading 24H...</div>
             </div>
           </div>
 
           <!-- Right Box: 3D Pools -->
-          <div style="display:flex;flex-direction:column;gap:8px;min-height:0;">
+          <div style="display:flex;flex-direction:column;gap:10px;min-height:0;">
             <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
               <div style="display:flex;align-items:center;">
                 <span style="font-weight:600;font-size:11px;color:#848E9C;letter-spacing:.3px;">3D POOLS</span>
@@ -468,19 +460,11 @@
               </div>
               <span style="font-size:9px;color:#636366;font-family:'JetBrains Mono',monospace;" id="liq-pools-update-3d">--:--:--</span>
             </div>
-            <!-- Resistance 3D -->
-            <div style="background:rgba(255,255,255,.01);border:1px solid var(--border-color);border-radius:6px;padding:6px 8px;display:flex;flex-direction:column;min-height:0;">
-              <div style="font-weight:700;color:#F6465D;text-transform:uppercase;letter-spacing:.3px;font-size:9px;margin-bottom:6px;">▲ Resistance 3D</div>
-              <div id="cockpit-resistance-pools-3d" style="display:flex;flex-direction:column;gap:6px;justify-content:flex-start;margin-top:4px;overflow-y:auto;max-height:180px;">
-                <div style="color:#636366;text-align:center;padding:10px;font-size:10px;">Loading 3D...</div>
-              </div>
+            <div id="cockpit-resistance-pools-3d">
+              <div style="color:#636366;text-align:center;padding:10px;font-size:10px;">Loading 3D...</div>
             </div>
-            <!-- Support 3D -->
-            <div style="background:rgba(255,255,255,.01);border:1px solid var(--border-color);border-radius:6px;padding:6px 8px;display:flex;flex-direction:column;min-height:0;">
-              <div style="font-weight:700;color:#0ECB81;text-transform:uppercase;letter-spacing:.3px;font-size:9px;margin-bottom:6px;">▼ Support 3D</div>
-              <div id="cockpit-support-pools-3d" style="display:flex;flex-direction:column;gap:6px;justify-content:flex-start;margin-top:4px;overflow-y:auto;max-height:180px;">
-                <div style="color:#636366;text-align:center;padding:10px;font-size:10px;">Loading 3D...</div>
-              </div>
+            <div id="cockpit-support-pools-3d">
+              <div style="color:#636366;text-align:center;padding:10px;font-size:10px;">Loading 3D...</div>
             </div>
           </div>
         </div>
@@ -576,7 +560,7 @@
   </div>
 
   <script src="notifications-shared.js"></script>
-  <script src="cockpit.js?v=2.2.13"></script>
+  <script src="cockpit.js?v=2.2.14"></script>
 
   <!-- ══ PIPELINE UPDATER ═══════════════════════════════════════════════ -->
   <script>
@@ -779,7 +763,7 @@
       const chevron = document.getElementById('top-pools-chevron');
       if (!body) return;
       const collapsed = body.style.maxHeight === '0px';
-      body.style.maxHeight   = collapsed ? '420px' : '0px';
+      body.style.maxHeight   = collapsed ? '760px' : '0px';
       body.style.opacity     = collapsed ? '1'      : '0';
       body.style.overflow    = collapsed ? 'auto'   : 'hidden';
       if (chevron) chevron.style.transform = collapsed ? 'rotate(180deg)' : 'rotate(0deg)';

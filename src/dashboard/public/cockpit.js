@@ -1148,59 +1148,87 @@ async function updateMiniHeatmap() {
       if (hm3dUpdEl) hm3dUpdEl.innerText = new Date().toLocaleTimeString();
     }
 
-    const renderPoolList = (pools, isAbove, maxLeverage = 1) => {
+    // Builds a full Rank/Price/Pool Vol/Distance/Intensity table, matching heatmap.html's layout
+    const badgeFor = (lvl, maxLeverage) => {
+      if (lvl.isLiquidated) return { cls: 'liquidated', label: 'Liquidated' };
+      const ratio = lvl.leverage / maxLeverage;
+      if (ratio >= 0.7) return { cls: 'high', label: 'High' };
+      if (ratio >= 0.3) return { cls: 'medium', label: 'Medium' };
+      return { cls: 'low', label: 'Low' };
+    };
+
+    const renderPoolTable24h = (pools, isAbove, maxLeverage = 1) => {
+      const side = isAbove ? 'above' : 'below';
+      const heading = isAbove ? '▲ Top Resistance Liquidation Pools' : '▼ Top Support Liquidation Pools';
       if (pools.length === 0) {
-        return '<div style="color:var(--text-muted);text-align:center;padding:6px;font-size:10px;">No pools detected</div>';
+        return `<div class="liq-table-container ${side}"><h4>${heading}</h4>`
+          + '<div style="text-align:center;color:var(--text-muted);font-size:11px;padding:10px;">No significant liquidation pools detected.</div></div>';
       }
-      return pools.map((lvl, idx) => {
+      const totalActive = pools.reduce((s, p) => s + (p.isLiquidated ? 0 : p.leverage), 0);
+      let html = `<div class="liq-table-container ${side}"><h4>${heading} — Current: ${formatUSD(currentBtcPrice)} | Active: $${formatIntensity(totalActive)}</h4>`
+        + '<table class="liq-data-table"><thead><tr>'
+        + '<th>Rank</th><th>Price (USD)</th><th>Pool Vol (USD)</th><th>Distance</th><th>Intensity</th>'
+        + '</tr></thead><tbody>';
+
+      pools.forEach((lvl, idx) => {
+        const badge = badgeFor(lvl, maxLeverage);
+        const distSign = lvl.distance > 0 ? '+' : '';
         const isLiq = lvl.isLiquidated;
-        const rowStyle = isLiq ? 'opacity: 0.45;' : '';
+        const rowStyle = isLiq ? ' style="opacity:0.45;"' : '';
         const priceColor = isLiq ? 'var(--text-muted)' : '#FFFFFF';
         const volColor = isLiq ? 'var(--text-muted)' : (isAbove ? '#bfdc21' : '#3ab56e');
+        const distColor = isLiq ? 'var(--text-muted)' : (isAbove ? '#FF453A' : '#32D74B');
 
-        let intensityText = 'LOW';
-        let intensityColor = '#848E9C';
-        let intensityBg = 'rgba(255,255,255,0.05)';
-        
-        if (isLiq) {
-          // xAxis label format is "30 Jun 2026, 20:45" — show just the HH:MM part
-          const timePart = lvl.liquidationTime ? lvl.liquidationTime.split(', ').pop() : null;
-          intensityText = timePart ? 'LIQ ' + timePart : 'LIQ';
-          intensityColor = '#848E9C';
-          intensityBg = 'rgba(255,255,255,0.03)';
-        } else {
-          const ratio = lvl.leverage / maxLeverage;
-          if (ratio >= 0.7) {
-            intensityText = 'HIGH';
-            intensityColor = '#bfdc21';
-            intensityBg = 'rgba(191, 220, 33, 0.15)';
-          } else if (ratio >= 0.3) {
-            intensityText = 'MED';
-            intensityColor = '#3ab56e';
-            intensityBg = 'rgba(58, 181, 110, 0.15)';
-          } else {
-            intensityText = 'LOW';
-            intensityColor = '#3a9db5';
-            intensityBg = 'rgba(58, 157, 181, 0.15)';
-          }
-        }
+        html += `<tr${rowStyle}>`
+          + `<td style="color:var(--text-muted);">#${idx + 1}</td>`
+          + `<td class="mono" style="font-weight:600;color:${priceColor};">$${lvl.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>`
+          + `<td class="mono intensity-cell" style="color:${volColor};">$${formatIntensity(lvl.leverage)}</td>`
+          + `<td class="mono" style="color:${distColor};">${distSign}${lvl.distance.toFixed(2)}%</td>`
+          + `<td><span class="intensity-badge ${badge.cls}">${badge.label}</span></td>`
+          + '</tr>';
+      });
+      html += '</tbody></table></div>';
+      return html;
+    };
 
-        const badgeHtml = `<span style="display: inline-block; padding: 2px 4px; border-radius: 3px; font-size: 8px; font-weight: 700; border: 1px solid ${intensityColor}; background: ${intensityBg}; color: ${intensityColor}; text-transform: uppercase; white-space: nowrap;">${intensityText}</span>`;
+    const renderPoolTable3d = (pools, isAbove, maxLeverage = 1) => {
+      const side = isAbove ? 'above' : 'below';
+      const heading = isAbove ? '▲ Resistance 3D' : '▼ Support 3D';
+      if (pools.length === 0) {
+        return `<div class="liq-table-container ${side}"><h4>${heading}</h4>`
+          + '<div style="text-align:center;color:var(--text-muted);font-size:11px;padding:10px;">No pools</div></div>';
+      }
+      const total = pools.reduce((s, p) => s + (p.isLiquidated ? 0 : p.leverage), 0);
+      let html = `<div class="liq-table-container ${side}"><h4>${heading} | Active: $${formatIntensity(total)}</h4>`
+        + '<table class="liq-data-table"><thead><tr>'
+        + '<th>Rank</th><th>Price (USD)</th><th>Pool Vol</th><th>Dist</th><th>Intensity</th>'
+        + '</tr></thead><tbody>';
 
-        return `
-          <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.02); padding: 4px 0; font-family: var(--font-mono); font-size: 10px; ${rowStyle}">
-            <span style="width: 44px; text-align: left; font-weight: 600; color: ${priceColor};">$${Math.round(lvl.price).toLocaleString()}</span>
-            <span style="width: 48px; text-align: center; color: ${volColor}; font-weight: 600;">$${formatIntensity(lvl.leverage)}</span>
-            <span style="width: 62px; text-align: right; flex-shrink: 0;">${badgeHtml}</span>
-          </div>
-        `;
-      }).join('');
+      pools.forEach((lvl, idx) => {
+        const badge = badgeFor(lvl, maxLeverage);
+        const distSign = lvl.distance > 0 ? '+' : '';
+        const isLiq = lvl.isLiquidated;
+        const rowStyle = isLiq ? ' style="opacity:0.45;"' : '';
+        const priceColor = isLiq ? 'var(--text-muted)' : '#FFFFFF';
+        const volColor = isLiq ? 'var(--text-muted)' : (isAbove ? '#F0B90B' : '#0ECB81');
+        const distColor = isLiq ? 'var(--text-muted)' : (isAbove ? '#F6465D' : '#0ECB81');
+
+        html += `<tr${rowStyle}>`
+          + `<td style="color:var(--text-muted);">#${idx + 1}</td>`
+          + `<td class="mono" style="color:${priceColor};">$${lvl.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>`
+          + `<td class="mono" style="color:${volColor};">$${formatIntensity(lvl.leverage)}</td>`
+          + `<td class="mono" style="color:${distColor};">${distSign}${lvl.distance.toFixed(2)}%</td>`
+          + `<td><span class="intensity-badge ${badge.cls}">${badge.label}</span></td>`
+          + '</tr>';
+      });
+      html += '</tbody></table></div>';
+      return html;
     };
 
     const resContainer = document.getElementById('cockpit-resistance-pools');
     const supContainer = document.getElementById('cockpit-support-pools');
-    if (resContainer) resContainer.innerHTML = renderPoolList(pools24h.above, true, pools24h.maxLeverage);
-    if (supContainer) supContainer.innerHTML = renderPoolList(pools24h.below, false, pools24h.maxLeverage);
+    if (resContainer) resContainer.innerHTML = renderPoolTable24h(pools24h.above, true, pools24h.maxLeverage);
+    if (supContainer) supContainer.innerHTML = renderPoolTable24h(pools24h.below, false, pools24h.maxLeverage);
 
     // Helper to format values as $1M / $1,5M
     const formatLiqSum = (val) => {
@@ -1239,8 +1267,8 @@ async function updateMiniHeatmap() {
     const res3dContainer = document.getElementById('cockpit-resistance-pools-3d');
     const sup3dContainer = document.getElementById('cockpit-support-pools-3d');
     if (data3d) {
-      if (res3dContainer) res3dContainer.innerHTML = renderPoolList(pools3d.above, true, pools3d.maxLeverage);
-      if (sup3dContainer) sup3dContainer.innerHTML = renderPoolList(pools3d.below, false, pools3d.maxLeverage);
+      if (res3dContainer) res3dContainer.innerHTML = renderPoolTable3d(pools3d.above, true, pools3d.maxLeverage);
+      if (sup3dContainer) sup3dContainer.innerHTML = renderPoolTable3d(pools3d.below, false, pools3d.maxLeverage);
       
       // Calculate 3D Pools ratio (visible Top 5) and total USD values per side
       const res3dSum = pools3d.above.reduce((sum, p) => sum + p.leverage, 0);
