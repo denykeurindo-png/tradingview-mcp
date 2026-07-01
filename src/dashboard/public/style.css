@@ -267,6 +267,22 @@ body {
   }
 }
 
+/* Two-column sentiment/flow grid (raw-data.html) -- collapses to a single
+   stacked column on narrow viewports instead of squeezing both columns. */
+.sentiment-flow-grid {
+  display: grid;
+  grid-template-columns: minmax(320px, 480px) 1fr;
+  gap: var(--spacing-md);
+  align-items: stretch;
+  margin-bottom: var(--spacing-md);
+}
+
+@media (max-width: 900px) {
+  .sentiment-flow-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .kpi-card {
   display: flex;
   align-items: center;
