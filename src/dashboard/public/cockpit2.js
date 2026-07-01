@@ -941,6 +941,13 @@ function updateCoinGlassIndicators(res) {
       recText = '<strong>💡 Aksi: WAIT / NEUTRAL</strong>. Tekanan beli dan jual seimbang. Lebih aman menunggu konvergensi sinyal sebelum entri.';
     }
     verdictRec.innerHTML = recText;
+
+    // Consolidated Analysis -- same detailed per-indicator breakdown text the server
+    // builds for /api/coinglass-summary (previously only shown on coinglass-summary.html).
+    const verdictExplanation = document.getElementById('cg-verdict-explanation');
+    if (verdictExplanation && res.explanation) {
+      verdictExplanation.innerHTML = res.explanation.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
+    }
   }
 }
 
