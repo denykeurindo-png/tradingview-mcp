@@ -12,10 +12,6 @@ document.addEventListener('DOMContentLoaded', () => {
   // Parse URL tab parameter on load
   const urlParams = new URLSearchParams(window.location.search);
   const tabParam = urlParams.get('tab');
-  if (tabParam === 'coinglass-tv') {
-    window.location.href = 'tv-charts.html';
-    return;
-  }
   if (tabParam && ['depth-delta', 'coinbase-premium', 'whale-orders', 'whale-retail-delta', 'top-trader-ls'].includes(tabParam)) {
     activeTab = tabParam;
   }
@@ -112,8 +108,6 @@ document.addEventListener('DOMContentLoaded', () => {
         renderWhaleOrdersTable(res.data, res.btcPrice || 65000);
       } else if (tabId === 'top-trader-ls') {
         renderTopTraderLsTable(res.data);
-      } else if (tabId === 'coinglass-tv') {
-        renderCoinGlassTvChart(res.data);
       } else {
         renderEChart(tabId, res.data);
       }
@@ -482,139 +476,6 @@ document.addEventListener('DOMContentLoaded', () => {
     }).join('');
   }
 
-  function renderCoinGlassTvChart(cacheData) {
-    const tabId = 'coinglass-tv';
-    const container = document.getElementById(`chart-${tabId}`);
-    
-    if (!cacheData || !cacheData.price || !cacheData.price.length) {
-      throw new Error('Data price kosong. Tunggu hingga scraper menyelesaikan scrape pertamanya.');
-    }
-
-    const { price, cvd, oi, fundingRate } = cacheData;
-
-    const formatTime = (ts) => {
-      const d = new Date(ts * 1000);
-      return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) + ' ' + 
-             d.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
-    };
-
-    const xAxisData = price.map(p => formatTime(p[0]));
-
-    const priceData = price.map(p => [
-      parseFloat(p[1]), 
-      parseFloat(p[4]), 
-      parseFloat(p[3]), 
-      parseFloat(p[2])
-    ]);
-
-    const cvdData = cvd ? cvd.map(c => parseFloat(c[4])) : [];
-    const oiData = oi ? oi.map(o => parseFloat(o[4])) : [];
-    const frData = fundingRate ? fundingRate.map(f => parseFloat(f[4])) : [];
-
-    if (!charts[tabId]) {
-      container.innerHTML = '';
-      charts[tabId] = echarts.init(container, 'dark');
-    }
-
-    const option = {
-      backgroundColor: 'transparent',
-      tooltip: {
-        trigger: 'axis',
-        axisPointer: { type: 'cross' },
-        backgroundColor: '#1E2026',
-        borderColor: '#2B3139',
-        textStyle: { color: '#EAECEF' },
-        formatter: function(params) {
-          let res = params[0].name + '<br/>';
-          params.forEach(p => {
-            let val = p.value;
-            if (p.seriesName === 'Price') {
-              val = `O: $${p.value[1]} | C: $${p.value[2]} | L: $${p.value[3]} | H: $${p.value[4]}`;
-            } else if (p.seriesName === 'Open Interest') {
-              val = '$' + (parseFloat(p.value) / 1e6).toFixed(2) + 'M';
-            } else if (p.seriesName === 'Funding Rate') {
-              val = (parseFloat(p.value) * 100).toFixed(4) + '%';
-            } else if (p.seriesName === 'Futures CVD') {
-              val = parseFloat(p.value).toLocaleString(undefined, { maximumFractionDigits: 2 }) + ' BTC';
-            }
-            res += `<span style="display:inline-block;margin-right:5px;border-radius:10px;width:9px;height:9px;background-color:${p.color}"></span> ${p.seriesName}: <b>${val}</b><br/>`;
-          });
-          return res;
-        }
-      },
-      axisPointer: {
-        link: [{ xAxisIndex: 'all' }]
-      },
-      grid: [
-        { left: '3%', right: '3%', height: '38%', top: '5%' },
-        { left: '3%', right: '3%', height: '15%', top: '48%' },
-        { left: '3%', right: '3%', height: '15%', top: '67%' },
-        { left: '3%', right: '3%', height: '10%', top: '86%' }
-      ],
-      xAxis: [
-        { type: 'category', data: xAxisData, gridIndex: 0, scale: true, axisLine: { lineStyle: { color: '#2B3139' } }, axisLabel: { show: false }, axisTick: { show: false } },
-        { type: 'category', data: xAxisData, gridIndex: 1, scale: true, axisLine: { lineStyle: { color: '#2B3139' } }, axisLabel: { show: false }, axisTick: { show: false } },
-        { type: 'category', data: xAxisData, gridIndex: 2, scale: true, axisLine: { lineStyle: { color: '#2B3139' } }, axisLabel: { show: false }, axisTick: { show: false } },
-        { type: 'category', data: xAxisData, gridIndex: 3, scale: true, axisLine: { lineStyle: { color: '#2B3139' } }, axisLabel: { color: '#848E9C', fontSize: 10 } }
-      ],
-      yAxis: [
-        { scale: true, gridIndex: 0, axisLine: { lineStyle: { color: '#2B3139' } }, axisLabel: { color: '#848E9C', fontSize: 10, formatter: '${value}' }, splitLine: { lineStyle: { color: '#2B3139', type: 'dashed' } } },
-        { scale: true, gridIndex: 1, axisLine: { lineStyle: { color: '#2B3139' } }, axisLabel: { color: '#848E9C', fontSize: 10, formatter: '{value} BTC' }, splitLine: { lineStyle: { color: '#2B3139', type: 'dashed' } } },
-        { scale: true, gridIndex: 2, axisLine: { lineStyle: { color: '#2B3139' } }, axisLabel: { color: '#848E9C', fontSize: 10, formatter: v => '$' + (v / 1e6).toFixed(0) + 'M' }, splitLine: { lineStyle: { color: '#2B3139', type: 'dashed' } } },
-        { scale: true, gridIndex: 3, axisLine: { lineStyle: { color: '#2B3139' } }, axisLabel: { color: '#848E9C', fontSize: 10, formatter: v => (v * 100).toFixed(4) + '%' }, splitLine: { lineStyle: { color: '#2B3139', type: 'dashed' } } }
-      ],
-      series: [
-        {
-          name: 'Price',
-          type: 'candlestick',
-          xAxisIndex: 0,
-          yAxisIndex: 0,
-          data: priceData,
-          itemStyle: {
-            color: '#0ECB81',
-            color0: '#F6465D',
-            borderColor: '#0ECB81',
-            borderColor0: '#F6465D'
-          }
-        },
-        {
-          name: 'Futures CVD',
-          type: 'line',
-          xAxisIndex: 1,
-          yAxisIndex: 1,
-          data: cvdData,
-          showSymbol: false,
-          lineStyle: { width: 1.5, color: '#F0B90B' }
-        },
-        {
-          name: 'Open Interest',
-          type: 'line',
-          xAxisIndex: 2,
-          yAxisIndex: 2,
-          data: oiData,
-          showSymbol: false,
-          lineStyle: { width: 1.5, color: '#00C0FF' }
-        },
-        {
-          name: 'Funding Rate',
-          type: 'line',
-          xAxisIndex: 3,
-          yAxisIndex: 3,
-          data: frData,
-          showSymbol: false,
-          lineStyle: { width: 1.5, color: '#FF3B30' },
-          areaStyle: {
-            color: new echarts.graphic.LinearGradient(0, 0, 0, 1, [
-              { offset: 0, color: 'rgba(255, 59, 48, 0.2)' },
-              { offset: 1, color: 'rgba(255, 59, 48, 0)' }
-            ])
-          }
-        }
-      ]
-    };
-
-    charts[tabId].setOption(option);
-  }
 
   async function loadPanelSummaries() {
     try {
