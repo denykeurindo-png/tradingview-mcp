@@ -990,7 +990,7 @@ function renderSingleMiniChart(chartInstance, title, heatmapData, is3d = false) 
         type: 'inside',
         xAxisIndex: 0,
         filterMode: 'filter',
-        start: savedZoomStart !== null ? savedZoomStart : Math.max(0, 100 - (72 / Math.max(xAxisData.length, 1)) * 100),
+        start: savedZoomStart !== null ? savedZoomStart : Math.max(0, 100 - (144 / Math.max(xAxisData.length, 1)) * 100),
         end: savedZoomEnd !== null ? savedZoomEnd : 100
       }
     ]
