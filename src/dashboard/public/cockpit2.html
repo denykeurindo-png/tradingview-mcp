@@ -37,7 +37,7 @@
         height: auto;
         overflow-y: visible !important; /* Prevent double scrollbars */
       }
-      .liquidity-row-grid {
+      .cockpit2-masonry-grid {
         grid-template-columns: 1fr !important;
       }
     }
@@ -445,9 +445,10 @@
           </div>
         </div>
 
-        <!-- Side-by-Side row: Whale Order Book Walls & Combined Depth -->
-        <div class="liquidity-row-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 0; align-items: start;">
-          <!-- Whale Large Orders & OB Depth -->
+        <!-- Two-column masonry stack: each column stacks its own cards independently -->
+        <div class="cockpit2-masonry-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start;">
+          <!-- LEFT column stack -->
+          <div style="display: flex; flex-direction: column; gap: 12px;">
           <div class="cockpit2-card w-whales-orders">
             <div class="widget-title">
               <span>📦 ANTRIAN ORDER BUKU & WHALE WALLS</span>
@@ -481,8 +482,39 @@
               </div>
             </div>
           </div>
+          <div class="cockpit2-card w-liquidity-analysis" style="display: flex; flex-direction: column; padding: 10px 12px 12px 12px; margin-bottom: 0;">
+            <div class="widget-title" style="margin-bottom: 8px; display:flex; justify-content:space-between; align-items:center;">
+              <span>Liquidity Profile & Exchange Distribution</span>
+              <span style="font-size: 9px; color: var(--text-muted);" id="liquidity-profile-update-time">--:--:--</span>
+            </div>
 
-          <!-- Widget: Combined Depth Global Market Order Book -->
+            <div style="display: flex; flex-direction: column;">
+              <!-- Section 1: Liquidity Delta Profile -->
+              <div>
+                <div style="font-size: 9.5px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">📊 ORDER BOOK LIQUIDITY DELTA</div>
+                <div style="display: flex; flex-direction: column; gap: 8px;" id="liquidity-delta-profile">
+                  <!-- Dynamically populated rows -->
+                  <div style="font-size: 10px; color: var(--text-muted); text-align: center; padding: 5px;">Loading delta profile...</div>
+                </div>
+              </div>
+
+              <!-- Divider -->
+              <div style="border-bottom: 1px dashed rgba(255,255,255,0.06); margin: 10px 0;"></div>
+
+              <!-- Section 2: Exchange Liquidity Distribution -->
+              <div>
+                <div style="font-size: 9.5px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">🏢 EXCHANGE LIQUIDITY DISTRIBUTION</div>
+                <div style="display: flex; flex-direction: column; gap: 8px;" id="exchange-liquidity-distribution">
+                  <!-- Dynamically populated progress bars -->
+                  <div style="font-size: 10px; color: var(--text-muted); text-align: center; padding: 5px;">Loading exchange distribution...</div>
+                </div>
+              </div>
+            </div>
+          </div>
+          </div>
+
+          <!-- RIGHT column stack -->
+          <div style="display: flex; flex-direction: column; gap: 12px;">
           <div class="cockpit2-card w-combined-depth-c2" style="display: flex; flex-direction: column; padding: 12px 14px;">
             <div class="widget-title" style="margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center;">
               <span>Combined Depth <span style="font-size: 9px; color: var(--text-muted); font-weight: normal; margin-left: 4px;">Global Market Order Book</span></span>
@@ -548,42 +580,6 @@
               </div>
             </div>
           </div>
-        </div>
-
-        <!-- Side-by-Side row: Liquidity Analysis & Custom Workspace -->
-        <div class="liquidity-row-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 0; align-items: start;">
-          <!-- Widget: Liquidity Analysis (Delta Profile & Exchange Distribution) -->
-          <div class="cockpit2-card w-liquidity-analysis" style="display: flex; flex-direction: column; padding: 10px 12px 12px 12px; margin-bottom: 0;">
-            <div class="widget-title" style="margin-bottom: 8px; display:flex; justify-content:space-between; align-items:center;">
-              <span>Liquidity Profile & Exchange Distribution</span>
-              <span style="font-size: 9px; color: var(--text-muted);" id="liquidity-profile-update-time">--:--:--</span>
-            </div>
-
-            <div style="display: flex; flex-direction: column;">
-              <!-- Section 1: Liquidity Delta Profile -->
-              <div>
-                <div style="font-size: 9.5px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">📊 ORDER BOOK LIQUIDITY DELTA</div>
-                <div style="display: flex; flex-direction: column; gap: 8px;" id="liquidity-delta-profile">
-                  <!-- Dynamically populated rows -->
-                  <div style="font-size: 10px; color: var(--text-muted); text-align: center; padding: 5px;">Loading delta profile...</div>
-                </div>
-              </div>
-
-              <!-- Divider -->
-              <div style="border-bottom: 1px dashed rgba(255,255,255,0.06); margin: 10px 0;"></div>
-
-              <!-- Section 2: Exchange Liquidity Distribution -->
-              <div>
-                <div style="font-size: 9.5px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">🏢 EXCHANGE LIQUIDITY DISTRIBUTION</div>
-                <div style="display: flex; flex-direction: column; gap: 8px;" id="exchange-liquidity-distribution">
-                  <!-- Dynamically populated progress bars -->
-                  <div style="font-size: 10px; color: var(--text-muted); text-align: center; padding: 5px;">Loading exchange distribution...</div>
-                </div>
-              </div>
-            </div>
-          </div>
-
-          <!-- Widget: CoinGlass Market Indicators Card -->
           <div class="cockpit2-card w-custom-empty" style="display: flex; flex-direction: column; padding: 10px 12px 12px 12px; margin-bottom: 0;" id="coinglass-indicators-card">
             <div class="widget-title" style="margin-bottom: 8px; display:flex; justify-content:space-between; align-items:center;">
               <span>📈 CoinGlass Market Indicators</span>
@@ -700,8 +696,8 @@
 
             </div>
           </div>
+          </div>
         </div>
-
       </div>
     </div>
   </div>
