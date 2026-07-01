@@ -207,7 +207,6 @@ function renderStrategyReview(data, settings) {
           <tr><td>Min R:R</td><td class="mono">1:${fmt(s.minRR, '—')}</td></tr>
           <tr><td>Min Prob</td><td class="mono">${fmt(s.minReversalProbability, '—', '%')}</td></tr>
           <tr><td>Sweep Window</td><td class="mono">${fmt(s.sweepConfirmCandles, '—')} candles</td></tr>
-          <tr><td>Cooldown</td><td class="mono">${fmt(s.cooldownMinutes, '—')} min</td></tr>
           <tr><td>ATR Multiplier</td><td class="mono">${fmt(s.atrMultiplier, '—')}×</td></tr>
           <tr><td>Min SL</td><td class="mono">${fmt(s.minSLPercent, '—', '%')}</td></tr>
           <tr><td>Max TP cap</td><td class="mono">${fmt(s.maxTPPercent, '—', '%')}</td></tr>
@@ -238,12 +237,13 @@ function renderStrategyReview(data, settings) {
         </table>
       </div>
       <div class="review-card">
-        <div class="review-title">How Sweeps Become Signals</div>
+        <div class="review-title">How Sweeps Become Signals <span style="font-size:9px;color:#636366;font-weight:400;text-transform:none;">(5-stage pipeline, matches Trading Cockpit)</span></div>
         <div style="font-size:11px;color:#848E9C;line-height:1.7;">
           <div style="margin-bottom:6px;"><span style="color:#F0B90B;font-weight:600;">1. Pool Detection</span><br>Heatmap pool within ${fmt(s.minDist, '0.2')}–${fmt(s.maxDist, '8')}% of price</div>
-          <div style="margin-bottom:6px;"><span style="color:#F0B90B;font-weight:600;">2. Sweep Candle</span><br>Wick ≥ ${fmt(s.minWickDepthPercent, '0.05')}% · Rejection ≥ ${fmt(s.minRejectionStrength, '0.15')} (${fmt(s.sweepConfirmCandles, '—')}-candle window)</div>
-          <div style="margin-bottom:6px;"><span style="color:#F0B90B;font-weight:600;">3. Filters Pass</span><br>R:R ≥ ${fmt(s.minRR, '—')} · Prob ≥ ${fmt(s.minReversalProbability, '—', '%')} <span style="color:#636366;">(CB Premium &amp; HTF Trend weight the score, no longer hard veto)</span></div>
-          <div><span style="color:#32D74B;font-weight:600;">4. Trade Entry</span><br>ATR-based SL (${fmt(s.atrMultiplier, '—')}×) · TP at opposing pool (max ${fmt(s.maxTPPercent, '—', '%')}) · ${fmt(s.cooldownMinutes, '—')}min cooldown</div>
+          <div style="margin-bottom:6px;"><span style="color:#F0B90B;font-weight:600;">2. Price Alert</span><br>Price within 0.5% of pool</div>
+          <div style="margin-bottom:6px;"><span style="color:#F0B90B;font-weight:600;">3. Sweep Detection</span><br>Wick ≥ ${fmt(s.minWickDepthPercent, '0.05')}% · Rejection ≥ ${fmt(s.minRejectionStrength, '0.15')} (${fmt(s.sweepConfirmCandles, '—')}-candle window)</div>
+          <div style="margin-bottom:6px;"><span style="color:#F0B90B;font-weight:600;">4. Filter Gates</span><br>R:R ≥ ${fmt(s.minRR, '—')} · Prob ≥ ${fmt(s.minReversalProbability, '—', '%')} <span style="color:#636366;">(CB Premium &amp; HTF Trend weight the score, no longer hard veto)</span></div>
+          <div><span style="color:#32D74B;font-weight:600;">5. Trade Active</span><br>ATR-based SL (${fmt(s.atrMultiplier, '—')}×) · TP at opposing pool (max ${fmt(s.maxTPPercent, '—', '%')}, widened to match min R:R on volatile setups) · no cooldown</div>
         </div>
       </div>
     </div>`;
