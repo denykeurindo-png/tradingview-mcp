@@ -45,7 +45,7 @@ tv status | tv quote | tv symbol BTCUSD
 
 ## Architecture
 
-This repo has **two independent subsystems** sharing a codebase:
+This repo has **three independent subsystems** sharing a codebase:
 
 ### 1. MCP Server (`src/server.js` + `src/tools/` + `src/core/`)
 
@@ -58,6 +58,7 @@ src/server.js               ← MCP server entry point
 src/tools/*.js              ← thin wrappers: register tool, call core, return jsonResult()
 src/core/*.js               ← business logic (chart.js, pine.js, data.js, replay.js, etc.)
 src/connection.js           ← CDP singleton (evaluate, evaluateAsync, safeString, requireFinite)
+src/wait.js                 ← waitForChartReady(): polls DOM for spinner + bar-count stability
     ↓
 Chrome DevTools Protocol → TradingView Electron renderer
 ```
@@ -67,6 +68,20 @@ Key invariants:
 - All user strings injected into CDP expressions **must** go through `safeString()` to prevent JS injection
 - Numeric inputs to TV APIs **must** pass `requireFinite(value, name)` before use
 - `src/core/index.js` re-exports all core modules
+
+**`_deps` injection pattern** — every `src/core/*.js` function accepts an optional `{ _deps }` parameter that overrides `evaluate`, `evaluateAsync`, `waitForChartReady`, etc. This is the sole mechanism for unit testing core functions without a live CDP connection. See `tests/sanitization.test.js` for the `mockDeps()` pattern.
+
+### 2. CLI (`src/cli/`)
+
+All 78 MCP tools are also accessible as a pipe-friendly `tv` CLI (after `npm link`):
+
+```
+src/cli/index.js            ← registers all command modules, calls router.run()
+src/cli/router.js           ← parseArgs dispatcher, printHelp, exit codes
+src/cli/commands/*.js       ← mirror of src/tools/*.js — same core functions, CLI interface
+```
+
+Exit codes: `0` success · `1` error · `2` CDP connection failure (tested by `tests/cli.test.js`).
 
 ### 2. Dashboard (`src/dashboard/server.js` + `src/dashboard/public/`)
 
@@ -151,7 +166,6 @@ After the function returns, `setBotPhaseState(botPhaseState, oldPhase)` is calle
   "minSLPercent": 1.2,
   "maxTPPercent": 1.5,
   "cooldownMinutes": 30,
-  "sweepConfirmCandles": 3,
   "maxActive": 1
 }
 ```

@@ -7,6 +7,7 @@ discovery-log.json
 src/dashboard/settings.json
 src/dashboard/trades.json
 src/dashboard/jda_trades.json
+src/dashboard/sweep_history.json
 chrome-profile/
 chrome_*.txt
 src/dashboard/cache/

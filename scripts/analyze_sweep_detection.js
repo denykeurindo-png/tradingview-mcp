@@ -83,11 +83,14 @@ yAxisData.forEach((priceStr, idx) => {
   if (absDist < 1.0) {
     const isTopVolume = volume >= minPoolVolume;
     
-    // Check older candles for sweep
+    // Only skip if an older candle performed a real sweep (wick+close), not just a wick touch
     const alreadySweptOld = olderCandles.some(c => {
-      const cLow = parseFloat(c[2]); // low
-      const cHigh = parseFloat(c[3]); // high
-      return p >= cLow && p <= cHigh;
+      const cClose = parseFloat(c[1]);
+      const cLow   = parseFloat(c[2]);
+      const cHigh  = parseFloat(c[3]);
+      return p < currentPrice
+        ? (cLow <= p && cClose > p)   // LONG pool: wicked below + closed above = already swept
+        : (cHigh >= p && cClose < p); // SHORT pool: wicked above + closed below = already swept
     });
     
     // Find sweep index in recent candles
