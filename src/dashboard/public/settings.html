@@ -401,16 +401,24 @@
 
         <!-- Advanced Strategy Section -->
         <div class="settings-section-title">Advanced Risk & Exit Rules</div>
-        <div class="settings-grid cols-3">
+        <div class="settings-grid cols-4">
           <div class="setting-field">
             <label>Max TP Distance (%)</label>
             <input type="number" id="auto-max-tp-percent" value="1.5" min="0.5" max="5.0" step="0.1">
           </div>
           <div class="setting-field">
+            <label>ATR Multiplier (SL buffer)</label>
+            <input type="number" id="auto-atr-multiplier" value="1.5" min="0.5" max="6.0" step="0.1">
+          </div>
+          <div class="setting-field">
+            <label>Min SL Distance (%)</label>
+            <input type="number" id="auto-min-sl-percent" value="0.8" min="0.2" max="5.0" step="0.1">
+          </div>
+          <div class="setting-field">
             <label>Auto-Cut Distance Threshold (%)</label>
             <input type="number" id="auto-cut-dist-threshold" value="1.0" min="0.1" max="3.0" step="0.1">
           </div>
-          <div class="setting-field span-2-tablet-only">
+          <div class="setting-field span-2-desktop-tablet">
             <label style="margin-bottom: 12px;">Breakeven Protection (SL to BE)</label>
             <div class="setting-toggle-field">
               <span>Enable 1:1 R:R Breakeven Lock</span>

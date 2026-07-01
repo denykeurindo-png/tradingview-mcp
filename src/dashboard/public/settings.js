@@ -45,6 +45,8 @@ async function loadSettingsFromServer() {
     document.getElementById('auto-sweep-candles').value = s.sweepConfirmCandles || 5;
     document.getElementById('auto-cooldown').value = s.cooldownMinutes || 60;
     document.getElementById('auto-max-tp-percent').value = s.maxTPPercent !== undefined ? s.maxTPPercent : 1.5;
+    document.getElementById('auto-atr-multiplier').value = s.atrMultiplier !== undefined ? s.atrMultiplier : 1.5;
+    document.getElementById('auto-min-sl-percent').value = s.minSLPercent !== undefined ? s.minSLPercent : 0.8;
     document.getElementById('auto-cut-dist-threshold').value = s.autoCutDistanceThreshold !== undefined ? s.autoCutDistanceThreshold : 1.0;
     document.getElementById('auto-breakeven-enabled').checked = s.breakevenEnabled !== false;
     document.getElementById('auto-min-cb-premium-long').value = s.minCoinbasePremiumForLongs !== undefined ? s.minCoinbasePremiumForLongs : -0.05;
@@ -106,6 +108,8 @@ async function saveSettingsToServer() {
         sweepConfirmCandles: getInt('auto-sweep-candles', 5),
         cooldownMinutes: getInt('auto-cooldown', 60),
         maxTPPercent: getNum('auto-max-tp-percent', 1.5),
+        atrMultiplier: getNum('auto-atr-multiplier', 1.5),
+        minSLPercent: getNum('auto-min-sl-percent', 0.8),
         autoCutDistanceThreshold: getNum('auto-cut-dist-threshold', 1.0),
         breakevenEnabled: document.getElementById('auto-breakeven-enabled').checked,
         minCoinbasePremiumForLongs: getNum('auto-min-cb-premium-long', -0.05),
@@ -198,9 +202,10 @@ window.addEventListener('DOMContentLoaded', async () => {
 
   // Attach change listeners to strategy inputs to save automatically
   const autoSaveIds = [
-    'input-capital', 'input-risk', 'auto-min-rr', 'auto-min-prob', 
-    'auto-max-active', 'auto-sweep-candles', 'auto-cooldown', 
-    'auto-max-tp-percent', 'auto-cut-dist-threshold', 'auto-breakeven-enabled',
+    'input-capital', 'input-risk', 'auto-min-rr', 'auto-min-prob',
+    'auto-max-active', 'auto-sweep-candles', 'auto-cooldown',
+    'auto-max-tp-percent', 'auto-atr-multiplier', 'auto-min-sl-percent',
+    'auto-cut-dist-threshold', 'auto-breakeven-enabled',
     'auto-min-cb-premium-long', 'auto-max-cb-premium-short', 'auto-htf-trend-mode',
     'tele-bot-token', 'tele-chat-id',
     // JDA Settings
