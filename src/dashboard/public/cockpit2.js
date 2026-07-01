@@ -833,7 +833,74 @@ function updateCoinGlassIndicators(res) {
     }
   }
 
-  // 5. Concluding JDA Sentiment Meter Footer
+  // 5. Whale Orders Buy/Sell Dominance
+  const wo = metrics.whaleOrders;
+  const woValEl = document.getElementById('cg-whale-orders-val');
+  const woDescEl = document.getElementById('cg-whale-orders-desc');
+  const woSentEl = document.getElementById('cg-whale-orders-sentiment');
+  const woBar = document.getElementById('cg-whale-orders-bar');
+
+  if (wo && woValEl && wo.buyVolume !== undefined) {
+    const netDelta = wo.buyVolume - wo.sellVolume;
+    woValEl.innerText = (netDelta >= 0 ? '+' : '') + formatUSD(netDelta);
+    woDescEl.innerText = wo.formatted || wo.description || 'Tidak ada data';
+    woSentEl.innerText = (wo.sentiment || 'neutral').toUpperCase();
+    woSentEl.style.color = wo.sentiment === 'bullish' ? '#0ECB81' : (wo.sentiment === 'bearish' ? '#F6465D' : '#F0B90B');
+
+    if (woBar) {
+      const total = wo.buyVolume + wo.sellVolume;
+      const dominance = total > 0 ? netDelta / total : 0;
+      const maxExpected = 0.5; // +/-50% dominance fills the bar
+      let pct = Math.min(100, Math.max(-100, (dominance / maxExpected) * 100));
+      if (pct >= 0) {
+        woBar.style.left = '50%';
+        woBar.style.width = (pct / 2) + '%';
+        woBar.style.background = '#0ECB81';
+      } else {
+        woBar.style.left = (50 + pct / 2) + '%';
+        woBar.style.width = (Math.abs(pct) / 2) + '%';
+        woBar.style.background = '#F6465D';
+      }
+    }
+  } else if (wo && woValEl) {
+    woValEl.innerText = '--';
+    woDescEl.innerText = wo.description || 'Tidak ada data';
+    woSentEl.innerText = (wo.sentiment || 'neutral').toUpperCase();
+    woSentEl.style.color = '#F0B90B';
+    if (woBar) { woBar.style.width = '0%'; }
+  }
+
+  // 6. Combined Depth Bid/Ask Ratio
+  const cd = metrics.combinedDepth;
+  const cdValEl = document.getElementById('cg-combined-depth-val');
+  const cdDescEl = document.getElementById('cg-combined-depth-desc');
+  const cdSentEl = document.getElementById('cg-combined-depth-sentiment');
+  const cdBar = document.getElementById('cg-combined-depth-bar');
+
+  if (cd && cdValEl) {
+    cdValEl.innerText = cd.formatted || '--';
+    cdDescEl.innerText = cd.description || 'Tidak ada data';
+    cdSentEl.innerText = (cd.sentiment || 'neutral').toUpperCase();
+    cdSentEl.style.color = cd.sentiment === 'bullish' ? '#0ECB81' : (cd.sentiment === 'bearish' ? '#F6465D' : '#F0B90B');
+
+    if (cdBar) {
+      const val = parseFloat(cd.value || 1.0);
+      const diff = val - 1.0;
+      const maxExpected = 0.2; // 0.8 to 1.2
+      let pct = Math.min(100, Math.max(-100, (diff / maxExpected) * 100));
+      if (pct >= 0) {
+        cdBar.style.left = '50%';
+        cdBar.style.width = (pct / 2) + '%';
+        cdBar.style.background = '#0ECB81';
+      } else {
+        cdBar.style.left = (50 + pct / 2) + '%';
+        cdBar.style.width = (Math.abs(pct) / 2) + '%';
+        cdBar.style.background = '#F6465D';
+      }
+    }
+  }
+
+  // 7. Concluding JDA Sentiment Meter Footer
   const verdictBadge = document.getElementById('cg-verdict-badge');
   const verdictRec = document.getElementById('cg-verdict-recommendation');
 

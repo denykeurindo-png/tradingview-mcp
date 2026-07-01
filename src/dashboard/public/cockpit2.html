@@ -655,7 +655,39 @@
                 </div>
               </div>
 
-              <!-- 5. Concluding JDA Sentiment Meter Footer -->
+              <!-- 5. Whale Orders Buy/Sell Dominance -->
+              <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); border-radius: 6px; padding: 8px 10px;">
+                <div style="display: flex; justify-content: space-between; font-size: 10px; font-weight: 600; margin-bottom: 2px;">
+                  <span style="color: var(--text-main); font-weight: 700;">Whale Orders Dominance</span>
+                  <span id="cg-whale-orders-val" style="color: #FFFFFF; font-family: var(--font-mono); font-weight: 700; font-size: 11px;">--</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 9px; color: var(--text-muted); margin-bottom: 4px;">
+                  <span id="cg-whale-orders-desc" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px;">Memuat data...</span>
+                  <span id="cg-whale-orders-sentiment" style="font-weight: 700; text-transform: uppercase; font-size: 8.5px;">--</span>
+                </div>
+                <!-- Visual Indicator Bar -->
+                <div style="position: relative; width: 100%; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                  <div id="cg-whale-orders-bar" style="position: absolute; top: 0; left: 50%; height: 100%; width: 0%; transition: width 0.5s ease, left 0.5s ease; border-radius: 2px;"></div>
+                </div>
+              </div>
+
+              <!-- 6. Combined Depth Bid/Ask Ratio -->
+              <div style="background: rgba(255, 255, 255, 0.01); border: 1px solid rgba(255, 255, 255, 0.03); border-radius: 6px; padding: 8px 10px;">
+                <div style="display: flex; justify-content: space-between; font-size: 10px; font-weight: 600; margin-bottom: 2px;">
+                  <span style="color: var(--text-main); font-weight: 700;">Combined Depth Bid/Ask Ratio</span>
+                  <span id="cg-combined-depth-val" style="color: #FFFFFF; font-family: var(--font-mono); font-weight: 700; font-size: 11px;">--</span>
+                </div>
+                <div style="display: flex; justify-content: space-between; font-size: 9px; color: var(--text-muted); margin-bottom: 4px;">
+                  <span id="cg-combined-depth-desc" style="white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 170px;">Memuat data...</span>
+                  <span id="cg-combined-depth-sentiment" style="font-weight: 700; text-transform: uppercase; font-size: 8.5px;">--</span>
+                </div>
+                <!-- Visual Indicator Bar -->
+                <div style="position: relative; width: 100%; height: 4px; background: rgba(255,255,255,0.05); border-radius: 2px; overflow: hidden;">
+                  <div id="cg-combined-depth-bar" style="position: absolute; top: 0; left: 50%; height: 100%; width: 0%; transition: width 0.5s ease, left 0.5s ease; border-radius: 2px;"></div>
+                </div>
+              </div>
+
+              <!-- 7. Concluding JDA Sentiment Meter Footer -->
               <div style="background: rgba(0, 0, 0, 0.25); border: 1px solid rgba(255,255,255,0.06); border-radius: 6px; padding: 10px 12px; margin-top: 4px;" id="cg-verdict-box">
                 <div style="display: flex; justify-content: space-between; align-items: center; font-size: 10px; font-weight: 600;">
                   <span style="color: var(--text-muted); font-size: 9px; text-transform: uppercase; letter-spacing: 0.3px;">Sentimen Gabungan</span>
