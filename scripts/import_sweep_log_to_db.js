@@ -21,6 +21,7 @@ const PM2_LOG_PATH = path.join(os.homedir(), '.pm2/logs/tv-monitor-out.log');
 const SWEEP_HISTORY_PATH = path.join(__dirname, '../src/dashboard/sweep_history.json');
 
 const db = new DatabaseSync(DB_PATH);
+db.exec('PRAGMA journal_mode=WAL;');
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS sweep_events (

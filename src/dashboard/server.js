@@ -5299,6 +5299,9 @@ let insertPoolSnapshotStmt = null;
 let insertCandleStmt = null;
 try {
   sweepEventsDb = new DatabaseSync(SWEEP_EVENTS_DB_FILE);
+  // WAL mode lets ad-hoc analysis queries read concurrently while the bot writes,
+  // instead of occasionally hitting "database is locked".
+  sweepEventsDb.exec('PRAGMA journal_mode=WAL;');
   sweepEventsDb.exec(`
     CREATE TABLE IF NOT EXISTS sweep_events (
       id INTEGER PRIMARY KEY AUTOINCREMENT,

@@ -20,6 +20,7 @@ const days = parseInt(process.argv[2], 10) || 60;
 const interval = process.argv[3] || '15m';
 
 const db = new DatabaseSync(DB_PATH);
+db.exec('PRAGMA journal_mode=WAL;');
 db.exec(`
   CREATE TABLE IF NOT EXISTS candles (
     id INTEGER PRIMARY KEY AUTOINCREMENT,

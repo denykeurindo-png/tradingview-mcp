@@ -8,7 +8,7 @@ src/dashboard/settings.json
 src/dashboard/trades.json
 src/dashboard/jda_trades.json
 src/dashboard/sweep_history.json
-src/dashboard/sweep_events.db
+src/dashboard/sweep_events.db*
 chrome-profile/
 chrome_*.txt
 src/dashboard/cache/
