@@ -6986,7 +6986,9 @@ function predictSweepTargets(heatmapData, metrics) {
     const scorePool = p => (p.volume / Math.pow(p.absDist, 1.5)) * (p.side === 'RESISTANCE' ? upBias : downBias);
     const scored = quality.map(p => ({ ...p, score: scorePool(p) })).sort((a, b) => b.score - a.score);
     const hotPool = scored[0] || null;
-    const cascadePool = hotPool ? scored.filter(p => p.side === hotPool.side && Math.abs(p.price - hotPool.price) > 1).sort((a,b) => a.absDist - b.absDist)[0] : null;
+    // Cascade = the next domino beyond the hot pool, so it must be strictly farther away
+    // (by distance, not score) — otherwise "if swept" implies a sequence that isn't real.
+    const cascadePool = hotPool ? scored.filter(p => p.side === hotPool.side && p.absDist > hotPool.absDist).sort((a,b) => a.absDist - b.absDist)[0] : null;
 
     const upScore   = resistance.reduce((s, p) => s + scorePool(p), 0);
     const downScore = support.reduce((s, p) => s + scorePool(p), 0);
