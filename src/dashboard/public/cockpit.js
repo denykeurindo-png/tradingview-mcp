@@ -814,14 +814,21 @@ async function updateMarketExtras() {
 function renderSingleMiniChart(chartInstance, title, heatmapData, is3d = false) {
   if (!chartInstance) return;
 
-  // Preserve the user's current zoom/pan across periodic data refreshes
+  // Preserve the user's current zoom/pan across periodic data refreshes. Guard with
+  // typeof checks (not just !== null) -- if ECharts ever reports start/end as undefined
+  // instead of null, `undefined !== null` is true, so the stale/broken value would slip
+  // through and get fed straight back into the next setOption, silently freezing the
+  // chart on every render after the first (only a full page reload, i.e. a fresh chart
+  // instance with no prior option, would ever look correct again).
   let savedZoomStart = null;
   let savedZoomEnd = null;
   try {
     const existingDataZoom = chartInstance.getOption().dataZoom;
     if (existingDataZoom && existingDataZoom[0]) {
-      savedZoomStart = existingDataZoom[0].start;
-      savedZoomEnd = existingDataZoom[0].end;
+      const s = existingDataZoom[0].start;
+      const e = existingDataZoom[0].end;
+      if (typeof s === 'number' && !isNaN(s)) savedZoomStart = s;
+      if (typeof e === 'number' && !isNaN(e)) savedZoomEnd = e;
     }
   } catch (e) { /* chart not yet initialized with options */ }
 
