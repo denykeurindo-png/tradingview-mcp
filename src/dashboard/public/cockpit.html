@@ -329,7 +329,7 @@
         <div class="pipe-num">Stage 3</div>
         <div class="pipe-title">🌊 Sweep Detection</div>
         <div class="pipe-big" id="pipe-sweep-dir" style="color:#848E9C;">No sweep</div>
-        <div class="pipe-sub">Window: 5 candles · Wick + close reversal</div>
+        <div class="pipe-sub" id="pipe-sweep-window">Window: — candles · Wick + close reversal</div>
         <div class="pipe-sub" id="pipe-sweep-detail">Wick: — · Rejection: —</div>
         <div style="padding-top:8px;">
           <span class="pipe-badge pb-grey" id="pipe-sweep-badge">IDLE</span>
@@ -642,6 +642,9 @@
       // Reset
       ['scan','alert','sweep','filter','trade'].forEach(s => setStageCls(s, ''));
       ['1','2','3','4'].forEach(a => setArrow(a, 'dim'));
+
+      const sweepConfirmCandles = (data.settings && data.settings.sweepConfirmCandles) || 3;
+      txt('pipe-sweep-window', 'Window: ' + sweepConfirmCandles + ' candles · Wick + close reversal');
 
       // ── Stage 1: Pool Detection ────────────────────────────────────
       if (data.nearestPool) {
