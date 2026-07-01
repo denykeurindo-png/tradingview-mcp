@@ -19,14 +19,6 @@
     .cockpit2-grid {
       margin-top: 0;
     }
-    .top-pools-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: 12px;
-      flex: 1;
-      min-height: 0;
-    }
-
     /* Mobile and Tablet responsiveness rules */
     @media (max-width: 1024px) {
       .cockpit2-grid {
@@ -44,9 +36,6 @@
       .app-container {
         height: auto;
         overflow-y: visible !important; /* Prevent double scrollbars */
-      }
-      .top-pools-grid {
-        grid-template-columns: 1fr; /* Stack liquidation pools vertically */
       }
       .liquidity-row-grid {
         grid-template-columns: 1fr !important;
@@ -121,22 +110,6 @@
     .widget-title {
       font-size: 12.5px !important;
     }
-    /* Enlarge liquidation pools list text */
-    #cockpit-resistance-pools div > span:not(:last-child),
-    #cockpit-support-pools div > span:not(:last-child),
-    #cockpit-resistance-pools-3d div > span:not(:last-child),
-    #cockpit-support-pools-3d div > span:not(:last-child) {
-      font-size: 12.5px !important;
-      font-weight: 700 !important;
-    }
-    #cockpit-resistance-pools span span,
-    #cockpit-support-pools span span,
-    #cockpit-resistance-pools-3d span span,
-    #cockpit-support-pools-3d span span {
-      font-size: 9.5px !important;
-      font-weight: 700 !important;
-    }
-    
     /* Enlarge KPI text in the 4 grid boxes */
     .kpi-grid > div > span:nth-child(1) {
       font-size: 10px !important;
@@ -307,7 +280,7 @@
   <!-- Top Header Bar -->
   <div class="top-bar">
     <div class="top-bar-title" style="display: flex; align-items: center; gap: 12px;">
-      COCKPIT 2: HEATMAP & WHALES
+      COCKPIT 2: WHALES & DEPTH
       <span id="market-price-badge" style="font-family: var(--font-mono); font-size: 13px; font-weight: 700; color: var(--accent-success); background: rgba(14,203,129,0.1); padding: 2px 8px; border-radius: 4px; border: 1px solid rgba(14,203,129,0.2); margin-left: 10px;">BTC $--,---.--</span>
     </div>
     <div class="top-bar-controls">
@@ -354,95 +327,6 @@
 
     <!-- Cockpit 2 Grid Layout -->
     <div class="cockpit2-grid">
-      <!-- COLUMN 1: Heatmap Liquidity Map (Left) -->
-      <div class="cockpit2-col">
-        <div class="cockpit2-card w-full-heatmap" style="padding: 10px 8px 6px 8px; margin-bottom: 0px;">
-          <div class="widget-title" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-            <span>24H Liquidity Sweep Map</span>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 9px; color: var(--text-muted); font-family: var(--font-mono);" id="heatmap-24h-update-time">--:--:--</span>
-              <button class="btn-chart-refresh" onclick="triggerManualRefresh(this)" style="background: none; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; padding: 2px; transition: color 0.2s;" title="Refresh Chart Data">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="refresh-icon">
-                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-                </svg>
-              </button>
-            </div>
-          </div>
-          <div id="chart-mini-heatmap-24h" style="width: 100%; height: 320px; margin-bottom: 10px;"></div>
-
-          <div class="widget-title" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
-            <span>3D Liquidity Sweep Map</span>
-            <div style="display: flex; align-items: center; gap: 8px;">
-              <span style="font-size: 9px; color: var(--text-muted); font-family: var(--font-mono);" id="heatmap-3d-update-time">--:--:--</span>
-              <button class="btn-chart-refresh" onclick="triggerManualRefresh(this)" style="background: none; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; padding: 2px; transition: color 0.2s;" title="Refresh Chart Data">
-                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="refresh-icon">
-                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-                </svg>
-              </button>
-            </div>
-          </div>
-          <div id="chart-mini-heatmap-3d" style="width: 100%; height: 320px;"></div>
-        </div>
-
-        <!-- Widget 8: Top Liquidation Pools (24H / 3D) -->
-        <div class="cockpit2-card w-top-liq-pools" style="display: flex; flex-direction: column; padding: 10px 12px 12px 12px;">
-          <div class="widget-title" style="margin-bottom: 8px;">
-            <span>🔥 Top Liquidation Pools</span>
-          </div>
-          <div class="top-pools-grid">
-            <!-- Left Box: 24H Pools -->
-            <div style="display: flex; flex-direction: column; gap: 8px; min-height: 0;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-                <div style="display: flex; align-items: center;">
-                  <span style="font-weight: 600; font-size: 11px; color: var(--text-muted); letter-spacing: 0.3px;">24H POOLS</span>
-                  <span id="liq-ratio-24h" style="font-size: 9.5px; font-weight: 700; font-family: var(--font-mono); margin-left: 8px;"></span>
-                </div>
-                <span style="font-size: 9px; color: var(--text-muted); font-family: var(--font-mono);" id="liq-pools-update-24h">--:--:--</span>
-              </div>
-              <!-- Resistance 24H -->
-              <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; min-height: 0;">
-                <div style="font-weight: 700; color: var(--accent-alert); text-transform: uppercase; letter-spacing: 0.3px; font-size: 9px; margin-bottom: 6px;">▲ Resistance 24H</div>
-                <div id="cockpit-resistance-pools" style="display: flex; flex-direction: column; gap: 6px; justify-content: flex-start; margin-top: 4px; overflow-y: auto; max-height: 180px;">
-                  <div style="color: var(--text-muted); text-align: center; padding: 10px; font-size: 10px;">Loading 24H...</div>
-                </div>
-              </div>
-              <!-- Support 24H -->
-              <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; min-height: 0;">
-                <div style="font-weight: 700; color: var(--accent-success); text-transform: uppercase; letter-spacing: 0.3px; font-size: 9px; margin-bottom: 6px;">▼ Support 24H</div>
-                <div id="cockpit-support-pools" style="display: flex; flex-direction: column; gap: 6px; justify-content: flex-start; margin-top: 4px; overflow-y: auto; max-height: 180px;">
-                  <div style="color: var(--text-muted); text-align: center; padding: 10px; font-size: 10px;">Loading 24H...</div>
-                </div>
-              </div>
-            </div>
-
-            <!-- Right Box: 3D Pools -->
-            <div style="display: flex; flex-direction: column; gap: 8px; min-height: 0;">
-              <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 2px;">
-                <div style="display: flex; align-items: center;">
-                  <span style="font-weight: 600; font-size: 11px; color: var(--text-muted); letter-spacing: 0.3px;">3D POOLS</span>
-                  <span id="liq-ratio-3d" style="font-size: 9.5px; font-weight: 700; font-family: var(--font-mono); margin-left: 8px;"></span>
-                </div>
-                <span style="font-size: 9px; color: var(--text-muted); font-family: var(--font-mono);" id="liq-pools-update-3d">--:--:--</span>
-              </div>
-              <!-- Resistance 3D -->
-              <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; min-height: 0;">
-                <div style="font-weight: 700; color: var(--accent-alert); text-transform: uppercase; letter-spacing: 0.3px; font-size: 9px; margin-bottom: 6px;">▲ Resistance 3D</div>
-                <div id="cockpit-resistance-pools-3d" style="display: flex; flex-direction: column; gap: 6px; justify-content: flex-start; margin-top: 4px; overflow-y: auto; max-height: 180px;">
-                  <div style="color: var(--text-muted); text-align: center; padding: 10px; font-size: 10px;">Loading 3D...</div>
-                </div>
-              </div>
-              <!-- Support 3D -->
-              <div style="background: rgba(255,255,255,0.01); border: 1px solid var(--border-color); border-radius: 6px; padding: 6px 8px; display: flex; flex-direction: column; min-height: 0;">
-                <div style="font-weight: 700; color: var(--accent-success); text-transform: uppercase; letter-spacing: 0.3px; font-size: 9px; margin-bottom: 6px;">▼ Support 3D</div>
-                <div id="cockpit-support-pools-3d" style="display: flex; flex-direction: column; gap: 6px; justify-content: flex-start; margin-top: 4px; overflow-y: auto; max-height: 180px;">
-                  <div style="color: var(--text-muted); text-align: center; padding: 10px; font-size: 10px;">Loading 3D...</div>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-
       <!-- COLUMN 2: Reversal Strategy & Control Center (Center) -->
       <div class="cockpit2-col" style="display: none;">
         <!-- Reversal Score Widget -->

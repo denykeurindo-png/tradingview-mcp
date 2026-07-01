@@ -1762,7 +1762,7 @@ body.sidebar-minimized .sidebar-logout:hover span::before {
 /* ─── Cockpit 2 Specific Dashboard Styles ─── */
 .cockpit2-grid {
   display: grid;
-  grid-template-columns: 50% 1fr;
+  grid-template-columns: 1fr;
   gap: 16px;
   margin-top: 12px;
   height: 100%;
@@ -1790,11 +1790,6 @@ body.sidebar-minimized .sidebar-logout:hover span::before {
 .cockpit2-card:hover {
   border-color: rgba(255, 255, 255, 0.10);
   box-shadow: 0 12px 40px rgba(0, 0, 0, 0.35);
-}
-.w-full-heatmap {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
 }
 .w-whales-cvd {
   flex: 1;
