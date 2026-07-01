@@ -328,6 +328,10 @@
             <div style="font-size: 9px; color: #848E9C; text-transform: uppercase;">Ratio</div>
             <div id="metric-summary-val" style="font-size: 13px; font-weight: bold; margin-top: 2px; font-family: 'JetBrains Mono', monospace;">--</div>
           </div>
+          <div style="text-align: right;">
+            <div style="font-size: 9px; color: #848E9C; text-transform: uppercase;">Updated</div>
+            <div id="metric-summary-update-time" style="font-size: 11px; color: #848E9C; margin-top: 2px; font-family: 'JetBrains Mono', monospace;">--:--:--</div>
+          </div>
         </div>
       </div>
       <!-- Top Walls inside Combined Depth drawer -->
@@ -413,9 +417,12 @@
     <div class="orderbook-grid">
       <!-- Left Column: Depth Chart -->
       <div class="card depth-chart-card">
-        <div class="card-header">
-          <h3>📊 Cumulative Market Depth Curve</h3>
-          <span class="card-subtitle">Global bids vs asks cumulative order wall distribution</span>
+        <div class="card-header" style="display:flex; justify-content:space-between; align-items:flex-start;">
+          <div>
+            <h3>📊 Cumulative Market Depth Curve</h3>
+            <span class="card-subtitle">Global bids vs asks cumulative order wall distribution</span>
+          </div>
+          <span class="card-subtitle" id="depth-chart-update-time" style="white-space:nowrap;">--:--:--</span>
         </div>
         <div id="depth-chart" class="depth-chart-container"></div>
       </div>
@@ -475,7 +482,7 @@
     </div>
   </div>
 
-  <script src="orderbook.js"></script>
+  <script src="orderbook.js?v=1.0.1"></script>
   <script>
     // Initial load of sidebar minimize state (runs immediately to prevent flicker)
     if (localStorage.getItem('sidebar-minimized') === 'true') {

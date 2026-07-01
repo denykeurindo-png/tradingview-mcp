@@ -217,6 +217,8 @@ async function fetchOrderBook(refresh = false) {
 
     // 3. Update Depth Chart
     updateDepthChart(bids, asks, midPrice);
+    const dcUpdEl = document.getElementById('depth-chart-update-time');
+    if (dcUpdEl) dcUpdEl.innerText = new Date(timestamp).toLocaleTimeString();
 
     // 4. Render Table rows (max 50 levels)
     const maxLevels = 50;
@@ -311,6 +313,9 @@ async function loadMetricSummary() {
 
     const m = res.metrics?.combinedDepth;
     if (!m) return;
+
+    const msUpdEl = document.getElementById('metric-summary-update-time');
+    if (msUpdEl) msUpdEl.innerText = new Date().toLocaleTimeString();
 
     descEl.innerHTML = m.description || 'Tidak ada analisis detail';
     sentimentEl.innerText = (m.sentiment || 'neutral').toUpperCase();

@@ -116,9 +116,11 @@ async function loadData(forceRefresh = false) {
     const result = resObj.data;
     const btcPrice = resObj.btcPrice || 65000;
 
-    // 1. Update Cache indicators
+    // 1. Update Cache indicators — this is OUR scrape/fetch time, distinct from
+    // the per-KPI "Last update" labels below which come straight from CoinGlass's
+    // own page (ETF flow data has its own T+1 reporting lag, often days behind).
     const lastUpdate = new Date(result.timestamp).toLocaleTimeString();
-    cacheIndicator.innerText = `Updated: ${lastUpdate} (BTC @ ${formatUSD(btcPrice)}) [${resObj.source === 'cache' ? 'Cache' : 'Live'}]`;
+    cacheIndicator.innerText = `Server synced: ${lastUpdate} (BTC @ ${formatUSD(btcPrice)}) [${resObj.source === 'cache' ? 'Cache' : 'Live'}]`;
 
     // 2. Render elements
     renderKPIs(result.kpis, result.formatted, btcPrice);
@@ -440,3 +442,7 @@ btnRefresh.addEventListener('click', () => loadData(true));
 
 // Initial load on page ready
 window.addEventListener('DOMContentLoaded', () => loadData(false));
+
+// Auto-refresh every 60s — without this, "Last updated" freezes at whatever
+// time the page happened to load and silently goes stale for hours.
+setInterval(() => loadData(false), 60000);

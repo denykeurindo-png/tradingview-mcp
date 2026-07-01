@@ -170,12 +170,6 @@
       font-size: 9.5px !important;
     }
 
-    /* Minimum height: match Top Liquidation Pools visual height */
-    .w-liquidity-analysis,
-    .w-custom-empty {
-      min-height: 380px;
-    }
-
     /* Enlarge Combined Depth Summary card text */
     #metric-summary-card div {
       font-size: 9.5px !important;
@@ -365,21 +359,27 @@
         <div class="cockpit2-card w-full-heatmap" style="padding: 10px 8px 6px 8px; margin-bottom: 0px;">
           <div class="widget-title" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
             <span>24H Liquidity Sweep Map</span>
-            <button class="btn-chart-refresh" onclick="triggerManualRefresh(this)" style="background: none; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; padding: 2px; transition: color 0.2s;" title="Refresh Chart Data">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="refresh-icon">
-                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-              </svg>
-            </button>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 9px; color: var(--text-muted); font-family: var(--font-mono);" id="heatmap-24h-update-time">--:--:--</span>
+              <button class="btn-chart-refresh" onclick="triggerManualRefresh(this)" style="background: none; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; padding: 2px; transition: color 0.2s;" title="Refresh Chart Data">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="refresh-icon">
+                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                </svg>
+              </button>
+            </div>
           </div>
           <div id="chart-mini-heatmap-24h" style="width: 100%; height: 320px; margin-bottom: 10px;"></div>
-          
+
           <div class="widget-title" style="display: flex; justify-content: space-between; align-items: center; width: 100%;">
             <span>3D Liquidity Sweep Map</span>
-            <button class="btn-chart-refresh" onclick="triggerManualRefresh(this)" style="background: none; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; padding: 2px; transition: color 0.2s;" title="Refresh Chart Data">
-              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="refresh-icon">
-                <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
-              </svg>
-            </button>
+            <div style="display: flex; align-items: center; gap: 8px;">
+              <span style="font-size: 9px; color: var(--text-muted); font-family: var(--font-mono);" id="heatmap-3d-update-time">--:--:--</span>
+              <button class="btn-chart-refresh" onclick="triggerManualRefresh(this)" style="background: none; border: none; color: var(--text-muted); cursor: pointer; display: flex; align-items: center; padding: 2px; transition: color 0.2s;" title="Refresh Chart Data">
+                <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="refresh-icon">
+                  <path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/>
+                </svg>
+              </button>
+            </div>
           </div>
           <div id="chart-mini-heatmap-3d" style="width: 100%; height: 320px;"></div>
         </div>
@@ -488,8 +488,9 @@
 
         <!-- Active Position Panel -->
         <div class="cockpit2-card w-active-position-c2">
-          <div class="widget-title">
+          <div class="widget-title" style="display:flex;justify-content:space-between;align-items:center;">
             <span>💼 POSISI AKTIF RIIL (BOT & WEBHOOK)</span>
+            <span style="font-size: 10px; color: var(--text-muted);" id="active-position-update-time">--:--:--</span>
           </div>
           <div id="active-position-details" style="display: flex; flex-direction: column; height: 100%; min-height: 180px;">
             <div class="no-active-trade" id="no-active-position-text">Tidak ada posisi aktif berjalan saat ini.</div>
@@ -573,8 +574,9 @@
 
         <!-- Widget: Combined Depth Global Market Order Book -->
         <div class="cockpit2-card w-combined-depth-c2" style="display: flex; flex-direction: column; padding: 12px 14px;">
-          <div class="widget-title" style="margin-bottom: 10px;">
+          <div class="widget-title" style="margin-bottom: 10px; display:flex; justify-content:space-between; align-items:center;">
             <span>Combined Depth <span style="font-size: 9px; color: var(--text-muted); font-weight: normal; margin-left: 4px;">Global Market Order Book</span></span>
+            <span style="font-size: 10px; color: var(--text-muted);" id="combined-depth-update-time">--:--:--</span>
           </div>
 
           <!-- Combined Depth Summary card -->
@@ -638,39 +640,43 @@
         </div>
 
         <!-- Side-by-Side row: Liquidity Analysis & Custom Workspace -->
-        <div class="liquidity-row-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 0;">
+        <div class="liquidity-row-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; margin-bottom: 0; flex: 1;">
           <!-- Widget: Liquidity Analysis (Delta Profile & Exchange Distribution) -->
           <div class="cockpit2-card w-liquidity-analysis" style="display: flex; flex-direction: column; padding: 10px 12px 12px 12px; margin-bottom: 0;">
-            <div class="widget-title" style="margin-bottom: 8px;">
+            <div class="widget-title" style="margin-bottom: 8px; display:flex; justify-content:space-between; align-items:center;">
               <span>Liquidity Profile & Exchange Distribution</span>
+              <span style="font-size: 9px; color: var(--text-muted);" id="liquidity-profile-update-time">--:--:--</span>
             </div>
 
-            <!-- Section 1: Liquidity Delta Profile -->
-            <div style="margin-bottom: 12px;">
-              <div style="font-size: 9.5px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">📊 ORDER BOOK LIQUIDITY DELTA</div>
-              <div style="display: flex; flex-direction: column; gap: 6px;" id="liquidity-delta-profile">
-                <!-- Dynamically populated rows -->
-                <div style="font-size: 10px; color: var(--text-muted); text-align: center; padding: 5px;">Loading delta profile...</div>
+            <div style="display: flex; flex-direction: column; flex: 1; justify-content: space-between;">
+              <!-- Section 1: Liquidity Delta Profile -->
+              <div>
+                <div style="font-size: 9.5px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">📊 ORDER BOOK LIQUIDITY DELTA</div>
+                <div style="display: flex; flex-direction: column; gap: 8px;" id="liquidity-delta-profile">
+                  <!-- Dynamically populated rows -->
+                  <div style="font-size: 10px; color: var(--text-muted); text-align: center; padding: 5px;">Loading delta profile...</div>
+                </div>
               </div>
-            </div>
 
-            <!-- Divider -->
-            <div style="border-bottom: 1px dashed rgba(255,255,255,0.06); margin: 6px 0 10px 0;"></div>
+              <!-- Divider -->
+              <div style="border-bottom: 1px dashed rgba(255,255,255,0.06); margin: 10px 0;"></div>
 
-            <!-- Section 2: Exchange Liquidity Distribution -->
-            <div>
-              <div style="font-size: 9.5px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">🏢 EXCHANGE LIQUIDITY DISTRIBUTION</div>
-              <div style="display: flex; flex-direction: column; gap: 8px;" id="exchange-liquidity-distribution">
-                <!-- Dynamically populated progress bars -->
-                <div style="font-size: 10px; color: var(--text-muted); text-align: center; padding: 5px;">Loading exchange distribution...</div>
+              <!-- Section 2: Exchange Liquidity Distribution -->
+              <div>
+                <div style="font-size: 9.5px; color: var(--text-muted); font-weight: 600; text-transform: uppercase; margin-bottom: 6px; letter-spacing: 0.5px;">🏢 EXCHANGE LIQUIDITY DISTRIBUTION</div>
+                <div style="display: flex; flex-direction: column; gap: 8px;" id="exchange-liquidity-distribution">
+                  <!-- Dynamically populated progress bars -->
+                  <div style="font-size: 10px; color: var(--text-muted); text-align: center; padding: 5px;">Loading exchange distribution...</div>
+                </div>
               </div>
             </div>
           </div>
 
           <!-- Widget: CoinGlass Market Indicators Card -->
           <div class="cockpit2-card w-custom-empty" style="display: flex; flex-direction: column; padding: 10px 12px 12px 12px; margin-bottom: 0;" id="coinglass-indicators-card">
-            <div class="widget-title" style="margin-bottom: 8px;">
+            <div class="widget-title" style="margin-bottom: 8px; display:flex; justify-content:space-between; align-items:center;">
               <span>📈 CoinGlass Market Indicators</span>
+              <span style="font-size: 9px; color: var(--text-muted);" id="coinglass-indicators-update-time">--:--:--</span>
             </div>
             <div style="display: flex; flex-direction: column; gap: 8px; flex: 1; justify-content: flex-start;">
               
@@ -760,6 +766,6 @@
   <!-- Floating Toast Notifications Container -->
   <div id="toast-container" style="position: fixed; top: 60px; right: 20px; z-index: 9999; display: flex; flex-direction: column; gap: 8px; pointer-events: none;"></div>
 
-  <script src="cockpit2.js?v=2.2.4"></script>
+  <script src="cockpit2.js?v=2.2.7"></script>
 </body>
 </html>
