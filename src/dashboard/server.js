@@ -4,7 +4,17 @@ import WebSocket from 'ws';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
-import { DatabaseSync } from 'node:sqlite';
+
+// node:sqlite is unavailable on older Node runtimes (e.g. the VPS, which is
+// view-only and never needs it). Load it dynamically so a missing built-in
+// doesn't crash the whole process before the existing null-checks below
+// can degrade gracefully.
+let DatabaseSync = null;
+try {
+  ({ DatabaseSync } = await import('node:sqlite'));
+} catch {
+  console.warn('[SQLite] node:sqlite not available on this Node runtime — sweep-event DB logging disabled.');
+}
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
