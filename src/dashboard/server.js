@@ -5344,6 +5344,8 @@ let sweepEventsDb = null;
 let insertSweepEventStmt = null;
 let insertPoolSnapshotStmt = null;
 let insertCandleStmt = null;
+let insertCoinglassCandleStmt = null;
+let insertSweepAttemptStmt = null;
 try {
   sweepEventsDb = new DatabaseSync(SWEEP_EVENTS_DB_FILE);
   // WAL mode lets ad-hoc analysis queries read concurrently while the bot writes,
@@ -5445,6 +5447,49 @@ try {
     INSERT OR IGNORE INTO candles (open_time, timeframe, open, high, low, close, source)
     VALUES (?, '15m', ?, ?, ?, ?, 'live')
   `);
+  // CoinGlass's own 5m candlestick series (what the live bot actually evaluates sweeps
+  // against) is separate from the Binance 15m klines above -- the two can and do differ.
+  // heatmap24h_cache.json only holds a rolling 24h window, so without persisting this,
+  // the exact candle the bot saw is gone once that window rolls past.
+  insertCoinglassCandleStmt = sweepEventsDb.prepare(`
+    INSERT OR IGNORE INTO candles (open_time, timeframe, open, high, low, close, source)
+    VALUES (?, '5m', ?, ?, ?, ?, 'coinglass_5m')
+  `);
+
+  // Records every pool x candle sweep evaluation, pass or fail -- previously a failed
+  // wick-depth/rejection-strength check just silently `return`ed with no trace, so past
+  // near-misses could never be replayed against a changed threshold.
+  sweepEventsDb.exec(`
+    CREATE TABLE IF NOT EXISTS sweep_attempts (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp INTEGER,
+      pool_price REAL,
+      pool_side TEXT,
+      direction TEXT,
+      candle_open_time INTEGER,
+      candle_open REAL,
+      candle_high REAL,
+      candle_low REAL,
+      candle_close REAL,
+      wick_depth REAL,
+      rejection_strength REAL,
+      min_wick_depth REAL,
+      min_rejection REAL,
+      passed_wick_gate INTEGER,
+      passed_rejection_gate INTEGER,
+      confirm_count INTEGER,
+      outcome TEXT,
+      UNIQUE(candle_open_time, pool_price, direction)
+    );
+    CREATE INDEX IF NOT EXISTS idx_sweep_attempts_ts ON sweep_attempts(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_sweep_attempts_outcome ON sweep_attempts(outcome);
+  `);
+  insertSweepAttemptStmt = sweepEventsDb.prepare(`
+    INSERT OR IGNORE INTO sweep_attempts (
+      timestamp, pool_price, pool_side, direction, candle_open_time, candle_open, candle_high, candle_low, candle_close,
+      wick_depth, rejection_strength, min_wick_depth, min_rejection, passed_wick_gate, passed_rejection_gate, confirm_count, outcome
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
 
   console.log('[SweepEventsDB] Ready:', SWEEP_EVENTS_DB_FILE);
 } catch (e) {
@@ -5466,6 +5511,67 @@ function insertCandlesToDb(klines15m) {
     } catch (e) {
       console.error('[SweepEventsDB] Candle insert failed:', e.message);
     }
+  }
+}
+
+// Heatmap xAxis labels look like "1 Jul 2026, 19:45" in WIB (UTC+7) wall-clock time —
+// matches what's shown in the cockpit/heatmap UI. Returns UTC epoch ms, or null if unparseable.
+const HEATMAP_LABEL_MONTHS = { Jan:0, Feb:1, Mar:2, Apr:3, May:4, Jun:5, Jul:6, Aug:7, Sep:8, Oct:9, Nov:10, Dec:11 };
+function parseHeatmapXAxisLabel(label) {
+  const m = typeof label === 'string' ? label.match(/^(\d{1,2}) (\w{3}) (\d{4}), (\d{2}):(\d{2})$/) : null;
+  if (!m) return null;
+  const [, day, monStr, year, hh, mm] = m;
+  const mon = HEATMAP_LABEL_MONTHS[monStr];
+  if (mon === undefined) return null;
+  const wibMs = Date.UTC(parseInt(year, 10), mon, parseInt(day, 10), parseInt(hh, 10), parseInt(mm, 10), 0);
+  return wibMs - 7 * 60 * 60 * 1000;
+}
+
+// CoinGlass's own 5m candlestick series -- the actual data the live bot evaluates sweeps
+// against. Separate from insertCandlesToDb (Binance 15m) since the two sources can differ.
+function insertCoinglassCandlesToDb(heatmapData) {
+  if (!insertCoinglassCandleStmt || !heatmapData?.xAxis || !heatmapData?.series) return;
+  const candleSeries = heatmapData.series.find(s => s.type === 'candlestick');
+  if (!candleSeries?.data) return;
+  heatmapData.xAxis.forEach((label, idx) => {
+    const bar = candleSeries.data[idx];
+    if (!bar) return;
+    const [open, close, low, high] = bar.map(v => parseFloat(v));
+    if ([open, close, low, high].some(v => isNaN(v))) return;
+    const openTime = parseHeatmapXAxisLabel(label);
+    if (openTime === null) return;
+    try {
+      insertCoinglassCandleStmt.run(openTime, open, high, low, close);
+    } catch (e) {
+      console.error('[SweepEventsDB] CoinGlass candle insert failed:', e.message);
+    }
+  });
+}
+
+function insertSweepAttemptToDb(attempt) {
+  if (!insertSweepAttemptStmt) return;
+  try {
+    insertSweepAttemptStmt.run(
+      Date.now(),
+      attempt.poolPrice,
+      attempt.poolSide,
+      attempt.direction,
+      attempt.candleOpenTime ?? null,
+      attempt.candleOpen,
+      attempt.candleHigh,
+      attempt.candleLow,
+      attempt.candleClose,
+      attempt.wickDepth,
+      attempt.rejectionStrength,
+      attempt.minWickDepth,
+      attempt.minRejection,
+      attempt.passedWickGate ? 1 : 0,
+      attempt.passedRejectionGate ? 1 : 0,
+      attempt.confirmCount ?? null,
+      attempt.outcome
+    );
+  } catch (e) {
+    console.error('[SweepEventsDB] Sweep attempt insert failed:', e.message);
   }
 }
 
@@ -6055,6 +6161,7 @@ function autoTradeStrategyBackend(heatmapData, klines15m) {
   const settings = loadSettings();
 
   insertCandlesToDb(klines15m);
+  insertCoinglassCandlesToDb(heatmapData);
 
   if (!settings.autoTradeEnabled) {
     botPhaseState = { ...botPhaseState, phase: 'DISABLED', message: 'Auto-trade is disabled', lastUpdate: new Date().toISOString() };
@@ -6349,6 +6456,9 @@ function autoTradeStrategyBackend(heatmapData, klines15m) {
     const cClose = parseFloat(sweepCandle[1]);
     const cLow   = parseFloat(sweepCandle[2]);
     const cHigh  = parseFloat(sweepCandle[3]);
+    const cOpen  = parseFloat(sweepCandle[0]);
+    const sweepCandleAbsIdx = (closedCandles.length - recentCandles.length) + sweepIdx;
+    const sweepCandleOpenTime = parseHeatmapXAxisLabel(heatmapData.xAxis?.[sweepCandleAbsIdx]);
 
     // Hard floor on sweep quality — the heatmap sweep itself is the primary
     // trigger, so it must be genuinely real (wick clearly pierced the pool,
@@ -6360,7 +6470,16 @@ function autoTradeStrategyBackend(heatmapData, klines15m) {
       // Pool BELOW price: wick went down to sweep, but price closed ABOVE pool → LONG reversal
       const wickDepth = Math.abs(((cLow - p) / p) * 100);
       const rejectionStrength = Math.abs(((cClose - cLow) / cLow) * 100);
-      if (wickDepth < minWickDepth || rejectionStrength < minRejection) return;
+      const passedWick = wickDepth >= minWickDepth;
+      const passedRejection = rejectionStrength >= minRejection;
+      insertSweepAttemptToDb({
+        poolPrice: p, poolSide: 'SUPPORT', direction: 'LONG',
+        candleOpenTime: sweepCandleOpenTime, candleOpen: cOpen, candleHigh: cHigh, candleLow: cLow, candleClose: cClose,
+        wickDepth, rejectionStrength, minWickDepth, minRejection,
+        passedWickGate: passedWick, passedRejectionGate: passedRejection, confirmCount,
+        outcome: !passedWick && !passedRejection ? 'failed_both' : !passedWick ? 'failed_wick' : !passedRejection ? 'failed_rejection' : 'passed'
+      });
+      if (!passedWick || !passedRejection) return;
       sweepCandidates.push({
         price: p,
         volume,
@@ -6379,7 +6498,16 @@ function autoTradeStrategyBackend(heatmapData, klines15m) {
       // Pool ABOVE price: wick went up to sweep, but price closed BELOW pool → SHORT reversal
       const wickDepth = Math.abs(((cHigh - p) / p) * 100);
       const rejectionStrength = Math.abs(((cHigh - cClose) / cHigh) * 100);
-      if (wickDepth < minWickDepth || rejectionStrength < minRejection) return;
+      const passedWick = wickDepth >= minWickDepth;
+      const passedRejection = rejectionStrength >= minRejection;
+      insertSweepAttemptToDb({
+        poolPrice: p, poolSide: 'RESISTANCE', direction: 'SHORT',
+        candleOpenTime: sweepCandleOpenTime, candleOpen: cOpen, candleHigh: cHigh, candleLow: cLow, candleClose: cClose,
+        wickDepth, rejectionStrength, minWickDepth, minRejection,
+        passedWickGate: passedWick, passedRejectionGate: passedRejection, confirmCount,
+        outcome: !passedWick && !passedRejection ? 'failed_both' : !passedWick ? 'failed_wick' : !passedRejection ? 'failed_rejection' : 'passed'
+      });
+      if (!passedWick || !passedRejection) return;
       sweepCandidates.push({
         price: p,
         volume,
