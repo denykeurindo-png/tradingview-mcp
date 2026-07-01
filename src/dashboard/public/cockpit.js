@@ -247,6 +247,7 @@ async function updateBotStatus() {
       if (b.depthDelta !== undefined) items.push(`Delta: ${b.depthDelta >= 0 ? '+' : ''}${b.depthDelta}`);
       if (b.whaleWall !== undefined) items.push(`Whale: ${b.whaleWall >= 0 ? '+' : ''}${b.whaleWall}`);
       if (b.liquidations !== undefined) items.push(`Liq: ${b.liquidations >= 0 ? '+' : ''}${b.liquidations}`);
+      if (b.intensity !== undefined) items.push(`Intensity: ${b.intensity >= 0 ? '+' : ''}${b.intensity}`);
       breakdownEl.innerText = 'Prob Breakdown Score:\n' + items.join(' | ');
       breakdownEl.style.display = 'block';
     }
@@ -974,7 +975,13 @@ function renderSingleMiniChart(chartInstance, title, heatmapData, is3d = false) 
       }
     ],
     dataZoom: [
-      { type: 'inside', xAxisIndex: 0, filterMode: 'filter' }
+      {
+        type: 'inside',
+        xAxisIndex: 0,
+        filterMode: 'filter',
+        start: Math.max(0, 100 - (72 / Math.max(xAxisData.length, 1)) * 100),
+        end: 100
+      }
     ]
   };
 
@@ -1028,18 +1035,24 @@ async function updateMiniHeatmap() {
         }
       }
 
-      // Calculate recent min/max price bounds from the last 40 candles (matching visible chart)
-      let maxHighRecent = refPrice;
-      let minLowRecent = refPrice;
-      if (cs && cs.data) {
-        const recentCandles = cs.data.slice(-40);
-        recentCandles.forEach(c => {
-          const low = parseFloat(c[2]), high = parseFloat(c[3]);
-          if (!isNaN(high) && high > maxHighRecent) maxHighRecent = high;
-          if (!isNaN(low) && low < minLowRecent) minLowRecent = low;
-        });
-      }
-
+      // Real sweep check (wick+close), matching server.js's wasReallySwept() —
+      // a mere wick touch without close-through is NOT a sweep, so the "LIQ"
+      // badge should only fire when the bot's own logic would also call it swept.
+      // Candle format is [open, close, low, high] with NO embedded timestamp —
+      // the real time label lives in the parallel heatmapData.xAxis array at
+      // the same index, so we look up sweep time by index, not by candle[0].
+      const candleCount = (cs && cs.data) ? cs.data.length : 0;
+      const sweepLookbackStart = Math.max(0, candleCount - 40);
+      const findSweepTime = (price, isAbove) => {
+        for (let i = candleCount - 1; i >= sweepLookbackStart; i--) {
+          const c = cs.data[i];
+          const cClose = parseFloat(c[1]), cLow = parseFloat(c[2]), cHigh = parseFloat(c[3]);
+          if (isNaN(cClose) || isNaN(cLow) || isNaN(cHigh)) continue;
+          const matched = isAbove ? (cHigh >= price && cClose < price) : (cLow <= price && cClose > price);
+          if (matched) return heatmapData.xAxis ? heatmapData.xAxis[i] : null;
+        }
+        return null;
+      };
       const yAxisData = heatmapData.yAxis || [];
       const xAxisLength = heatmapData.xAxis ? heatmapData.xAxis.length : 0;
       const latestXIdx = xAxisLength - 1;
@@ -1077,17 +1090,9 @@ async function updateMiniHeatmap() {
         const maxRecentVal = leverageMaxRecent[yIdx];
         const isAbove = price > refPrice;
 
-        // Check if price crossed this level recently
-        let isLiquidated = false;
-        if (isAbove) {
-          if (price <= maxHighRecent) {
-            isLiquidated = true;
-          }
-        } else {
-          if (price >= minLowRecent) {
-            isLiquidated = true;
-          }
-        }
+        // Check if price genuinely swept this level recently (wick+close, not just a touch)
+        const liquidationTime = findSweepTime(price, isAbove);
+        const isLiquidated = liquidationTime !== null;
 
         // Keep displaying the pool if it has active leverage OR if it was liquidated recently (using historical max value)
         let leverage = latestVal;
@@ -1098,7 +1103,7 @@ async function updateMiniHeatmap() {
         if (leverage <= 0) return;
 
         const distancePercent = ((price - refPrice) / refPrice) * 100;
-        levels.push({ price, leverage, distance: distancePercent, isAbove, isLiquidated });
+        levels.push({ price, leverage, distance: distancePercent, isAbove, isLiquidated, liquidationTime });
       });
 
       const aboveLevels = levels.filter(l => l.isAbove).sort((a, b) => b.leverage - a.leverage).slice(0, 5).sort((a, b) => a.price - b.price);
@@ -1124,8 +1129,12 @@ async function updateMiniHeatmap() {
 
     // Render both charts stacked
     renderSingleMiniChart(miniHeatmapChart24h, '24H SWEEP MAP', data, false);
+    const hm24UpdEl = document.getElementById('heatmap-24h-update-time');
+    if (hm24UpdEl) hm24UpdEl.innerText = new Date().toLocaleTimeString();
     if (data3d) {
       renderSingleMiniChart(miniHeatmapChart3d, '3D SWEEP MAP', data3d, true);
+      const hm3dUpdEl = document.getElementById('heatmap-3d-update-time');
+      if (hm3dUpdEl) hm3dUpdEl.innerText = new Date().toLocaleTimeString();
     }
 
     const renderPoolList = (pools, isAbove, maxLeverage = 1) => {
@@ -1134,7 +1143,7 @@ async function updateMiniHeatmap() {
       }
       return pools.map((lvl, idx) => {
         const isLiq = lvl.isLiquidated;
-        const rowStyle = isLiq ? 'opacity: 0.45; text-decoration: line-through;' : '';
+        const rowStyle = isLiq ? 'opacity: 0.45;' : '';
         const priceColor = isLiq ? 'var(--text-muted)' : '#FFFFFF';
         const volColor = isLiq ? 'var(--text-muted)' : (isAbove ? '#bfdc21' : '#3ab56e');
 
@@ -1143,7 +1152,9 @@ async function updateMiniHeatmap() {
         let intensityBg = 'rgba(255,255,255,0.05)';
         
         if (isLiq) {
-          intensityText = 'LIQ';
+          // xAxis label format is "30 Jun 2026, 20:45" — show just the HH:MM part
+          const timePart = lvl.liquidationTime ? lvl.liquidationTime.split(', ').pop() : null;
+          intensityText = timePart ? 'LIQ ' + timePart : 'LIQ';
           intensityColor = '#848E9C';
           intensityBg = 'rgba(255,255,255,0.03)';
         } else {
@@ -1163,13 +1174,13 @@ async function updateMiniHeatmap() {
           }
         }
 
-        const badgeHtml = `<span style="display: inline-block; padding: 2px 4px; border-radius: 3px; font-size: 8px; font-weight: 700; border: 1px solid ${intensityColor}; background: ${intensityBg}; color: ${intensityColor}; text-transform: uppercase;">${intensityText}</span>`;
-        
+        const badgeHtml = `<span style="display: inline-block; padding: 2px 4px; border-radius: 3px; font-size: 8px; font-weight: 700; border: 1px solid ${intensityColor}; background: ${intensityBg}; color: ${intensityColor}; text-transform: uppercase; white-space: nowrap;">${intensityText}</span>`;
+
         return `
           <div style="display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid rgba(255,255,255,0.02); padding: 4px 0; font-family: var(--font-mono); font-size: 10px; ${rowStyle}">
             <span style="width: 44px; text-align: left; font-weight: 600; color: ${priceColor};">$${Math.round(lvl.price).toLocaleString()}</span>
             <span style="width: 48px; text-align: center; color: ${volColor}; font-weight: 600;">$${formatIntensity(lvl.leverage)}</span>
-            <span style="width: 42px; text-align: right;">${badgeHtml}</span>
+            <span style="width: 62px; text-align: right; flex-shrink: 0;">${badgeHtml}</span>
           </div>
         `;
       }).join('');
@@ -1861,6 +1872,9 @@ async function updateSweepHistory() {
     const res = await fetch('/api/sweep-history');
     if (!res.ok) throw new Error(`HTTP Error ${res.status}`);
     const history = await res.json();
+
+    const slUpdEl = document.getElementById('sweep-log-update-time');
+    if (slUpdEl) slUpdEl.innerText = new Date().toLocaleTimeString();
 
     if (!Array.isArray(history) || history.length === 0) {
       tbody.innerHTML = `

@@ -3865,6 +3865,8 @@ app.post('/api/settings', (req, res) => {
     maxDist: parseNum(newSettings.maxDist, current.maxDist),
     autoTradeEnabled: newSettings.autoTradeEnabled !== undefined ? !!newSettings.autoTradeEnabled : current.autoTradeEnabled,
     sweepConfirmCandles: parseIntNum(newSettings.sweepConfirmCandles, current.sweepConfirmCandles),
+    minWickDepthPercent: parseNum(newSettings.minWickDepthPercent, current.minWickDepthPercent !== undefined ? current.minWickDepthPercent : 0.05),
+    minRejectionStrength: parseNum(newSettings.minRejectionStrength, current.minRejectionStrength !== undefined ? current.minRejectionStrength : 0.15),
     minPoolVolumeRatio: parseNum(newSettings.minPoolVolumeRatio, current.minPoolVolumeRatio),
     cooldownMinutes: parseIntNum(newSettings.cooldownMinutes, current.cooldownMinutes),
     maxTPPercent: parseNum(newSettings.maxTPPercent, current.maxTPPercent),
@@ -4338,21 +4340,51 @@ async function fetchBinanceFundingRate() {
 }
 
 async function fetchBinanceLongShortRatio() {
-  try {
-    const res = await fetchBinance('https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=5m&limit=1');
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const data = await res.json();
-    if (Array.isArray(data) && data.length > 0) {
-      return {
-        ratio: parseFloat(data[0].longShortRatio || 1.0),
-        long: parseFloat(data[0].longAccount || 0.5),
-        short: parseFloat(data[0].shortAccount || 0.5)
-      };
+  // Global (all accounts) and Top Trader (top 20% by margin) ratios are separate
+  // Binance endpoints — fetch both so botMetrics.topTraderRatio reflects real data
+  // instead of silently duplicating the global ratio.
+  const out = { ratio: 1.0, long: 0.5, short: 0.5, topRatio: 1.0, topLong: 0.5, topShort: 0.5 };
+
+  const [globalRes, topRes] = await Promise.allSettled([
+    fetchBinance('https://fapi.binance.com/futures/data/globalLongShortAccountRatio?symbol=BTCUSDT&period=5m&limit=1'),
+    fetchBinance('https://fapi.binance.com/futures/data/topLongShortAccountRatio?symbol=BTCUSDT&period=5m&limit=1'),
+  ]);
+
+  if (globalRes.status === 'fulfilled' && globalRes.value.ok) {
+    try {
+      const data = await globalRes.value.json();
+      if (Array.isArray(data) && data.length > 0) {
+        out.ratio = parseFloat(data[0].longShortRatio || 1.0);
+        out.long  = parseFloat(data[0].longAccount || 0.5);
+        out.short = parseFloat(data[0].shortAccount || 0.5);
+      }
+    } catch (err) {
+      console.error('[Binance API] Error parsing global L/S Ratio:', err.message);
     }
-  } catch (err) {
-    console.error('[Binance API] Error fetching L/S Ratio:', err.message);
+  } else {
+    console.error('[Binance API] Error fetching global L/S Ratio:', globalRes.reason?.message || (globalRes.value && `HTTP ${globalRes.value.status}`));
   }
-  return { ratio: 1.0, long: 0.5, short: 0.5 };
+
+  if (topRes.status === 'fulfilled' && topRes.value.ok) {
+    try {
+      const data = await topRes.value.json();
+      if (Array.isArray(data) && data.length > 0) {
+        out.topRatio = parseFloat(data[0].longShortRatio || out.ratio);
+        out.topLong  = parseFloat(data[0].longAccount || out.long);
+        out.topShort = parseFloat(data[0].shortAccount || out.short);
+      }
+    } catch (err) {
+      console.error('[Binance API] Error parsing top trader L/S Ratio:', err.message);
+    }
+  } else {
+    console.error('[Binance API] Error fetching top trader L/S Ratio:', topRes.reason?.message || (topRes.value && `HTTP ${topRes.value.status}`));
+    // Fall back to global ratio if top-trader endpoint fails
+    out.topRatio = out.ratio;
+    out.topLong  = out.long;
+    out.topShort = out.short;
+  }
+
+  return out;
 }
 
 // Helper functions for new CoinGlass metrics
@@ -4459,12 +4491,14 @@ function calculateReversalProbability(sweepDetail, oiChange15m, spotCvd15m, tren
   score += rejectionPoints;
 
   // 3. Open Interest change (±10) - Short-term 15m
-  // Squeeze: OI drops during a support sweep = positive reversal indicator
+  // LONG: OI drops = shorts being squeezed = good. SHORT: OI rises = longs trapped at resistance = good.
   let oiChangePoints = 0;
-  if (sweepDetail.direction === 'LONG' && oiChange15m < 0) {
-    oiChangePoints = 10;
-  } else if (sweepDetail.direction === 'SHORT' && oiChange15m > 0) {
-    oiChangePoints = -10;
+  if (sweepDetail.direction === 'LONG') {
+    if (oiChange15m < 0) oiChangePoints = 10;
+    else if (oiChange15m > 0) oiChangePoints = -10;
+  } else if (sweepDetail.direction === 'SHORT') {
+    if (oiChange15m > 0) oiChangePoints = 10;  // more longs opening at resistance = trapped
+    else if (oiChange15m < 0) oiChangePoints = -10;
   }
   score += oiChangePoints;
 
@@ -4507,8 +4541,20 @@ function calculateReversalProbability(sweepDetail, oiChange15m, spotCvd15m, tren
   }
   score += premiumRatePoints;
 
-  // 7. Long/Short Ratio (Up to 10 points) - Deprecated in strategy calculation (set to 0 for backwards compatibility)
+  // 7. Long/Short Ratio (Up to 10 points)
+  // HIGH lsr = crowded longs: bad for LONG (no squeeze), good for SHORT (trapped longs)
+  // LOW lsr = crowded shorts: good for LONG (squeeze potential), bad for SHORT
   let lsRatioPoints = 0;
+  const lsr = parseFloat(longShortRatio) || 1.0;
+  if (sweepDetail.direction === 'LONG') {
+    if (lsr < 0.8) lsRatioPoints = 10;
+    else if (lsr < 1.0) lsRatioPoints = 5;
+    else if (lsr > 1.8) lsRatioPoints = -5;
+  } else if (sweepDetail.direction === 'SHORT') {
+    if (lsr > 2.0) lsRatioPoints = 10;
+    else if (lsr > 1.5) lsRatioPoints = 5;
+    else if (lsr < 0.8) lsRatioPoints = -5;
+  }
 
   // 8. Coinbase Premium Index — cap penalty at -10 to avoid over-dominance
   let coinbasePremiumPoints = 0;
@@ -4585,6 +4631,16 @@ function calculateReversalProbability(sweepDetail, oiChange15m, spotCvd15m, tren
   }
   score += liqScore;
 
+  // 12. Pool Intensity (Up to 8 points) — relative rank vs the whole heatmap's max
+  // leverage bin (same HIGH/MED/LOW classification as the cockpit pool-table badge).
+  // Observed empirically: sweeps at HIGH-intensity pools have much stronger reversal
+  // follow-through than the raw dollar poolVolume factor alone implies.
+  const intensityRatio = sweepDetail.intensityRatio || 0;
+  let intensityPoints = 0;
+  if (intensityRatio >= 0.7) intensityPoints = 8;        // HIGH
+  else if (intensityRatio >= 0.3) intensityPoints = 3;   // MED
+  score += intensityPoints;
+
   const finalScore = Math.max(10, Math.min(99, Math.round(score)));
   const forceSkipText = sweepDetail.forceSkip || null;
 
@@ -4604,6 +4660,7 @@ function calculateReversalProbability(sweepDetail, oiChange15m, spotCvd15m, tren
       depthDelta: Math.round(deltaPoints * 10) / 10,
       whaleWall: Math.round(whalePoints * 10) / 10,
       liquidations: Math.round(liqScore * 10) / 10,
+      intensity: intensityPoints,
       depthDeltaVal: depthDelta !== null ? depthDelta : 0,
       premiumVal: cbPremium !== null ? cbPremium : 0
     }
@@ -5502,12 +5559,20 @@ app.get('/api/bot-status', async (req, res) => {
     }
   }
 
+  // Real active trades (excluding backtest imports) — phase alone is not a
+  // reliable "is a trade open" signal once maxActive > 1, since the bot can
+  // still be ALERT/STANDBY with a trade live in another slot.
+  const liveTrades = loadTrades().filter(t =>
+    t.status === 'ACTIVE' && !(t.id && t.id.startsWith('T_BT_')) && !(t.note && t.note.toLowerCase().includes('backtest'))
+  );
+
   res.json({
     success: true,
     btcPrice,
     whaleData,
     data: {
       ...botPhaseState,
+      activeTrades: liveTrades,
       jdaPhase: botJdaPhaseState.phase,
       jdaAutoTradeEnabled: settings.jdaAutoTradeEnabled,
       jdaAction: jdaSignalCache ? jdaSignalCache.action : 'WAIT',
@@ -5644,14 +5709,21 @@ function extractTopPoolsForServer(cache, currentPrice) {
   });
 
   const cs = data.series.find(s => s.type === 'candlestick');
-  let maxHighRecent = currentPrice;
-  let minLowRecent = currentPrice;
+  let recentCandles = [];
   if (cs && cs.data) {
-    const recentCandles = cs.data.slice(-40);
-    recentCandles.forEach(c => {
-      const low = parseFloat(c[2]), high = parseFloat(c[3]);
-      if (!isNaN(high) && high > maxHighRecent) maxHighRecent = high;
-      if (!isNaN(low) && low < minLowRecent) minLowRecent = low;
+    recentCandles = cs.data.slice(-40);
+  }
+
+  // A level is only "liquidated" (already swept) if a recent candle did a REAL
+  // wick+close sweep through it — a mere wick touch without close-through doesn't count.
+  // Mirrors the alreadySweptOld fix used later in autoTradeStrategyBackend.
+  function wasReallySwept(price, isAbove) {
+    return recentCandles.some(c => {
+      const cClose = parseFloat(c[1]), cLow = parseFloat(c[2]), cHigh = parseFloat(c[3]);
+      if (isNaN(cClose) || isNaN(cLow) || isNaN(cHigh)) return false;
+      return isAbove
+        ? (cHigh >= price && cClose < price)  // wicked above resistance, closed back below
+        : (cLow  <= price && cClose > price);  // wicked below support, closed back above
     });
   }
 
@@ -5663,12 +5735,7 @@ function extractTopPoolsForServer(cache, currentPrice) {
     const maxRecentVal = leverageMaxRecent[yIdx] || 0;
     const isAbove = price > currentPrice;
 
-    let isLiquidated = false;
-    if (isAbove) {
-      if (price <= maxHighRecent) isLiquidated = true;
-    } else {
-      if (price >= minLowRecent) isLiquidated = true;
-    }
+    const isLiquidated = wasReallySwept(price, isAbove);
 
     let leverage = latestVal;
     if (isLiquidated && maxRecentVal > 0) {
@@ -5683,7 +5750,11 @@ function extractTopPoolsForServer(cache, currentPrice) {
   const aboveLevels = activeLevels.filter(l => l.isAbove).sort((a, b) => b.leverage - a.leverage).slice(0, 5);
   const belowLevels = activeLevels.filter(l => !l.isAbove).sort((a, b) => b.leverage - a.leverage).slice(0, 5);
 
-  return { above: aboveLevels, below: belowLevels };
+  // Whole-heatmap max leverage (mirrors cockpit.js's extractTopPools), used to classify
+  // a pool's relative Intensity (HIGH/MED/LOW) the same way the UI badge does.
+  const maxLeverage = Math.max(...levels.map(l => l.leverage), 1);
+
+  return { above: aboveLevels, below: belowLevels, maxLeverage };
 }
 
 function autoTradeStrategyBackend(heatmapData) {
@@ -5716,29 +5787,41 @@ function autoTradeStrategyBackend(heatmapData) {
   const pools24h = extractTopPoolsForServer(heatmapDataCache, currentPrice);
   const pools3d = extractTopPoolsForServer(heatmap3DCache, currentPrice);
 
+  // Tag each pool with its source heatmap's whole-map max leverage so downstream code
+  // (intensity scoring) can classify HIGH/MED/LOW the same way the cockpit UI badge does.
+  const tagIntensity = (list, maxLeverage) => list.map(p => ({ ...p, maxLeverage }));
+  pools24h.above = tagIntensity(pools24h.above, pools24h.maxLeverage);
+  pools24h.below = tagIntensity(pools24h.below, pools24h.maxLeverage);
+  pools3d.above  = tagIntensity(pools3d.above, pools3d.maxLeverage);
+  pools3d.below  = tagIntensity(pools3d.below, pools3d.maxLeverage);
+
+  // Sweep-candidate scanning still considers ALL visible pools (24H+3D) — only the
+  // "closest pool" tracked below prefers 24H first (see findNearestQualifyingPool).
   const visibleAbove = [...pools24h.above, ...pools3d.above];
   const visibleBelow = [...pools24h.below, ...pools3d.below];
 
-  // Find nearest visible pool on each side
-  let nearestAbove = null, nearestBelow = null;
+  // 24H pools are preferred: the sweep-confirm window is only 3x15m candles (~45min),
+  // which matches freshly-built liquidity far better than a level that accumulated over
+  // 3 days. 3D is only used as a fallback when no qualifying 24H pool exists on that side.
+  function findNearestQualifyingPool(primaryList, fallbackList) {
+    const pickNearest = (list) => {
+      let nearest = null;
+      list.forEach(p => {
+        const distPercent = ((p.price - currentPrice) / currentPrice) * 100;
+        const absDist = Math.abs(distPercent);
+        if (absDist < 0.1 || absDist > settings.maxDist) return;
+        if (!nearest || absDist < Math.abs(nearest.distance)) {
+          nearest = { price: p.price, distance: distPercent, volume: p.leverage, intensityRatio: p.leverage / (p.maxLeverage || 1) };
+        }
+      });
+      return nearest;
+    };
+    return pickNearest(primaryList)
+      || (() => { const f = pickNearest(fallbackList); return f ? { ...f, source: '3D' } : null; })();
+  }
 
-  visibleAbove.forEach(p => {
-    const distPercent = ((p.price - currentPrice) / currentPrice) * 100;
-    const absDist = Math.abs(distPercent);
-    if (absDist < 0.1 || absDist > settings.maxDist) return;
-    if (!nearestAbove || absDist < Math.abs(nearestAbove.distance)) {
-      nearestAbove = { price: p.price, distance: distPercent, volume: p.leverage };
-    }
-  });
-
-  visibleBelow.forEach(p => {
-    const distPercent = ((p.price - currentPrice) / currentPrice) * 100;
-    const absDist = Math.abs(distPercent);
-    if (absDist < 0.1 || absDist > settings.maxDist) return;
-    if (!nearestBelow || absDist < Math.abs(nearestBelow.distance)) {
-      nearestBelow = { price: p.price, distance: distPercent, volume: p.leverage };
-    }
-  });
+  const nearestAbove = findNearestQualifyingPool(pools24h.above, pools3d.above);
+  const nearestBelow = findNearestQualifyingPool(pools24h.below, pools3d.below);
 
   // ─── Step 4: Phase Detection ──────────────────────────────
   const sweepConfirmCandles = settings.sweepConfirmCandles || 3;
@@ -5746,10 +5829,25 @@ function autoTradeStrategyBackend(heatmapData) {
   // Historical candles for "already swept" check (older candles, NOT the recent sweep window)
   const olderCandles = cs.data.slice(Math.max(0, cs.data.length - 15), Math.max(0, cs.data.length - sweepConfirmCandles));
   
-  // Determine closest pool overall
-  const closestPool = [nearestAbove, nearestBelow]
-    .filter(Boolean)
-    .sort((a, b) => Math.abs(a.distance) - Math.abs(b.distance))[0];
+  // Determine closest pool overall. Hysteresis: once locked onto a side (SUPPORT/RESISTANCE),
+  // keep tracking it unless the other side becomes meaningfully closer (>20%) — otherwise price
+  // oscillating between two similarly-distant pools thrashes POOL_CHANGED every cycle and the
+  // sweep window never has time to form on either side.
+  const HYSTERESIS_FACTOR = 0.8;
+  let closestPool;
+  const trackedSidePool = lastTrackedPoolSide === 'RESISTANCE' ? nearestAbove
+    : lastTrackedPoolSide === 'SUPPORT' ? nearestBelow
+    : null;
+  if (trackedSidePool) {
+    const otherSidePool = lastTrackedPoolSide === 'RESISTANCE' ? nearestBelow : nearestAbove;
+    closestPool = (otherSidePool && Math.abs(otherSidePool.distance) < Math.abs(trackedSidePool.distance) * HYSTERESIS_FACTOR)
+      ? otherSidePool
+      : trackedSidePool;
+  } else {
+    closestPool = [nearestAbove, nearestBelow]
+      .filter(Boolean)
+      .sort((a, b) => Math.abs(a.distance) - Math.abs(b.distance))[0];
+  }
 
   if (!closestPool) {
     botPhaseState = {
@@ -5830,7 +5928,8 @@ function autoTradeStrategyBackend(heatmapData) {
     volume: closestPool.volume,
     rejectionStrength: 0.1, // minimal
     direction: closestPool.distance > 0 ? 'SHORT' : 'LONG',
-    price: closestPool.price
+    price: closestPool.price,
+    intensityRatio: closestPool.intensityRatio || 0
   };
   const previewResult = calculateReversalProbability(
     previewSweep,
@@ -5897,12 +5996,17 @@ function autoTradeStrategyBackend(heatmapData) {
   visiblePools.forEach(pObj => {
     const p = pObj.price;
     const volume = pObj.leverage;
-    
-    // Check if this pool was already swept by OLDER candles (stale sweep = skip)
+    const intensityRatio = pObj.leverage / (pObj.maxLeverage || 1);
+
+    // Skip pool only if an older candle performed a VALID sweep (wick through + close on reversal side).
+    // A mere wick touch without close-through is NOT a sweep — pool remains valid.
     const alreadySweptOld = olderCandles.some(c => {
-      const cLow = parseFloat(c[2]);
-      const cHigh = parseFloat(c[3]);
-      return p >= cLow && p <= cHigh;
+      const cClose = parseFloat(c[1]);
+      const cLow   = parseFloat(c[2]);
+      const cHigh  = parseFloat(c[3]);
+      return p < currentPrice
+        ? (cLow <= p && cClose > p)   // LONG pool: older candle wicked below AND closed above = already swept
+        : (cHigh >= p && cClose < p); // SHORT pool: older candle wicked above AND closed below = already swept
     });
     if (alreadySweptOld) return;
     
@@ -5934,10 +6038,17 @@ function autoTradeStrategyBackend(heatmapData) {
     const cLow   = parseFloat(sweepCandle[2]);
     const cHigh  = parseFloat(sweepCandle[3]);
 
+    // Hard floor on sweep quality — the heatmap sweep itself is the primary
+    // trigger, so it must be genuinely real (wick clearly pierced the pool,
+    // close clearly rejected back) before any supporting data gets weighed.
+    const minWickDepth = settings.minWickDepthPercent !== undefined ? parseFloat(settings.minWickDepthPercent) : 0.05;
+    const minRejection  = settings.minRejectionStrength !== undefined ? parseFloat(settings.minRejectionStrength) : 0.15;
+
     if (p < currentPrice) {
       // Pool BELOW price: wick went down to sweep, but price closed ABOVE pool → LONG reversal
       const wickDepth = Math.abs(((cLow - p) / p) * 100);
       const rejectionStrength = Math.abs(((cClose - cLow) / cLow) * 100);
+      if (wickDepth < minWickDepth || rejectionStrength < minRejection) return;
       sweepCandidates.push({
         price: p,
         volume,
@@ -5949,12 +6060,14 @@ function autoTradeStrategyBackend(heatmapData) {
         sweepLow: cLow,
         sweepHigh: cHigh,
         sweepClose: cClose,
+        intensityRatio,
         score: volume * (1 + rejectionStrength) * (1 + wickDepth) * (1 + confirmCount * 0.2)
       });
     } else {
       // Pool ABOVE price: wick went up to sweep, but price closed BELOW pool → SHORT reversal
       const wickDepth = Math.abs(((cHigh - p) / p) * 100);
       const rejectionStrength = Math.abs(((cHigh - cClose) / cHigh) * 100);
+      if (wickDepth < minWickDepth || rejectionStrength < minRejection) return;
       sweepCandidates.push({
         price: p,
         volume,
@@ -5966,6 +6079,7 @@ function autoTradeStrategyBackend(heatmapData) {
         sweepLow: cLow,
         sweepHigh: cHigh,
         sweepClose: cClose,
+        intensityRatio,
         score: volume * (1 + rejectionStrength) * (1 + wickDepth) * (1 + confirmCount * 0.2)
       });
     }
@@ -6122,79 +6236,13 @@ function autoTradeStrategyBackend(heatmapData) {
     return;
   }
 
-  // ─── Step 10b: Reversal Probability Filter ────────────────
+  // ─── Step 10b: Calculate Reversal Probability ────────────────
   const probResult = calculateReversalProbability(bestSweep, botMetrics.oiChange15m, botMetrics.spotCvd15m, botMetrics.trend1h, botMetrics.trend4h, botMetrics.premiumRate, botMetrics.longShortRatio);
   const prob = probResult.score;
-  botMetrics.reversalProbability = prob; // cache the latest calculated probability for reporting
+  botMetrics.reversalProbability = prob;
   botMetrics.probabilityBreakdown = probResult.breakdown;
 
-  // ─── Step 10c: Hard Coinbase Premium Filter ────────────────
-  const latestPremium = getLatestCoinbasePremium();
-  if (latestPremium !== null) {
-    const minLongPremium = settings.minCoinbasePremiumForLongs !== undefined ? parseFloat(settings.minCoinbasePremiumForLongs) : -0.05;
-    const maxShortPremium = settings.maxCoinbasePremiumForShorts !== undefined ? parseFloat(settings.maxCoinbasePremiumForShorts) : 0.05;
-
-    if (direction === 'LONG' && latestPremium < minLongPremium) {
-      botPhaseState = {
-        phase: 'SWEEP_REJECTED',
-        nearestPool: bestSweep.price,
-        nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
-        nearestPoolVolume: bestSweep.volume,
-        nearestPoolSide: 'SUPPORT',
-        sweepCandidate: { direction, entry, tp, sl, rr, prob },
-        message: `Sweep detected at $${bestSweep.price.toFixed(0)} but LONG blocked: Coinbase Premium Index ${latestPremium.toFixed(4)} < min ${minLongPremium}`,
-        lastUpdate: new Date().toISOString()
-      };
-      console.log(`[LSR Bot] SWEEP_REJECTED — Coinbase Premium ${latestPremium.toFixed(4)} < min ${minLongPremium} for LONG at $${entry.toFixed(0)}`);
-      return;
-    }
-    if (direction === 'SHORT' && latestPremium > maxShortPremium) {
-      botPhaseState = {
-        phase: 'SWEEP_REJECTED',
-        nearestPool: bestSweep.price,
-        nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
-        nearestPoolVolume: bestSweep.volume,
-        nearestPoolSide: 'RESISTANCE',
-        sweepCandidate: { direction, entry, tp, sl, rr, prob },
-        message: `Sweep detected at $${bestSweep.price.toFixed(0)} but SHORT blocked: Coinbase Premium Index ${latestPremium.toFixed(4)} > max ${maxShortPremium}`,
-        lastUpdate: new Date().toISOString()
-      };
-      console.log(`[LSR Bot] SWEEP_REJECTED — Coinbase Premium ${latestPremium.toFixed(4)} > max ${maxShortPremium} for SHORT at $${entry.toFixed(0)}`);
-      return;
-    }
-  }
-
-  // ─── Step 10d: Strict HTF Trend Filter Override ────────────
-  if (isTrendFilterActive(settings, botMetrics) && direction === 'LONG' && botMetrics.trend1h === 'BEARISH' && botMetrics.trend4h === 'BEARISH') {
-    botPhaseState = {
-      phase: 'SWEEP_REJECTED',
-      nearestPool: bestSweep.price,
-      nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
-      nearestPoolVolume: bestSweep.volume,
-      nearestPoolSide: 'SUPPORT',
-      sweepCandidate: { direction, entry, tp, sl, rr, prob },
-      message: `Sweep detected at $${bestSweep.price.toFixed(0)} but LONG blocked: Dominant HTF trend is BEARISH on both 1h and 4h timeframes.`,
-      lastUpdate: new Date().toISOString()
-    };
-    console.log(`[LSR Bot] SWEEP_REJECTED — LONG blocked by bearish HTF trend for LONG at $${entry.toFixed(0)}`);
-    return;
-  }
-  if (isTrendFilterActive(settings, botMetrics) && direction === 'SHORT' && botMetrics.trend1h === 'BULLISH' && botMetrics.trend4h === 'BULLISH') {
-    botPhaseState = {
-      phase: 'SWEEP_REJECTED',
-      nearestPool: bestSweep.price,
-      nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
-      nearestPoolVolume: bestSweep.volume,
-      nearestPoolSide: 'RESISTANCE',
-      sweepCandidate: { direction, entry, tp, sl, rr, prob },
-      message: `Sweep detected at $${bestSweep.price.toFixed(0)} but SHORT blocked: Dominant HTF trend is BULLISH on both 1h and 4h timeframes.`,
-      lastUpdate: new Date().toISOString()
-    };
-    console.log(`[LSR Bot] SWEEP_REJECTED — SHORT blocked by bullish HTF trend for SHORT at $${entry.toFixed(0)}`);
-    return;
-  }
-
-  // Check for anti-spoofing or other override force-skips
+  // ─── Step 10c: Anti-Spoofing Force-Skip (veto) ───────────────
   if (probResult.forceSkip) {
     botPhaseState = {
       phase: 'SWEEP_REJECTED',
@@ -6202,18 +6250,7 @@ function autoTradeStrategyBackend(heatmapData) {
       nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
       nearestPoolVolume: bestSweep.volume,
       nearestPoolSide: direction === 'LONG' ? 'SUPPORT' : 'RESISTANCE',
-      sweepCandidate: { 
-        direction, 
-        entry, 
-        tp, 
-        sl, 
-        rr, 
-        prob,
-        rejectionStrength: bestSweep.rejectionStrength,
-        wickDepth: bestSweep.wickDepth,
-        confirmCount: bestSweep.confirmCount,
-        forceSkip: probResult.forceSkip
-      },
+      sweepCandidate: { direction, entry, tp, sl, rr, prob, rejectionStrength: bestSweep.rejectionStrength, wickDepth: bestSweep.wickDepth, confirmCount: bestSweep.confirmCount, forceSkip: probResult.forceSkip },
       probabilityBreakdown: probResult.breakdown,
       message: `Sweep detected at $${bestSweep.price.toFixed(0)} but force skipped: ${probResult.forceSkip}`,
       lastUpdate: new Date().toISOString()
@@ -6222,6 +6259,7 @@ function autoTradeStrategyBackend(heatmapData) {
     return;
   }
 
+  // ─── Step 10d: Reversal Probability Filter ───────────────────
   const minProb = settings.minReversalProbability || 65;
   if (prob < minProb) {
     botPhaseState = {
@@ -6230,17 +6268,7 @@ function autoTradeStrategyBackend(heatmapData) {
       nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
       nearestPoolVolume: bestSweep.volume,
       nearestPoolSide: direction === 'LONG' ? 'SUPPORT' : 'RESISTANCE',
-      sweepCandidate: { 
-        direction, 
-        entry, 
-        tp, 
-        sl, 
-        rr, 
-        prob,
-        rejectionStrength: bestSweep.rejectionStrength,
-        wickDepth: bestSweep.wickDepth,
-        confirmCount: bestSweep.confirmCount
-      },
+      sweepCandidate: { direction, entry, tp, sl, rr, prob, rejectionStrength: bestSweep.rejectionStrength, wickDepth: bestSweep.wickDepth, confirmCount: bestSweep.confirmCount },
       probabilityBreakdown: probResult.breakdown,
       message: `Sweep detected at $${bestSweep.price.toFixed(0)} but Reversal Prob ${prob}% < min ${minProb}%. Skipping.`,
       lastUpdate: new Date().toISOString()
@@ -6248,6 +6276,13 @@ function autoTradeStrategyBackend(heatmapData) {
     console.log(`[LSR Bot] SWEEP_REJECTED — Reversal Prob ${prob}% < min ${minProb}% for ${direction} at $${entry.toFixed(0)}`);
     return;
   }
+
+  // Note: Coinbase Premium and HTF Trend are intentionally NOT hard filters here.
+  // Design principle: the liquidation heatmap (pool + sweep wick/close) is the
+  // primary trigger; CB Premium, depth delta, HTF trend, etc. are slow-moving
+  // supporting signals that should only weight the probability score (factors
+  // #5 and #8 in calculateReversalProbability), not independently veto a
+  // sweep that the heatmap has already confirmed.
 
   // ─── Step 11: Cooldown Check ──────────────────────────────
   const cooldownMs = (settings.cooldownMinutes || 60) * 60 * 1000;
@@ -6402,103 +6437,6 @@ function autoTradeStrategyBackend(heatmapData) {
 }
 
 // ─── Background 24/7 Bot Loop Worker ────────────────────────
-async function fetchOrderBookLevels() {
-  const now = Date.now();
-
-  // 1. Recent 5m candles (25 bars = ~2h price context)
-  const klinesRes = await fetchBinance('https://fapi.binance.com/fapi/v1/klines?symbol=BTCUSDT&interval=5m&limit=25');
-  const klinesRaw = await klinesRes.json();
-
-  // xAxis labels (time strings for ECharts category axis)
-  const xAxisData = klinesRaw.map(k => {
-    const d = new Date(parseInt(k[6]));
-    const mo = d.toLocaleString('en-US', { month: 'short' });
-    const dy = d.getDate();
-    const hr = String(d.getHours()).padStart(2, '0');
-    const mn = String(d.getMinutes()).padStart(2, '0');
-    return mo + ' ' + dy + ', ' + hr + ':' + mn;
-  });
-
-  // Candlestick data: [open, close, low, high] per candle (ECharts format)
-  const candlestickData = klinesRaw.map(k => [
-    parseFloat(k[1]),  // open
-    parseFloat(k[4]),  // close
-    parseFloat(k[3]),  // low
-    parseFloat(k[2])   // high
-  ]);
-
-  // raw candles for strategy functions [closeTime, close, low, high, open, vol]
-  const candlestickRaw = klinesRaw.map(k => [
-    parseInt(k[6]),
-    parseFloat(k[4]),
-    parseFloat(k[3]),
-    parseFloat(k[2]),
-    parseFloat(k[1]),
-    parseFloat(k[5])
-  ]);
-
-  const currentPrice = parseFloat(klinesRaw[klinesRaw.length - 1][4]);
-
-  // 2. Futures order book — 500 levels each side
-  const depthRes = await fetchBinance('https://fapi.binance.com/fapi/v1/depth?symbol=BTCUSDT&limit=500');
-  const depth = await depthRes.json();
-
-  // 3. Bucket bids + asks into OB_BUCKET price increments (volume in USD)
-  const volumeByBucket = {};
-  [...depth.bids, ...depth.asks].forEach(([priceStr, qtyStr]) => {
-    const p = parseFloat(priceStr);
-    const q = parseFloat(qtyStr);
-    if (!p || !q) return;
-    const bucket = Math.round(p / OB_BUCKET) * OB_BUCKET;
-    volumeByBucket[bucket] = (volumeByBucket[bucket] || 0) + q * p;
-  });
-
-  // 4. Boost round-number levels (00 multiples) — psychological stop clusters
-  const vols = Object.values(volumeByBucket).filter(v => v > 0).sort((a, b) => a - b);
-  const medianVol = vols[Math.floor(vols.length / 2)] || 0;
-  const roundBase = Math.floor(currentPrice / 1000) * 1000;
-  for (let offset = -4000; offset <= 4000; offset += 500) {
-    const level = roundBase + offset;
-    if (level > 0) {
-      volumeByBucket[level] = (volumeByBucket[level] || 0) + medianVol * 0.15;
-    }
-  }
-
-  // 5. Build sorted yAxis price levels
-  const priceLevels = Object.keys(volumeByBucket).map(Number).filter(p => p > 0).sort((a, b) => a - b);
-  const yAxisData = priceLevels.map(String);
-
-  // 6. Build 2D heatmap: for each [candleIdx, priceIdx] → volume (static snapshot per candle)
-  const maxVol = Math.max(...Object.values(volumeByBucket));
-  const heatmapItems = [];
-  xAxisData.forEach((_, xIdx) => {
-    priceLevels.forEach((price, yIdx) => {
-      const vol = volumeByBucket[price] || 0;
-      if (vol > 0) heatmapItems.push([xIdx, yIdx, vol]);
-    });
-  });
-
-  console.log('[OrderBook] ' + priceLevels.length + ' price levels, ' + heatmapItems.length + ' heatmap cells around $' + currentPrice.toFixed(0));
-
-  // Return structure matching what frontend expects:
-  // resObj.data.data → { series, xAxis, yAxis, visualMap }
-  // resObj.data.timestamp → for cache change detection
-  return {
-    data: {
-      series: [
-        { type: 'candlestick', data: candlestickData },
-        { type: 'heatmap', data: heatmapItems },
-        // raw candles for strategy functions (accessed via series.find type='candlestick_raw')
-        { type: 'candlestick_raw', data: candlestickRaw }
-      ],
-      xAxis: xAxisData,
-      yAxis: yAxisData,
-      visualMap: { max: maxVol }
-    },
-    timestamp: now,
-    source: 'orderbook'
-  };
-}
 
 
 
@@ -7350,24 +7288,32 @@ async function runBotCycle() {
         console.error('[Background Bot] Whale Orders scrape error:', e.message);
       }
 
-      try {
-        console.log('[Background Bot] Running scheduled Whale vs Retail Delta scrape...');
-        const rWhaleDelta = await runWithCdpLock(() => scrapeWhaleRetailDelta());
-        whaleRetailDeltaCache = rWhaleDelta;
-        lastWhaleRetailDeltaFetchTime = Date.now();
-        saveCacheToDisk('whale_retail_delta_cache.json', whaleRetailDeltaCache);
-      } catch (e) {
-        console.error('[Background Bot] Whale vs Retail Delta scrape error:', e.message);
+      // Display-only metrics (not used in LSR scoring) — throttle to every 5 min
+      // instead of every 30s cycle to reduce CDP/CoinGlass scraping load.
+      const DISPLAY_ONLY_REFRESH_MS = 300000;
+
+      if (!lastWhaleRetailDeltaFetchTime || (Date.now() - lastWhaleRetailDeltaFetchTime >= DISPLAY_ONLY_REFRESH_MS)) {
+        try {
+          console.log('[Background Bot] Running scheduled Whale vs Retail Delta scrape...');
+          const rWhaleDelta = await runWithCdpLock(() => scrapeWhaleRetailDelta());
+          whaleRetailDeltaCache = rWhaleDelta;
+          lastWhaleRetailDeltaFetchTime = Date.now();
+          saveCacheToDisk('whale_retail_delta_cache.json', whaleRetailDeltaCache);
+        } catch (e) {
+          console.error('[Background Bot] Whale vs Retail Delta scrape error:', e.message);
+        }
       }
 
-      try {
-        console.log('[Background Bot] Running scheduled Top Trader Long/Short scrape...');
-        const rTopTrader = await runWithCdpLock(() => scrapeTopTraderLs());
-        topTraderLsCache = rTopTrader;
-        lastTopTraderLsFetchTime = Date.now();
-        saveCacheToDisk('top_trader_ls_cache.json', topTraderLsCache);
-      } catch (e) {
-        console.error('[Background Bot] Top Trader Long/Short scrape error:', e.message);
+      if (!lastTopTraderLsFetchTime || (Date.now() - lastTopTraderLsFetchTime >= DISPLAY_ONLY_REFRESH_MS)) {
+        try {
+          console.log('[Background Bot] Running scheduled Top Trader Long/Short scrape...');
+          const rTopTrader = await runWithCdpLock(() => scrapeTopTraderLs());
+          topTraderLsCache = rTopTrader;
+          lastTopTraderLsFetchTime = Date.now();
+          saveCacheToDisk('top_trader_ls_cache.json', topTraderLsCache);
+        } catch (e) {
+          console.error('[Background Bot] Top Trader Long/Short scrape error:', e.message);
+        }
       }
     }
 
