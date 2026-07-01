@@ -18,18 +18,6 @@
       --border-color: #2B3139;
     }
     
-    .raw-grid {
-      display: grid;
-      grid-template-columns: 1fr 1fr;
-      gap: var(--spacing-md);
-    }
-    
-    @media (max-width: 1024px) {
-      .raw-grid {
-        grid-template-columns: 1fr;
-      }
-    }
-    
     .json-container {
       position: relative;
       background: #020005;
@@ -550,8 +538,7 @@
     </section>
 
     <!-- ── Two Column Sentiment & Flow Grid ─────────────────────────── -->
-    <section class="raw-grid" style="margin-bottom: var(--spacing-md);">
-      
+    <section style="margin-bottom: var(--spacing-md); max-width: 480px;">
       <!-- Fear & Greed Card -->
       <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
@@ -582,42 +569,6 @@
           Awaiting Fear & Greed index data...
         </div>
       </div>
-
-      <!-- BTC ETF Flow Card -->
-      <div class="card">
-        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
-          <div>
-            <h3 style="font-size:16px; font-weight:700; color:var(--accent-primary);">📊 BTC ETF Flow</h3>
-            <span style="font-size:11px; color:var(--text-muted);">CoinGlass · Institutional Flow</span>
-          </div>
-          <div id="etf-signal-pill" class="signal-pill sig-NEUTRAL">NEUTRAL</div>
-        </div>
-
-        <div style="display:flex; flex-direction:column; gap:8px; margin-bottom:15px;">
-          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.03); padding-bottom:6px;">
-            <span style="font-size:11px; color:var(--text-muted);">DAILY NET INFLOW</span>
-            <span id="etf-daily" style="font-size:13px; font-weight:700; font-family:var(--font-mono);">--</span>
-          </div>
-          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.03); padding-bottom:6px;">
-            <span style="font-size:11px; color:var(--text-muted);">TOTAL NET INFLOW</span>
-            <span id="etf-total" style="font-size:13px; font-weight:700; font-family:var(--font-mono);">--</span>
-          </div>
-          <div style="display:flex; justify-content:space-between; align-items:center; border-bottom:1px solid rgba(255,255,255,0.03); padding-bottom:6px;">
-            <span style="font-size:11px; color:var(--text-muted);">GBTC FLOW</span>
-            <span id="etf-gbtc" style="font-size:13px; font-weight:700; font-family:var(--font-mono);">--</span>
-          </div>
-          <div style="display:flex; justify-content:space-between; align-items:center; padding-bottom:2px;">
-            <span style="font-size:10px; color:var(--text-muted);">LAST SYNC</span>
-            <span id="etf-update" style="font-size:10px; color:var(--text-muted); font-family:var(--font-mono);">--</span>
-          </div>
-        </div>
-
-        <!-- ETF Context Hint -->
-        <div id="etf-lsr-hint" style="font-size:11px; color:var(--text-muted); line-height:1.4; padding:10px 12px; background:rgba(0,0,0,0.2); border-radius:4px; border-left:3px solid var(--border-color);">
-          Awaiting ETF flow summary data...
-        </div>
-      </div>
-
     </section>
 
     <!-- ── Whale Trade Detector Card ─────────────────────────── -->

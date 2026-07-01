@@ -432,62 +432,6 @@ async function loadMarketExtras() {
       }
     }
 
-    // ETF Flow Summary
-    if (json.etfSummary) {
-      const e = json.etfSummary;
-
-      const dailyEl = document.getElementById('etf-daily');
-      if (dailyEl) {
-        dailyEl.innerText = e.dailyLabel || 'N/A';
-        dailyEl.style.color = e.dailyUsd > 0 ? '#0ECB81' : e.dailyUsd < 0 ? '#F6465D' : '#EAECEF';
-      }
-
-      const totalEl = document.getElementById('etf-total');
-      if (totalEl) totalEl.innerText = e.totalLabel || 'N/A';
-
-      const gbtcEl = document.getElementById('etf-gbtc');
-      if (gbtcEl) {
-        const g = e.gbtcBtc;
-        gbtcEl.innerText = g ? (g > 0 ? '+' : '') + g + ' BTC' : 'N/A';
-        gbtcEl.style.color = g > 0 ? '#0ECB81' : g < -200 ? '#F6465D' : '#EAECEF';
-      }
-
-      const updateEl = document.getElementById('etf-update');
-      if (updateEl) {
-        updateEl.innerText = e.lastUpdate ? new Date(e.lastUpdate).toLocaleTimeString() : 'Awaiting sync...';
-      }
-
-      const sigEl = document.getElementById('etf-signal-pill');
-      if (sigEl) {
-        sigEl.innerText = e.signal;
-        sigEl.className = 'signal-pill sig-' + e.signal;
-      }
-
-      // LSR context hint
-      const hintEl = document.getElementById('etf-lsr-hint');
-      if (hintEl) {
-        if (e.signal === 'BULLISH') {
-          hintEl.innerText = '🟢 Institutional inflow — macro supports LONG sweep setups';
-          hintEl.style.color = '#0ECB81';
-        } else if (e.signal === 'BEARISH') {
-          hintEl.innerText = '🔴 Institutional outflow — macro supports SHORT sweep setups';
-          hintEl.style.color = '#F6465D';
-        } else if (e.signal === 'MIXED') {
-          hintEl.innerText = '🟡 Mixed signals — GBTC outflow despite inflow elsewhere';
-          hintEl.style.color = '#F0B90B';
-        } else {
-          hintEl.innerText = '⚪ Neutral institutional flow — no macro edge';
-          hintEl.style.color = '#848E9C';
-        }
-      }
-    } else {
-      // No ETF data yet
-      const hintEl = document.getElementById('etf-lsr-hint');
-      if (hintEl) {
-        hintEl.innerText = '⏳ Awaiting ETF data sync from CoinGlass...';
-        hintEl.style.color = '#5A6478';
-      }
-    }
   } catch (e) {
     console.error('[Market Extras] UI error:', e);
   }
