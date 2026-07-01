@@ -55,6 +55,12 @@ async function loadSettingsFromServer() {
     document.getElementById('tele-bot-token').value = s.telegramBotToken || '';
     document.getElementById('tele-chat-id').value = s.telegramChatId || '';
 
+    // Display-only scraper toggles
+    document.getElementById('scraper-whale-retail-delta').checked = s.enableWhaleRetailDeltaScrape !== false;
+    document.getElementById('scraper-top-trader-ls').checked = s.enableTopTraderLsScrape !== false;
+    document.getElementById('scraper-order-book-combined').checked = s.enableOrderBookCombinedScrape !== false;
+    document.getElementById('scraper-etf').checked = s.enableEtfScrape !== false;
+
     // JDA Settings
     document.getElementById('jda-min-confidence').value = s.jdaMinConfidence || 60;
     document.getElementById('jda-capital').value = s.jdaCapital || 1000;
@@ -118,6 +124,10 @@ async function saveSettingsToServer() {
         autoTradeEnabled,
         telegramBotToken: document.getElementById('tele-bot-token').value.trim(),
         telegramChatId: document.getElementById('tele-chat-id').value.trim(),
+        enableWhaleRetailDeltaScrape: document.getElementById('scraper-whale-retail-delta').checked,
+        enableTopTraderLsScrape: document.getElementById('scraper-top-trader-ls').checked,
+        enableOrderBookCombinedScrape: document.getElementById('scraper-order-book-combined').checked,
+        enableEtfScrape: document.getElementById('scraper-etf').checked,
         // JDA Settings
         jdaAutoTradeEnabled,
         jdaMinConfidence: getInt('jda-min-confidence', 60),

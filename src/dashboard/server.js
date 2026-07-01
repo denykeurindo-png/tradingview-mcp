@@ -2589,7 +2589,7 @@ app.get('/api/orderbook-data', async (req, res) => {
 
   // Bypass if scraper is disabled
   const settings = loadSettings();
-  if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true') {
+  if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true' || settings.enableOrderBookCombinedScrape === false) {
     return res.json({ success: true, source: 'cache', data: orderBookDataCache || null });
   }
 
@@ -2756,7 +2756,7 @@ app.get('/api/whale-retail-delta', async (req, res) => {
 
   // Bypass if scraper is disabled
   const settings = loadSettings();
-  if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true') {
+  if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true' || settings.enableWhaleRetailDeltaScrape === false) {
     return res.json({ success: true, source: 'cache', data: whaleRetailDeltaCache || null });
   }
 
@@ -2795,7 +2795,7 @@ app.get('/api/top-trader-ls', async (req, res) => {
 
   // Bypass if scraper is disabled
   const settings = loadSettings();
-  if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true') {
+  if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true' || settings.enableTopTraderLsScrape === false) {
     return res.json({ success: true, source: 'cache', data: topTraderLsCache || null });
   }
 
@@ -3388,7 +3388,7 @@ app.get('/api/etf-data', async (req, res) => {
 
   // Bypass if scraper is disabled
   const settings = loadSettings();
-  if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true') {
+  if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true' || settings.enableEtfScrape === false) {
     return res.json({ success: true, source: 'cache', data: etfDataCache || null, btcPrice });
   }
 
@@ -3592,7 +3592,14 @@ function loadSettings() {
     vpsUsername: '',
     vpsPassword: '',
     disableScraper: false,
-    disableTelegram: false
+    disableTelegram: false,
+    // Display-only CoinGlass scrapers -- not read by calculateReversalProbability,
+    // just feed cockpit2/orderbook/ETF Monitor cards. Default on (no behavior
+    // change); toggle off to save CDP/Chrome load if those cards aren't needed.
+    enableWhaleRetailDeltaScrape: true,
+    enableTopTraderLsScrape: true,
+    enableOrderBookCombinedScrape: true,
+    enableEtfScrape: true
   };
   if (!fs.existsSync(SETTINGS_FILE)) {
     fs.writeFileSync(SETTINGS_FILE, JSON.stringify(defaultSettings, null, 2));
@@ -3935,6 +3942,10 @@ app.post('/api/settings', (req, res) => {
     telegramChatId: newSettings.telegramChatId !== undefined ? String(newSettings.telegramChatId).trim() : current.telegramChatId,
     disableScraper: newSettings.disableScraper !== undefined ? !!newSettings.disableScraper : current.disableScraper,
     disableTelegram: newSettings.disableTelegram !== undefined ? !!newSettings.disableTelegram : current.disableTelegram,
+    enableWhaleRetailDeltaScrape: newSettings.enableWhaleRetailDeltaScrape !== undefined ? !!newSettings.enableWhaleRetailDeltaScrape : (current.enableWhaleRetailDeltaScrape !== undefined ? current.enableWhaleRetailDeltaScrape : true),
+    enableTopTraderLsScrape: newSettings.enableTopTraderLsScrape !== undefined ? !!newSettings.enableTopTraderLsScrape : (current.enableTopTraderLsScrape !== undefined ? current.enableTopTraderLsScrape : true),
+    enableOrderBookCombinedScrape: newSettings.enableOrderBookCombinedScrape !== undefined ? !!newSettings.enableOrderBookCombinedScrape : (current.enableOrderBookCombinedScrape !== undefined ? current.enableOrderBookCombinedScrape : true),
+    enableEtfScrape: newSettings.enableEtfScrape !== undefined ? !!newSettings.enableEtfScrape : (current.enableEtfScrape !== undefined ? current.enableEtfScrape : true),
     jdaAutoTradeEnabled: newSettings.jdaAutoTradeEnabled !== undefined ? !!newSettings.jdaAutoTradeEnabled : current.jdaAutoTradeEnabled,
     jdaMinConfidence: parseIntNum(newSettings.jdaMinConfidence, current.jdaMinConfidence || 60),
     jdaCapital: parseNum(newSettings.jdaCapital, current.jdaCapital || 1000),
@@ -7716,7 +7727,7 @@ async function runBotCycle() {
       // instead of every 30s cycle to reduce CDP/CoinGlass scraping load.
       const DISPLAY_ONLY_REFRESH_MS = 300000;
 
-      if (!lastWhaleRetailDeltaFetchTime || (Date.now() - lastWhaleRetailDeltaFetchTime >= DISPLAY_ONLY_REFRESH_MS)) {
+      if (settings.enableWhaleRetailDeltaScrape !== false && (!lastWhaleRetailDeltaFetchTime || (Date.now() - lastWhaleRetailDeltaFetchTime >= DISPLAY_ONLY_REFRESH_MS))) {
         try {
           console.log('[Background Bot] Running scheduled Whale vs Retail Delta scrape...');
           const rWhaleDelta = await runWithCdpLock(() => scrapeWhaleRetailDelta());
@@ -7728,7 +7739,7 @@ async function runBotCycle() {
         }
       }
 
-      if (!lastTopTraderLsFetchTime || (Date.now() - lastTopTraderLsFetchTime >= DISPLAY_ONLY_REFRESH_MS)) {
+      if (settings.enableTopTraderLsScrape !== false && (!lastTopTraderLsFetchTime || (Date.now() - lastTopTraderLsFetchTime >= DISPLAY_ONLY_REFRESH_MS))) {
         try {
           console.log('[Background Bot] Running scheduled Top Trader Long/Short scrape...');
           const rTopTrader = await runWithCdpLock(() => scrapeTopTraderLs());
@@ -7839,7 +7850,7 @@ app.listen(PORT, () => {
   // Warm-up ETF cache 90s after start (after first heatmap scrape finishes)
   setTimeout(async () => {
     const settings = loadSettings();
-    if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true') {
+    if (settings.disableScraper || process.env.DISABLE_SCRAPER === 'true' || settings.enableEtfScrape === false) {
       console.log('[ETF] Scraper is disabled, skipping ETF cache warm-up.');
       return;
     }

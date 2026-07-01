@@ -447,6 +447,47 @@
           </div>
         </div>
 
+        <!-- Display-Only Scraper Section -->
+        <div class="settings-section-title">Data Scraper (Resource Saving)</div>
+        <div style="font-size:11px; color:var(--text-muted); margin:-8px 0 12px;">These 4 CoinGlass scrapers are not read by the LSR reversal-probability score — they only feed visual cards (cockpit2 Sentimen Gabungan, orderbook.html, ETF Monitor). Turn off any you don't need to reduce CDP/Chrome load.</div>
+        <div class="settings-grid cols-4">
+          <div class="setting-field">
+            <div class="setting-toggle-field">
+              <span>Whale vs Retail Delta</span>
+              <label class="switch">
+                <input type="checkbox" id="scraper-whale-retail-delta" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+          <div class="setting-field">
+            <div class="setting-toggle-field">
+              <span>Top Trader L/S Ratio</span>
+              <label class="switch">
+                <input type="checkbox" id="scraper-top-trader-ls" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+          <div class="setting-field">
+            <div class="setting-toggle-field">
+              <span>Combined Order Book</span>
+              <label class="switch">
+                <input type="checkbox" id="scraper-order-book-combined" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+          <div class="setting-field">
+            <div class="setting-toggle-field">
+              <span>ETF Monitor</span>
+              <label class="switch">
+                <input type="checkbox" id="scraper-etf" checked>
+                <span class="slider"></span>
+              </label>
+            </div>
+          </div>
+        </div>
 
 
         <!-- Save Confirmation Notification Toast (Hidden by default) -->
@@ -516,7 +557,7 @@
     </section>
   </div>
 
-  <script src="settings.js?v=1.0.0"></script>
+  <script src="settings.js?v=1.0.1"></script>
   <script>
     // Initial load of sidebar minimize state (runs immediately to prevent flicker)
     if (localStorage.getItem('sidebar-minimized') === 'true') {
