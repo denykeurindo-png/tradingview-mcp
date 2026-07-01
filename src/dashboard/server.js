@@ -5968,33 +5968,6 @@ function autoTradeStrategyBackend(heatmapData) {
     };
     return;
   }
-  // ─── Global Exit Cooldown Check ─────────────────────────────
-  const exitCooldownMs = (settings.cooldownMinutes || 60) * 60 * 1000; // Read from settings (default 60m)
-  const exitCooldownTrade = trades.find(t => {
-    if (t.status === 'ACTIVE') return false;
-    if (!t.closeTimestamp) return false;
-    const timeSinceClose = Date.now() - t.closeTimestamp;
-    return timeSinceClose >= 0 && timeSinceClose < exitCooldownMs;
-  });
-
-  if (exitCooldownTrade) {
-    const minutesLeft = Math.ceil((exitCooldownMs - (Date.now() - exitCooldownTrade.closeTimestamp)) / 60000);
-    botPhaseState = {
-      phase: 'COOLDOWN',
-      nearestPool: closestPool.price,
-      nearestPoolDistance: closestPool.distance.toFixed(2) + '%',
-      nearestPoolVolume: closestPool.volume,
-      nearestPoolSide: poolSide,
-      sweepCandidate: null,
-      reversalProbabilityPreview: previewProb,
-      probabilityBreakdown: previewResult.breakdown,
-      message: `Exit Cooldown Active: A trade was recently closed (${exitCooldownTrade.status} at ${new Date(exitCooldownTrade.closeTimestamp).toLocaleTimeString()}). New entries blocked for ${minutesLeft} more minutes.`,
-      lastUpdate: new Date().toISOString()
-    };
-    console.log(`[LSR Bot] COOLDOWN — Exit Cooldown active. A trade recently closed (${exitCooldownTrade.status}).`);
-    return;
-  }
-
   // ─── Step 5: Sweep Detection across recent candles ────────
   const sweepCandidates = [];
   
@@ -6291,45 +6264,6 @@ function autoTradeStrategyBackend(heatmapData) {
   // supporting signals that should only weight the probability score (factors
   // #5 and #8 in calculateReversalProbability), not independently veto a
   // sweep that the heatmap has already confirmed.
-
-  // ─── Step 11: Cooldown Check ──────────────────────────────
-  const cooldownMs = (settings.cooldownMinutes || 60) * 60 * 1000;
-  const isCooldown = trades.some(t => {
-    if (t.direction !== direction) return false;
-    // Parse the Indonesian locale date - use the trade ID timestamp as fallback
-    const tradeTime = t.id ? parseInt(t.id.substring(1), 10) : 0;
-    const timeDiffMs = Date.now() - tradeTime;
-    if (isNaN(timeDiffMs) || timeDiffMs > cooldownMs) return false;
-    // Similar TP target (within 0.5%)
-    const tpDiff = Math.abs(t.tp - tp) / tp;
-    return tpDiff < 0.005;
-  });
-
-  if (isCooldown) {
-    botPhaseState = {
-      phase: 'COOLDOWN',
-      nearestPool: bestSweep.price,
-      nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
-      nearestPoolVolume: bestSweep.volume,
-      nearestPoolSide: direction === 'LONG' ? 'SUPPORT' : 'RESISTANCE',
-      sweepCandidate: { 
-        direction, 
-        entry, 
-        tp, 
-        sl, 
-        rr, 
-        prob,
-        rejectionStrength: bestSweep.rejectionStrength,
-        wickDepth: bestSweep.wickDepth,
-        confirmCount: bestSweep.confirmCount
-      },
-      probabilityBreakdown: probResult.breakdown,
-      message: `Sweep ${direction} at $${bestSweep.price.toFixed(0)} detected but in cooldown. Waiting...`,
-      lastUpdate: new Date().toISOString()
-    };
-    console.log(`[LSR Bot] COOLDOWN — ${direction} trade recently executed near this TP zone`);
-    return;
-  }
 
   // ─── Step 11b: Conflicting Sweep Filter ──────────────────────────────────
   // If an opposing sweep (e.g. support sweep while we want to SHORT) happened in
