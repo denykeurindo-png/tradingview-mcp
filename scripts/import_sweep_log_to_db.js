@@ -6,7 +6,8 @@
 //   2. src/dashboard/sweep_history.json — structured, real timestamps.
 //
 // Safe to re-run: it wipes and rebuilds both source partitions each time, so
-// re-running never produces duplicates.
+// re-running never produces duplicates. Schema must stay in sync with the
+// live-insert setup in src/dashboard/server.js (insertSweepEventToDb).
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'fs';
 import os from 'os';
@@ -32,7 +33,11 @@ db.exec(`
     pool_distance TEXT,
     pool_volume REAL,
     message TEXT,
-    source TEXT
+    source TEXT,
+    reversal_prob REAL,
+    rr_actual REAL,
+    min_prob REAL,
+    min_rr REAL
   );
   CREATE INDEX IF NOT EXISTS idx_phase ON sweep_events(phase);
   CREATE INDEX IF NOT EXISTS idx_source ON sweep_events(source);
@@ -41,7 +46,8 @@ db.exec(`
   DROP VIEW IF EXISTS sweep_events_staged;
   CREATE VIEW sweep_events_staged AS
   SELECT
-    id, seq, timestamp, phase, direction, pool_price, pool_side, pool_distance, pool_volume, message, source,
+    id, seq, timestamp, phase, direction, pool_price, pool_side, pool_distance, pool_volume,
+    message, source, reversal_prob, rr_actual, min_prob, min_rr,
     CASE phase
       WHEN 'STANDBY'           THEN 'ACTIVE'
       WHEN 'ALERT'             THEN 'PASS'
@@ -84,43 +90,54 @@ db.exec(`
 // ─── Part 1: historical unstructured pm2 log ────────────────────────────────
 function classifyAndParse(line) {
   const msg = line.replace(/^.*\[LSR Bot\]\s*/, '').trim();
+  const base = { pool_side: null, pool_distance: null, reversal_prob: null, rr_actual: null, min_prob: null, min_rr: null };
 
   let m;
   if (/TRADE EXECUTED/.test(msg)) {
-    m = msg.match(/(LONG|SHORT) Entry:\$([\d.]+) TP:\$([\d.]+) SL:\$([\d.]+)/);
-    return { phase: 'TRADE_EXECUTED', direction: m?.[1] || null, pool_price: m ? parseFloat(m[2]) : null, pool_side: null, pool_distance: null, message: msg };
+    m = msg.match(/(LONG|SHORT) Entry:\$([\d.]+) TP:\$([\d.]+) SL:\$([\d.]+) R:R 1:([\d.]+)/);
+    return { ...base, phase: 'TRADE_EXECUTED', direction: m?.[1] || null, pool_price: m ? parseFloat(m[2]) : null, rr_actual: m ? parseFloat(m[5]) : null, message: msg };
   }
   if (/FORCE_SKIP/.test(msg)) {
     m = msg.match(/for (LONG|SHORT) at \$([\d.]+)/);
-    return { phase: 'SWEEP_REJECTED', direction: m?.[1] || null, pool_price: m ? parseFloat(m[2]) : null, pool_side: null, pool_distance: null, message: msg };
+    return { ...base, phase: 'SWEEP_REJECTED', direction: m?.[1] || null, pool_price: m ? parseFloat(m[2]) : null, message: msg };
   }
   if (/SWEEP_REJECTED/.test(msg)) {
+    const rrM   = msg.match(/R:R ([\d.]+) < min ([\d.]+) for (LONG|SHORT) at \$([\d.]+)/);
+    const probM = msg.match(/Reversal Prob (\d+)% < min (\d+)% for (LONG|SHORT) at \$([\d.]+)/);
+    if (rrM) {
+      return { ...base, phase: 'SWEEP_REJECTED', direction: rrM[3], pool_price: parseFloat(rrM[4]), rr_actual: parseFloat(rrM[1]), min_rr: parseFloat(rrM[2]), message: msg };
+    }
+    if (probM) {
+      return { ...base, phase: 'SWEEP_REJECTED', direction: probM[3], pool_price: parseFloat(probM[4]), reversal_prob: parseFloat(probM[1]), min_prob: parseFloat(probM[2]), message: msg };
+    }
     m = msg.match(/for (LONG|SHORT) at \$([\d.]+)/);
-    return { phase: 'SWEEP_REJECTED', direction: m?.[1] || null, pool_price: m ? parseFloat(m[2]) : null, pool_side: null, pool_distance: null, message: msg };
+    return { ...base, phase: 'SWEEP_REJECTED', direction: m?.[1] || null, pool_price: m ? parseFloat(m[2]) : null, message: msg };
   }
   if (/CONFLICTING_SWEEP/.test(msg)) {
     m = msg.match(/(LONG|SHORT) at \$([\d.]+)/);
-    return { phase: 'CONFLICTING_SWEEP', direction: m?.[1] || null, pool_price: m ? parseFloat(m[2]) : null, pool_side: null, pool_distance: null, message: msg };
+    return { ...base, phase: 'CONFLICTING_SWEEP', direction: m?.[1] || null, pool_price: m ? parseFloat(m[2]) : null, message: msg };
   }
   if (/COOLDOWN/.test(msg)) {
     m = msg.match(/(LONG|SHORT)/);
-    return { phase: 'COOLDOWN', direction: m?.[1] || null, pool_price: null, pool_side: null, pool_distance: null, message: msg };
+    return { ...base, phase: 'COOLDOWN', direction: m?.[1] || null, pool_price: null, message: msg };
   }
   if (/POOL_CHANGED/.test(msg)) {
-    return { phase: 'POOL_CHANGED', direction: null, pool_price: null, pool_side: null, pool_distance: null, message: msg };
+    return { ...base, phase: 'POOL_CHANGED', direction: null, pool_price: null, message: msg };
   }
   if (/^ALERT/.test(msg)) {
     m = msg.match(/(RESISTANCE|SUPPORT) pool \$([\d.]+) \(([\d.]+)%\)/);
-    return { phase: 'ALERT', direction: null, pool_price: m ? parseFloat(m[2]) : null, pool_side: m?.[1] || null, pool_distance: m ? m[3] + '%' : null, message: msg };
+    const probM = msg.match(/Preview prob: (\d+)%/);
+    return { ...base, phase: 'ALERT', direction: null, pool_price: m ? parseFloat(m[2]) : null, pool_side: m?.[1] || null, pool_distance: m ? m[3] + '%' : null, reversal_prob: probM ? parseFloat(probM[1]) : null, message: msg };
   }
   if (/^STANDBY/.test(msg)) {
     m = msg.match(/nearest pool \$([\d.]+) \(([\d.]+)%\)/);
-    return { phase: 'STANDBY', direction: null, pool_price: m ? parseFloat(m[1]) : null, pool_side: null, pool_distance: m ? m[2] + '%' : null, message: msg };
+    const probM = msg.match(/Preview prob: (\d+)%/);
+    return { ...base, phase: 'STANDBY', direction: null, pool_price: m ? parseFloat(m[1]) : null, pool_distance: m ? m[2] + '%' : null, reversal_prob: probM ? parseFloat(probM[1]) : null, message: msg };
   }
   if (/Hit TP|Hit SL|AUTO-CUT TRIGGERED|Breakeven/.test(msg)) {
     m = msg.match(/(LONG|SHORT)/);
     const priceMatch = msg.match(/\$([\d.]+)/);
-    return { phase: 'POSITION_MGMT', direction: m?.[1] || null, pool_price: priceMatch ? parseFloat(priceMatch[1]) : null, pool_side: null, pool_distance: null, message: msg };
+    return { ...base, phase: 'POSITION_MGMT', direction: m?.[1] || null, pool_price: priceMatch ? parseFloat(priceMatch[1]) : null, message: msg };
   }
   return null; // unrecognized [LSR Bot] line (e.g. "Sweep pool: ..." detail line) — skip
 }
@@ -136,8 +153,8 @@ if (!fs.existsSync(PM2_LOG_PATH)) {
   const lines = raw.split('\n');
 
   const insert = db.prepare(`
-    INSERT INTO sweep_events (seq, timestamp, phase, direction, pool_price, pool_side, pool_distance, pool_volume, message, source)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pm2_log')
+    INSERT INTO sweep_events (seq, timestamp, phase, direction, pool_price, pool_side, pool_distance, pool_volume, message, source, reversal_prob, rr_actual, min_prob, min_rr)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pm2_log', ?, ?, ?, ?)
   `);
 
   let seq = 0;
@@ -145,13 +162,13 @@ if (!fs.existsSync(PM2_LOG_PATH)) {
   db.exec('BEGIN');
   for (const line of lines) {
     if (!line.includes('[LSR Bot]')) continue;
-    const parsed = classifyAndParse(line);
-    if (!parsed) continue;
+    const p = classifyAndParse(line);
+    if (!p) continue;
     seq++;
     // Real timestamp if pm2's log_date_format prefix is present (added 2026-07-01 onward)
     const tsMatch = line.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}):/);
     const timestamp = tsMatch ? new Date(tsMatch[1].replace(' ', 'T')).getTime() : null;
-    insert.run(seq, timestamp, parsed.phase, parsed.direction, parsed.pool_price, parsed.pool_side, parsed.pool_distance, null, parsed.message);
+    insert.run(seq, timestamp, p.phase, p.direction, p.pool_price, p.pool_side, p.pool_distance, null, p.message, p.reversal_prob, p.rr_actual, p.min_prob, p.min_rr);
     inserted++;
   }
   db.exec('COMMIT');
@@ -167,14 +184,22 @@ if (!fs.existsSync(SWEEP_HISTORY_PATH)) {
 } else {
   const events = JSON.parse(fs.readFileSync(SWEEP_HISTORY_PATH, 'utf8'));
   const insert2 = db.prepare(`
-    INSERT INTO sweep_events (seq, timestamp, phase, direction, pool_price, pool_side, pool_distance, pool_volume, message, source)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'sweep_history_json')
+    INSERT INTO sweep_events (seq, timestamp, phase, direction, pool_price, pool_side, pool_distance, pool_volume, message, source, reversal_prob, rr_actual, min_prob, min_rr)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'sweep_history_json', ?, ?, ?, ?)
   `);
   db.exec('BEGIN');
   const chronological = events.slice().reverse(); // oldest first, so seq increases with time like the pm2 partition
   chronological.forEach((e, idx) => {
     const direction = e.sweepCandidate?.direction || null;
-    insert2.run(idx + 1, e.timestamp, e.phase, direction, e.nearestPool, e.nearestPoolSide, e.nearestPoolDistance, e.nearestPoolVolume, e.message);
+    let reversalProb = e.sweepCandidate?.prob ?? null;
+    if (reversalProb == null && e.probabilityBreakdown) {
+      const sum = Object.entries(e.probabilityBreakdown)
+        .filter(([k]) => k !== 'depthDeltaVal' && k !== 'premiumVal')
+        .reduce((s, [, v]) => s + (typeof v === 'number' ? v : 0), 0);
+      reversalProb = Math.round(sum);
+    }
+    const rrActual = e.sweepCandidate?.rr ?? null;
+    insert2.run(idx + 1, e.timestamp, e.phase, direction, e.nearestPool, e.nearestPoolSide, e.nearestPoolDistance, e.nearestPoolVolume, e.message, reversalProb, rrActual, null, null);
   });
   db.exec('COMMIT');
   console.log(`[Import] Inserted ${chronological.length} events from sweep_history.json (source='sweep_history_json', real timestamps).`);

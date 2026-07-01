@@ -4,6 +4,7 @@ import WebSocket from 'ws';
 import path from 'path';
 import { fileURLToPath } from 'url';
 import fs from 'fs';
+import { DatabaseSync } from 'node:sqlite';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -5279,6 +5280,77 @@ function autoJdaTradeStrategyBackend(heatmapData, klines15m) {
 const SWEEP_HISTORY_FILE = path.join(__dirname, 'sweep_history.json');
 let sweepHistory = [];
 
+// ─── Live SQLite mirror of every bot event (queryable, unbounded) ────────────
+// Schema/view must stay in sync with scripts/import_sweep_log_to_db.js.
+const SWEEP_EVENTS_DB_FILE = path.join(__dirname, 'sweep_events.db');
+let sweepEventsDb = null;
+let insertSweepEventStmt = null;
+try {
+  sweepEventsDb = new DatabaseSync(SWEEP_EVENTS_DB_FILE);
+  sweepEventsDb.exec(`
+    CREATE TABLE IF NOT EXISTS sweep_events (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      seq INTEGER,
+      timestamp INTEGER,
+      phase TEXT,
+      direction TEXT,
+      pool_price REAL,
+      pool_side TEXT,
+      pool_distance TEXT,
+      pool_volume REAL,
+      message TEXT,
+      source TEXT,
+      reversal_prob REAL,
+      rr_actual REAL,
+      min_prob REAL,
+      min_rr REAL
+    );
+    CREATE INDEX IF NOT EXISTS idx_phase ON sweep_events(phase);
+    CREATE INDEX IF NOT EXISTS idx_source ON sweep_events(source);
+    CREATE INDEX IF NOT EXISTS idx_seq ON sweep_events(seq);
+  `);
+  insertSweepEventStmt = sweepEventsDb.prepare(`
+    INSERT INTO sweep_events (seq, timestamp, phase, direction, pool_price, pool_side, pool_distance, pool_volume, message, source, reversal_prob, rr_actual, min_prob, min_rr)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'live', ?, ?, ?, ?)
+  `);
+  console.log('[SweepEventsDB] Ready:', SWEEP_EVENTS_DB_FILE);
+} catch (e) {
+  console.error('[SweepEventsDB] Failed to open/init — live events will not be recorded to SQLite:', e.message);
+}
+
+function insertSweepEventToDb(entry) {
+  if (!insertSweepEventStmt) return;
+  try {
+    // Prefer the sweep candidate's own prob/rr (SWEEP_DETECTED/REJECTED/TRADE_EXECUTED);
+    // fall back to summing the probability breakdown (STANDBY/ALERT preview score).
+    let reversalProb = entry.sweepCandidate?.prob ?? null;
+    if (reversalProb == null && entry.probabilityBreakdown) {
+      const sum = Object.entries(entry.probabilityBreakdown)
+        .filter(([k]) => k !== 'depthDeltaVal' && k !== 'premiumVal')
+        .reduce((s, [, v]) => s + (typeof v === 'number' ? v : 0), 0);
+      reversalProb = Math.round(sum);
+    }
+    const rrActual = entry.sweepCandidate?.rr ?? null;
+    const settings = loadSettings();
+
+    insertSweepEventStmt.run(
+      entry.timestamp, entry.timestamp, entry.phase,
+      entry.sweepCandidate?.direction || null,
+      entry.nearestPool ?? null,
+      entry.nearestPoolSide ?? null,
+      entry.nearestPoolDistance ?? null,
+      entry.nearestPoolVolume ?? null,
+      entry.message ?? null,
+      reversalProb,
+      rrActual,
+      settings.minReversalProbability ?? null,
+      settings.minRR ?? null
+    );
+  } catch (e) {
+    console.error('[SweepEventsDB] Insert failed:', e.message);
+  }
+}
+
 // ─── Pool Change Tracking (persists between bot cycles) ──────────────────────
 let lastTrackedPoolPrice = null;
 let lastTrackedPoolSide  = null;
@@ -5363,6 +5435,7 @@ function setBotPhaseState(newState, providedOldPhase) {
         // see the pushToVps('/api/bot-phase/update', ...) call which omits sweepHistory.
         sweepHistory.unshift(entry);
         saveSweepHistory(sweepHistory);
+        insertSweepEventToDb(entry);
       }
     }
   }
