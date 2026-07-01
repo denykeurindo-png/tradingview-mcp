@@ -5296,6 +5296,7 @@ const SWEEP_EVENTS_DB_FILE = path.join(__dirname, 'sweep_events.db');
 let sweepEventsDb = null;
 let insertSweepEventStmt = null;
 let insertPoolSnapshotStmt = null;
+let insertCandleStmt = null;
 try {
   sweepEventsDb = new DatabaseSync(SWEEP_EVENTS_DB_FILE);
   sweepEventsDb.exec(`
@@ -5372,9 +5373,50 @@ try {
     INSERT INTO pool_snapshots (timestamp, timeframe, side, rank, price, volume, distance_pct, intensity, max_leverage)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
+  // Real OHLC history for backtesting sweep-detection/scoring logic changes against
+  // known price action. Schema/source matches scripts/backfill_candles_to_db.js
+  // exactly, so the historical Binance backfill and this live feed share one table.
+  sweepEventsDb.exec(`
+    CREATE TABLE IF NOT EXISTS candles (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      open_time INTEGER,
+      timeframe TEXT,
+      open REAL,
+      high REAL,
+      low REAL,
+      close REAL,
+      source TEXT,
+      UNIQUE(timeframe, open_time)
+    );
+    CREATE INDEX IF NOT EXISTS idx_candles_time ON candles(open_time);
+    CREATE INDEX IF NOT EXISTS idx_candles_tf ON candles(timeframe);
+  `);
+  insertCandleStmt = sweepEventsDb.prepare(`
+    INSERT OR IGNORE INTO candles (open_time, timeframe, open, high, low, close, source)
+    VALUES (?, '15m', ?, ?, ?, ?, 'live')
+  `);
+
   console.log('[SweepEventsDB] Ready:', SWEEP_EVENTS_DB_FILE);
 } catch (e) {
   console.error('[SweepEventsDB] Failed to open/init — live events will not be recorded to SQLite:', e.message);
+}
+
+// klines15m rows are [closeTime, close, low, high, open, volume] (see fetchBinance15mKlines).
+// Insert every returned bar (INSERT OR IGNORE on open_time) so gaps get filled if a cycle
+// is missed -- Binance always returns the same well-known open_time for a given bar.
+function insertCandlesToDb(klines15m) {
+  if (!insertCandleStmt || !klines15m?.data) return;
+  for (const k of klines15m.data) {
+    const [closeTime, close, low, high, open] = k;
+    if ([closeTime, close, low, high, open].some(v => v == null || isNaN(v))) continue;
+    // Binance close_time = open_time + interval - 1ms, not open_time + interval.
+    const openTime = closeTime - 15 * 60 * 1000 + 1;
+    try {
+      insertCandleStmt.run(openTime, open, high, low, close);
+    } catch (e) {
+      console.error('[SweepEventsDB] Candle insert failed:', e.message);
+    }
+  }
 }
 
 function insertPoolSnapshotToDb(pools24h, pools3d, currentPrice) {
@@ -5953,9 +5995,11 @@ function extractTopPoolsForServer(cache, currentPrice) {
   return { above: aboveLevels, below: belowLevels, maxLeverage };
 }
 
-function autoTradeStrategyBackend(heatmapData) {
+function autoTradeStrategyBackend(heatmapData, klines15m) {
   const settings = loadSettings();
-  
+
+  insertCandlesToDb(klines15m);
+
   if (!settings.autoTradeEnabled) {
     botPhaseState = { ...botPhaseState, phase: 'DISABLED', message: 'Auto-trade is disabled', lastUpdate: new Date().toISOString() };
     return;
