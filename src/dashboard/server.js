@@ -5598,9 +5598,13 @@ function setBotPhaseState(newState, providedOldPhase) {
           probabilityBreakdown: newState.probabilityBreakdown || null
         };
         
-        // Local archive is unbounded (kept for analysis) — never pushed to VPS in full,
-        // see the pushToVps('/api/bot-phase/update', ...) call which omits sweepHistory.
+        // sweep_history.json only needs to feed the "recent activity" cockpit widget --
+        // the unbounded/full-detail archive now lives in sweep_events.db (see
+        // insertSweepEventToDb below), so this file can go back to being small.
         sweepHistory.unshift(entry);
+        if (sweepHistory.length > 10) {
+          sweepHistory.length = 10;
+        }
         saveSweepHistory(sweepHistory);
         insertSweepEventToDb(entry);
       }
