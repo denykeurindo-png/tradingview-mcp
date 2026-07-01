@@ -6376,8 +6376,16 @@ function autoTradeStrategyBackend(heatmapData, klines15m) {
   }
 
   // ─── Step 9: Calculate TP (largest opposing unswept pool, capped by maxTPPercent) ──
+  // maxTPPercent is a static cap but slDistance is ATR-based (grows with volatility) --
+  // when volatility pushes SL past what a fixed TP cap can match, the search radius
+  // itself was excluding pools that could have cleared minRR, guaranteeing an R:R
+  // rejection regardless of setup quality. Widen the cap to never be tighter than
+  // what minRR actually requires, so a legitimately large opposing pool just beyond
+  // the old static cap still gets found instead of thrown away.
   const maxTPPercent = settings.maxTPPercent !== undefined ? settings.maxTPPercent : 1.5;
-  const maxTPDistance = entry * (maxTPPercent / 100);
+  const minRRForTpSearch = settings.minRR || 2.0;
+  const tpSearchPercent = Math.max(maxTPPercent, slDistance * minRRForTpSearch);
+  const maxTPDistance = entry * (tpSearchPercent / 100);
 
   let tp = 0;
   let maxOpposingVolume = 0;
