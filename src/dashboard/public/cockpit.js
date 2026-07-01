@@ -931,7 +931,8 @@ function renderSingleMiniChart(chartInstance, title, heatmapData, is3d = false) 
         }
       },
       {
-        type: 'value', scale: true, min: minPrice, max: maxPrice, show: false
+        type: 'value', scale: true, min: minPrice, max: maxPrice, show: false,
+        axisPointer: { show: false }
       }
     ],
     visualMap: {

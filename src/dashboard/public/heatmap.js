@@ -490,7 +490,8 @@ function renderHeatmap(data) {
         }
       },
       {
-        type: 'value', scale: true, min: minPrice, max: maxPrice, show: false
+        type: 'value', scale: true, min: minPrice, max: maxPrice, show: false,
+        axisPointer: { show: false }
       }
     ],
     visualMap: {
@@ -980,7 +981,7 @@ function renderHeatmap3D(data) {
       { type: 'category', data: yAxisData, splitLine: { show: true, lineStyle: { color: '#31235a' } },
         axisLine: { lineStyle: { color: '#31235a' } },
         axisLabel: { color: '#848E9C', fontSize: 10, formatter: v => '$' + parseInt(v).toLocaleString() } },
-      { type: 'value', scale: true, min: minPrice, max: maxPrice, show: false }
+      { type: 'value', scale: true, min: minPrice, max: maxPrice, show: false, axisPointer: { show: false } }
     ],
     visualMap: {
       show: true, min: 0, max: maxIntensity, calculable: true, orient: 'horizontal', left: 'center', bottom: '2%',
