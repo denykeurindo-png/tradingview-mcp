@@ -7,7 +7,8 @@
 //
 // Safe to re-run: it wipes and rebuilds both source partitions each time, so
 // re-running never produces duplicates. Schema must stay in sync with the
-// live-insert setup in src/dashboard/server.js (insertSweepEventToDb).
+// live-insert setup in src/dashboard/server.js (insertSweepEventToDb /
+// insertTradeCloseToDb).
 import { DatabaseSync } from 'node:sqlite';
 import fs from 'fs';
 import os from 'os';
@@ -37,17 +38,40 @@ db.exec(`
     reversal_prob REAL,
     rr_actual REAL,
     min_prob REAL,
-    min_rr REAL
+    min_rr REAL,
+    trade_id TEXT,
+    wick_depth REAL,
+    rejection_strength REAL,
+    confirm_count INTEGER,
+    f_base_score REAL,
+    f_pool_volume REAL,
+    f_rejection REAL,
+    f_oi_change REAL,
+    f_spot_cvd REAL,
+    f_trend REAL,
+    f_funding REAL,
+    f_ls_ratio REAL,
+    f_coinbase_premium REAL,
+    f_depth_delta REAL,
+    f_whale_wall REAL,
+    f_liquidations REAL,
+    f_intensity REAL,
+    depth_delta_val REAL,
+    premium_val REAL
   );
   CREATE INDEX IF NOT EXISTS idx_phase ON sweep_events(phase);
   CREATE INDEX IF NOT EXISTS idx_source ON sweep_events(source);
   CREATE INDEX IF NOT EXISTS idx_seq ON sweep_events(seq);
+  CREATE INDEX IF NOT EXISTS idx_trade_id ON sweep_events(trade_id);
 
   DROP VIEW IF EXISTS sweep_events_staged;
   CREATE VIEW sweep_events_staged AS
   SELECT
     id, seq, timestamp, phase, direction, pool_price, pool_side, pool_distance, pool_volume,
-    message, source, reversal_prob, rr_actual, min_prob, min_rr,
+    message, source, reversal_prob, rr_actual, min_prob, min_rr, trade_id, wick_depth,
+    rejection_strength, confirm_count, f_base_score, f_pool_volume, f_rejection, f_oi_change,
+    f_spot_cvd, f_trend, f_funding, f_ls_ratio, f_coinbase_premium, f_depth_delta, f_whale_wall,
+    f_liquidations, f_intensity, depth_delta_val, premium_val,
     CASE phase
       WHEN 'STANDBY'           THEN 'ACTIVE'
       WHEN 'ALERT'             THEN 'PASS'
@@ -90,12 +114,15 @@ db.exec(`
 // ─── Part 1: historical unstructured pm2 log ────────────────────────────────
 function classifyAndParse(line) {
   const msg = line.replace(/^.*\[LSR Bot\]\s*/, '').trim();
-  const base = { pool_side: null, pool_distance: null, reversal_prob: null, rr_actual: null, min_prob: null, min_rr: null };
+  const base = {
+    pool_side: null, pool_distance: null, reversal_prob: null, rr_actual: null,
+    min_prob: null, min_rr: null, wick_depth: null, rejection_strength: null
+  };
 
   let m;
   if (/TRADE EXECUTED/.test(msg)) {
     m = msg.match(/(LONG|SHORT) Entry:\$([\d.]+) TP:\$([\d.]+) SL:\$([\d.]+) R:R 1:([\d.]+)/);
-    return { ...base, phase: 'TRADE_EXECUTED', direction: m?.[1] || null, pool_price: m ? parseFloat(m[2]) : null, rr_actual: m ? parseFloat(m[5]) : null, message: msg };
+    return { ...base, phase: 'TRADE_EXECUTED', direction: m?.[1] || null, pool_price: m ? parseFloat(m[2]) : null, rr_actual: m ? parseFloat(m[5]) : null, message: msg, isTradeExecuted: true };
   }
   if (/FORCE_SKIP/.test(msg)) {
     m = msg.match(/for (LONG|SHORT) at \$([\d.]+)/);
@@ -139,7 +166,13 @@ function classifyAndParse(line) {
     const priceMatch = msg.match(/\$([\d.]+)/);
     return { ...base, phase: 'POSITION_MGMT', direction: m?.[1] || null, pool_price: priceMatch ? parseFloat(priceMatch[1]) : null, message: msg };
   }
-  return null; // unrecognized [LSR Bot] line (e.g. "Sweep pool: ..." detail line) — skip
+  // The "   Sweep pool: $X, Wick depth: Y%, Rejection: Z%" detail line that immediately
+  // follows a TRADE EXECUTED line — not its own event, just extra detail to attach.
+  const detailM = msg.match(/^Sweep pool: \$[\d.]+, Wick depth: ([\d.]+)%, Rejection: ([\d.]+)%/);
+  if (detailM) {
+    return { isDetailLine: true, wick_depth: parseFloat(detailM[1]), rejection_strength: parseFloat(detailM[2]) };
+  }
+  return null; // unrecognized [LSR Bot] line — skip
 }
 
 console.log('[Import] Clearing previous pm2_log rows...');
@@ -153,23 +186,39 @@ if (!fs.existsSync(PM2_LOG_PATH)) {
   const lines = raw.split('\n');
 
   const insert = db.prepare(`
-    INSERT INTO sweep_events (seq, timestamp, phase, direction, pool_price, pool_side, pool_distance, pool_volume, message, source, reversal_prob, rr_actual, min_prob, min_rr)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pm2_log', ?, ?, ?, ?)
+    INSERT INTO sweep_events (
+      seq, timestamp, phase, direction, pool_price, pool_side, pool_distance, pool_volume, message, source,
+      reversal_prob, rr_actual, min_prob, min_rr, wick_depth, rejection_strength
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pm2_log', ?, ?, ?, ?, ?, ?)
   `);
 
   let seq = 0;
   let inserted = 0;
+  let pendingTradeRowId = null; // rowid of the last-inserted TRADE_EXECUTED row, to attach the detail line's wick/rejection to
+  const updateWickRej = db.prepare(`UPDATE sweep_events SET wick_depth = ?, rejection_strength = ? WHERE id = ?`);
+
   db.exec('BEGIN');
   for (const line of lines) {
     if (!line.includes('[LSR Bot]')) continue;
     const p = classifyAndParse(line);
     if (!p) continue;
+
+    if (p.isDetailLine) {
+      if (pendingTradeRowId != null) {
+        updateWickRej.run(p.wick_depth, p.rejection_strength, pendingTradeRowId);
+        pendingTradeRowId = null;
+      }
+      continue;
+    }
+
     seq++;
     // Real timestamp if pm2's log_date_format prefix is present (added 2026-07-01 onward)
     const tsMatch = line.match(/^(\d{4}-\d{2}-\d{2} \d{2}:\d{2}:\d{2}):/);
     const timestamp = tsMatch ? new Date(tsMatch[1].replace(' ', 'T')).getTime() : null;
-    insert.run(seq, timestamp, p.phase, p.direction, p.pool_price, p.pool_side, p.pool_distance, null, p.message, p.reversal_prob, p.rr_actual, p.min_prob, p.min_rr);
+    const result = insert.run(seq, timestamp, p.phase, p.direction, p.pool_price, p.pool_side, p.pool_distance, null, p.message, p.reversal_prob, p.rr_actual, p.min_prob, p.min_rr, p.wick_depth, p.rejection_strength);
     inserted++;
+    pendingTradeRowId = p.isTradeExecuted ? result.lastInsertRowid : null;
   }
   db.exec('COMMIT');
   console.log(`[Import] Inserted ${inserted} historical events from pm2 log (source='pm2_log', no reliable timestamp except where pm2 timestamp prefix was present).`);
@@ -184,22 +233,34 @@ if (!fs.existsSync(SWEEP_HISTORY_PATH)) {
 } else {
   const events = JSON.parse(fs.readFileSync(SWEEP_HISTORY_PATH, 'utf8'));
   const insert2 = db.prepare(`
-    INSERT INTO sweep_events (seq, timestamp, phase, direction, pool_price, pool_side, pool_distance, pool_volume, message, source, reversal_prob, rr_actual, min_prob, min_rr)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'sweep_history_json', ?, ?, ?, ?)
+    INSERT INTO sweep_events (
+      seq, timestamp, phase, direction, pool_price, pool_side, pool_distance, pool_volume, message, source,
+      reversal_prob, rr_actual, min_prob, min_rr, trade_id, wick_depth, rejection_strength, confirm_count,
+      f_base_score, f_pool_volume, f_rejection, f_oi_change, f_spot_cvd, f_trend, f_funding, f_ls_ratio,
+      f_coinbase_premium, f_depth_delta, f_whale_wall, f_liquidations, f_intensity, depth_delta_val, premium_val
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'sweep_history_json', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   db.exec('BEGIN');
   const chronological = events.slice().reverse(); // oldest first, so seq increases with time like the pm2 partition
   chronological.forEach((e, idx) => {
-    const direction = e.sweepCandidate?.direction || null;
-    let reversalProb = e.sweepCandidate?.prob ?? null;
-    if (reversalProb == null && e.probabilityBreakdown) {
-      const sum = Object.entries(e.probabilityBreakdown)
+    const sc = e.sweepCandidate;
+    const b = e.probabilityBreakdown;
+    let reversalProb = sc?.prob ?? null;
+    if (reversalProb == null && b) {
+      const sum = Object.entries(b)
         .filter(([k]) => k !== 'depthDeltaVal' && k !== 'premiumVal')
         .reduce((s, [, v]) => s + (typeof v === 'number' ? v : 0), 0);
       reversalProb = Math.round(sum);
     }
-    const rrActual = e.sweepCandidate?.rr ?? null;
-    insert2.run(idx + 1, e.timestamp, e.phase, direction, e.nearestPool, e.nearestPoolSide, e.nearestPoolDistance, e.nearestPoolVolume, e.message, reversalProb, rrActual, null, null);
+    insert2.run(
+      idx + 1, e.timestamp, e.phase, sc?.direction || null, e.nearestPool, e.nearestPoolSide, e.nearestPoolDistance, e.nearestPoolVolume, e.message,
+      reversalProb, sc?.rr ?? null, null, null,
+      sc?.tradeId ?? null, sc?.wickDepth ?? null, sc?.rejectionStrength ?? null, sc?.confirmCount ?? null,
+      b?.baseScore ?? null, b?.poolVolume ?? null, b?.rejection ?? null, b?.oiChange ?? null, b?.spotCvd ?? null,
+      b?.trend ?? null, b?.funding ?? null, b?.lsRatio ?? null, b?.coinbasePremium ?? null, b?.depthDelta ?? null,
+      b?.whaleWall ?? null, b?.liquidations ?? null, b?.intensity ?? null, b?.depthDeltaVal ?? null, b?.premiumVal ?? null
+    );
   });
   db.exec('COMMIT');
   console.log(`[Import] Inserted ${chronological.length} events from sweep_history.json (source='sweep_history_json', real timestamps).`);

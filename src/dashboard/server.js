@@ -4703,7 +4703,9 @@ function evaluateActiveTradesBackend(heatmapData) {
         const alertIcon = trade.isBreakeven ? `🛡️` : `🚨`;
         const alertTitle = trade.isBreakeven ? `Trade Closed (Hit Breakeven)` : `Trade Closed (Hit SL)`;
 
-        console.log(`[LSR Bot] ${alertIcon} LONG Hit ${trade.isBreakeven ? 'Breakeven' : 'SL'} at $${trade.sl.toFixed(2)} (Last Low: $${lastLow.toFixed(2)}), PnL: ${pnlText}`);
+        const longSlMsg = `${alertIcon} LONG Hit ${trade.isBreakeven ? 'Breakeven' : 'SL'} at $${trade.sl.toFixed(2)} (Last Low: $${lastLow.toFixed(2)}), PnL: ${pnlText}`;
+        console.log(`[LSR Bot] ${longSlMsg}`);
+        insertTradeCloseToDb(trade, longSlMsg);
         sendTelegramAlert(
           `${alertIcon} <b>${alertTitle}</b>\n` +
           `Type: <b>LONG</b>\n` +
@@ -4726,7 +4728,9 @@ function evaluateActiveTradesBackend(heatmapData) {
         trade.closeTimestamp = Date.now();
         trade.note = `Wick Hit TP ($${lastHigh.toFixed(2)})`;
         updated = true;
-        console.log(`[LSR Bot] 🎉 LONG Hit TP at $${trade.tp.toFixed(2)} (Last High: $${lastHigh.toFixed(2)}), PnL: +$${profit.toFixed(2)}`);
+        const longTpMsg = `🎉 LONG Hit TP at $${trade.tp.toFixed(2)} (Last High: $${lastHigh.toFixed(2)}), PnL: +$${profit.toFixed(2)}`;
+        console.log(`[LSR Bot] ${longTpMsg}`);
+        insertTradeCloseToDb(trade, longTpMsg);
         sendTelegramAlert(
           `🎉 <b>Trade Closed (Hit TP)</b>\n` +
           `Type: <b>LONG</b>\n` +
@@ -4756,7 +4760,9 @@ function evaluateActiveTradesBackend(heatmapData) {
         const alertIcon = trade.isBreakeven ? `🛡️` : `🚨`;
         const alertTitle = trade.isBreakeven ? `Trade Closed (Hit Breakeven)` : `Trade Closed (Hit SL)`;
 
-        console.log(`[LSR Bot] ${alertIcon} SHORT Hit ${trade.isBreakeven ? 'Breakeven' : 'SL'} at $${trade.sl.toFixed(2)} (Last High: $${lastHigh.toFixed(2)}), PnL: ${pnlText}`);
+        const shortSlMsg = `${alertIcon} SHORT Hit ${trade.isBreakeven ? 'Breakeven' : 'SL'} at $${trade.sl.toFixed(2)} (Last High: $${lastHigh.toFixed(2)}), PnL: ${pnlText}`;
+        console.log(`[LSR Bot] ${shortSlMsg}`);
+        insertTradeCloseToDb(trade, shortSlMsg);
         sendTelegramAlert(
           `${alertIcon} <b>${alertTitle}</b>\n` +
           `Type: <b>SHORT</b>\n` +
@@ -4779,7 +4785,9 @@ function evaluateActiveTradesBackend(heatmapData) {
         trade.closeTimestamp = Date.now();
         trade.note = `Wick Hit TP ($${lastLow.toFixed(2)})`;
         updated = true;
-        console.log(`[LSR Bot] 🎉 SHORT Hit TP at $${trade.tp.toFixed(2)} (Last Low: $${lastLow.toFixed(2)}), PnL: +$${profit.toFixed(2)}`);
+        const shortTpMsg = `🎉 SHORT Hit TP at $${trade.tp.toFixed(2)} (Last Low: $${lastLow.toFixed(2)}), PnL: +$${profit.toFixed(2)}`;
+        console.log(`[LSR Bot] ${shortTpMsg}`);
+        insertTradeCloseToDb(trade, shortTpMsg);
         sendTelegramAlert(
           `🎉 <b>Trade Closed (Hit TP)</b>\n` +
           `Type: <b>SHORT</b>\n` +
@@ -4921,7 +4929,9 @@ function evaluateActiveTradesBackend(heatmapData) {
           trade.closeTimestamp = Date.now();
           trade.note = 'Auto (Pool -70%)';
           updated = true;
-          console.log(`[LSR Bot] ⚠️ AUTO-CUT TRIGGERED — ${trade.direction} Closed at $${lastClose.toFixed(2)} (Initial Pool: $${(trade.initialTpVolume/1e9).toFixed(2)}B, Current Pool: $${(currentTpVolume/1e9).toFixed(2)}B), PnL: ${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}`);
+          const autoCutMsg = `⚠️ AUTO-CUT TRIGGERED — ${trade.direction} Closed at $${lastClose.toFixed(2)} (Initial Pool: $${(trade.initialTpVolume/1e9).toFixed(2)}B, Current Pool: $${(currentTpVolume/1e9).toFixed(2)}B), PnL: ${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}`;
+          console.log(`[LSR Bot] ${autoCutMsg}`);
+          insertTradeCloseToDb(trade, autoCutMsg);
           sendTelegramAlert(
             `⚠️ <b>Trade Closed (Auto-Cut: Pool -70%)</b>\n` +
             `Type: <b>${trade.direction}</b>\n` +
@@ -5303,15 +5313,40 @@ try {
       reversal_prob REAL,
       rr_actual REAL,
       min_prob REAL,
-      min_rr REAL
+      min_rr REAL,
+      trade_id TEXT,
+      wick_depth REAL,
+      rejection_strength REAL,
+      confirm_count INTEGER,
+      f_base_score REAL,
+      f_pool_volume REAL,
+      f_rejection REAL,
+      f_oi_change REAL,
+      f_spot_cvd REAL,
+      f_trend REAL,
+      f_funding REAL,
+      f_ls_ratio REAL,
+      f_coinbase_premium REAL,
+      f_depth_delta REAL,
+      f_whale_wall REAL,
+      f_liquidations REAL,
+      f_intensity REAL,
+      depth_delta_val REAL,
+      premium_val REAL
     );
     CREATE INDEX IF NOT EXISTS idx_phase ON sweep_events(phase);
     CREATE INDEX IF NOT EXISTS idx_source ON sweep_events(source);
     CREATE INDEX IF NOT EXISTS idx_seq ON sweep_events(seq);
+    CREATE INDEX IF NOT EXISTS idx_trade_id ON sweep_events(trade_id);
   `);
   insertSweepEventStmt = sweepEventsDb.prepare(`
-    INSERT INTO sweep_events (seq, timestamp, phase, direction, pool_price, pool_side, pool_distance, pool_volume, message, source, reversal_prob, rr_actual, min_prob, min_rr)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'live', ?, ?, ?, ?)
+    INSERT INTO sweep_events (
+      seq, timestamp, phase, direction, pool_price, pool_side, pool_distance, pool_volume, message, source,
+      reversal_prob, rr_actual, min_prob, min_rr, trade_id, wick_depth, rejection_strength, confirm_count,
+      f_base_score, f_pool_volume, f_rejection, f_oi_change, f_spot_cvd, f_trend, f_funding, f_ls_ratio,
+      f_coinbase_premium, f_depth_delta, f_whale_wall, f_liquidations, f_intensity, depth_delta_val, premium_val
+    )
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'live', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
   console.log('[SweepEventsDB] Ready:', SWEEP_EVENTS_DB_FILE);
 } catch (e) {
@@ -5324,8 +5359,9 @@ function insertSweepEventToDb(entry) {
     // Prefer the sweep candidate's own prob/rr (SWEEP_DETECTED/REJECTED/TRADE_EXECUTED);
     // fall back to summing the probability breakdown (STANDBY/ALERT preview score).
     let reversalProb = entry.sweepCandidate?.prob ?? null;
-    if (reversalProb == null && entry.probabilityBreakdown) {
-      const sum = Object.entries(entry.probabilityBreakdown)
+    const b = entry.probabilityBreakdown;
+    if (reversalProb == null && b) {
+      const sum = Object.entries(b)
         .filter(([k]) => k !== 'depthDeltaVal' && k !== 'premiumVal')
         .reduce((s, [, v]) => s + (typeof v === 'number' ? v : 0), 0);
       reversalProb = Math.round(sum);
@@ -5344,10 +5380,51 @@ function insertSweepEventToDb(entry) {
       reversalProb,
       rrActual,
       settings.minReversalProbability ?? null,
-      settings.minRR ?? null
+      settings.minRR ?? null,
+      entry.sweepCandidate?.tradeId ?? null,
+      entry.sweepCandidate?.wickDepth ?? null,
+      entry.sweepCandidate?.rejectionStrength ?? null,
+      entry.sweepCandidate?.confirmCount ?? null,
+      b?.baseScore ?? null,
+      b?.poolVolume ?? null,
+      b?.rejection ?? null,
+      b?.oiChange ?? null,
+      b?.spotCvd ?? null,
+      b?.trend ?? null,
+      b?.funding ?? null,
+      b?.lsRatio ?? null,
+      b?.coinbasePremium ?? null,
+      b?.depthDelta ?? null,
+      b?.whaleWall ?? null,
+      b?.liquidations ?? null,
+      b?.intensity ?? null,
+      b?.depthDeltaVal ?? null,
+      b?.premiumVal ?? null
     );
   } catch (e) {
     console.error('[SweepEventsDB] Insert failed:', e.message);
+  }
+}
+
+// Records a trade close (Hit TP / Hit SL / Auto-Cut) directly -- these happen in
+// evaluateActiveTradesBackend, which never touches botPhaseState/sweepHistory, so
+// without this call they'd be invisible to sweep_events entirely.
+function insertTradeCloseToDb(trade, closeMessage) {
+  if (!insertSweepEventStmt) return;
+  try {
+    insertSweepEventStmt.run(
+      Date.now(), Date.now(), 'POSITION_MGMT',
+      trade.direction,
+      trade.closePrice ?? null,
+      null, null, null,
+      closeMessage,
+      null, null, null, null,
+      trade.id ?? null,
+      null, null, null,
+      null, null, null, null, null, null, null, null, null, null, null, null, null, null, null
+    );
+  } catch (e) {
+    console.error('[SweepEventsDB] Trade-close insert failed:', e.message);
   }
 }
 
@@ -6414,16 +6491,17 @@ function autoTradeStrategyBackend(heatmapData) {
     nearestPoolDistance: bestSweep.distFromPrice.toFixed(2) + '%',
     nearestPoolVolume: bestSweep.volume,
     nearestPoolSide: direction === 'LONG' ? 'SUPPORT' : 'RESISTANCE',
-    sweepCandidate: { 
-      direction, 
-      entry: newTrade.entry, 
-      tp: newTrade.tp, 
-      sl: newTrade.sl, 
-      rr, 
+    sweepCandidate: {
+      direction,
+      entry: newTrade.entry,
+      tp: newTrade.tp,
+      sl: newTrade.sl,
+      rr,
       prob,
       rejectionStrength: bestSweep.rejectionStrength,
       wickDepth: bestSweep.wickDepth,
-      confirmCount: bestSweep.confirmCount
+      confirmCount: bestSweep.confirmCount,
+      tradeId: newTrade.id
     },
     probabilityBreakdown: probResult.breakdown,
     message: `🎯 ${direction} entry at $${entry.toFixed(0)} after sweep of $${bestSweep.price.toFixed(0)} pool. R:R 1:${rr} (Prob: ${prob}%)`,
