@@ -3913,7 +3913,7 @@ app.post('/api/settings', (req, res) => {
     maxDist: parseNum(newSettings.maxDist, current.maxDist),
     autoTradeEnabled: newSettings.autoTradeEnabled !== undefined ? !!newSettings.autoTradeEnabled : current.autoTradeEnabled,
     sweepConfirmCandles: parseIntNum(newSettings.sweepConfirmCandles, current.sweepConfirmCandles),
-    minWickDepthPercent: parseNum(newSettings.minWickDepthPercent, current.minWickDepthPercent !== undefined ? current.minWickDepthPercent : 0.05),
+    minWickDepthPercent: parseNum(newSettings.minWickDepthPercent, current.minWickDepthPercent !== undefined ? current.minWickDepthPercent : 0.03),
     minRejectionStrength: parseNum(newSettings.minRejectionStrength, current.minRejectionStrength !== undefined ? current.minRejectionStrength : 0.15),
     minPoolVolumeRatio: parseNum(newSettings.minPoolVolumeRatio, current.minPoolVolumeRatio),
     cooldownMinutes: parseIntNum(newSettings.cooldownMinutes, current.cooldownMinutes),
@@ -6353,7 +6353,7 @@ function autoTradeStrategyBackend(heatmapData, klines15m) {
     // Hard floor on sweep quality — the heatmap sweep itself is the primary
     // trigger, so it must be genuinely real (wick clearly pierced the pool,
     // close clearly rejected back) before any supporting data gets weighed.
-    const minWickDepth = settings.minWickDepthPercent !== undefined ? parseFloat(settings.minWickDepthPercent) : 0.05;
+    const minWickDepth = settings.minWickDepthPercent !== undefined ? parseFloat(settings.minWickDepthPercent) : 0.03;
     const minRejection  = settings.minRejectionStrength !== undefined ? parseFloat(settings.minRejectionStrength) : 0.15;
 
     if (p < currentPrice) {
