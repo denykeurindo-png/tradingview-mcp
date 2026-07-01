@@ -5359,10 +5359,9 @@ function setBotPhaseState(newState, providedOldPhase) {
           probabilityBreakdown: newState.probabilityBreakdown || null
         };
         
+        // Local archive is unbounded (kept for analysis) — never pushed to VPS in full,
+        // see the pushToVps('/api/bot-phase/update', ...) call which omits sweepHistory.
         sweepHistory.unshift(entry);
-        if (sweepHistory.length > 200) {
-          sweepHistory.pop();
-        }
         saveSweepHistory(sweepHistory);
       }
     }
@@ -7146,14 +7145,15 @@ async function runBotCycle() {
         const newPhase = botPhaseState?.phase;
         setBotPhaseState(botPhaseState, oldPhase);
 
-        // Push bot phase state, metrics, and sweep history to VPS
+        // Push bot phase state and metrics to VPS. sweepHistory is local-only now —
+        // it's unbounded (kept for analysis) and would otherwise grow the payload sent
+        // every 30s cycle forever; the VPS dashboard doesn't need the event log.
         pushToVps('/api/bot-phase/update', {
           botPhaseState,
           botMetrics: {
             reversalProbability: botMetrics.reversalProbability,
             probabilityBreakdown: botMetrics.probabilityBreakdown
-          },
-          sweepHistory
+          }
         }).catch(err => console.error('[VPS Push] Failed to push bot phase:', err.message));
 
         if (lastTelegramPhase === null) {
