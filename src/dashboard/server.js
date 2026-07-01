@@ -5295,6 +5295,7 @@ let sweepHistory = [];
 const SWEEP_EVENTS_DB_FILE = path.join(__dirname, 'sweep_events.db');
 let sweepEventsDb = null;
 let insertSweepEventStmt = null;
+let insertPoolSnapshotStmt = null;
 try {
   sweepEventsDb = new DatabaseSync(SWEEP_EVENTS_DB_FILE);
   sweepEventsDb.exec(`
@@ -5348,9 +5349,53 @@ try {
     )
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'live', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `);
+  // Top-5 pool tables (24H/3D x Resistance/Support) shown on the cockpit widget were
+  // never persisted anywhere — recomputed from cache every cycle and overwritten.
+  // This snapshots the full Rank/Price/Vol/Distance/Intensity table every bot cycle.
+  sweepEventsDb.exec(`
+    CREATE TABLE IF NOT EXISTS pool_snapshots (
+      id INTEGER PRIMARY KEY AUTOINCREMENT,
+      timestamp INTEGER,
+      timeframe TEXT,
+      side TEXT,
+      rank INTEGER,
+      price REAL,
+      volume REAL,
+      distance_pct REAL,
+      intensity TEXT,
+      max_leverage REAL
+    );
+    CREATE INDEX IF NOT EXISTS idx_pool_snap_ts ON pool_snapshots(timestamp);
+    CREATE INDEX IF NOT EXISTS idx_pool_snap_tf_side ON pool_snapshots(timeframe, side);
+  `);
+  insertPoolSnapshotStmt = sweepEventsDb.prepare(`
+    INSERT INTO pool_snapshots (timestamp, timeframe, side, rank, price, volume, distance_pct, intensity, max_leverage)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
   console.log('[SweepEventsDB] Ready:', SWEEP_EVENTS_DB_FILE);
 } catch (e) {
   console.error('[SweepEventsDB] Failed to open/init — live events will not be recorded to SQLite:', e.message);
+}
+
+function insertPoolSnapshotToDb(pools24h, pools3d, currentPrice) {
+  if (!insertPoolSnapshotStmt) return;
+  const now = Date.now();
+  const classify = (ratio) => ratio >= 0.7 ? 'HIGH' : ratio >= 0.3 ? 'MED' : 'LOW';
+  const writeSide = (list, timeframe, side, maxLeverage) => {
+    list.forEach((p, idx) => {
+      const distancePct = ((p.price - currentPrice) / currentPrice) * 100;
+      const ratio = p.leverage / (maxLeverage || 1);
+      try {
+        insertPoolSnapshotStmt.run(now, timeframe, side, idx + 1, p.price, p.leverage, distancePct, classify(ratio), maxLeverage ?? null);
+      } catch (e) {
+        console.error('[SweepEventsDB] Pool snapshot insert failed:', e.message);
+      }
+    });
+  };
+  writeSide(pools24h.above, '24H', 'RESISTANCE', pools24h.maxLeverage);
+  writeSide(pools24h.below, '24H', 'SUPPORT', pools24h.maxLeverage);
+  writeSide(pools3d.above, '3D', 'RESISTANCE', pools3d.maxLeverage);
+  writeSide(pools3d.below, '3D', 'SUPPORT', pools3d.maxLeverage);
 }
 
 function insertSweepEventToDb(entry) {
@@ -5945,6 +5990,8 @@ function autoTradeStrategyBackend(heatmapData) {
   pools24h.below = tagIntensity(pools24h.below, pools24h.maxLeverage);
   pools3d.above  = tagIntensity(pools3d.above, pools3d.maxLeverage);
   pools3d.below  = tagIntensity(pools3d.below, pools3d.maxLeverage);
+
+  insertPoolSnapshotToDb(pools24h, pools3d, currentPrice);
 
   // Sweep-candidate scanning still considers ALL visible pools (24H+3D) — only the
   // "closest pool" tracked below prefers 24H first (see findNearestQualifyingPool).
