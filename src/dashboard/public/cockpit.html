@@ -10,6 +10,9 @@
   <script src="https://cdn.jsdelivr.net/npm/echarts/dist/echarts.min.js"></script>
   <link rel="stylesheet" href="style.css?v=2.2.9">
   <style>
+    /* Override shared .app-container gap (24px) — cockpit needs tighter spacing */
+    .app-container { gap: 4px; }
+
     /* ─── Hero Row ─────────────────────────────────────────────────── */
     .hero-row {
       display: flex;
@@ -18,8 +21,8 @@
       background: var(--bg-surface);
       border: 1px solid var(--border-color);
       border-radius: 10px;
-      padding: 14px 20px;
-      margin-bottom: 12px;
+      padding: 8px 20px;
+      margin-bottom: 4px;
     }
     .hero-price {
       font-size: 34px; font-weight: 700;
@@ -63,7 +66,7 @@
 
     /* ─── Perf Strip ───────────────────────────────────────────────── */
     .perf-strip {
-      display: grid; grid-template-columns: repeat(6,1fr); gap: 8px; margin-bottom: 10px;
+      display: grid; grid-template-columns: repeat(6,1fr); gap: 8px; margin-bottom: 4px;
     }
     .perf-tile {
       background: var(--bg-surface); border: 1px solid var(--border-color);
@@ -74,14 +77,14 @@
 
     /* ─── Pipeline ─────────────────────────────────────────────────── */
     .pipeline-wrap {
-      display: flex; align-items: stretch; gap: 0; margin-bottom: 10px;
+      display: flex; align-items: stretch; gap: 0; margin-bottom: 4px;
     }
     .pipeline-stage {
       flex: 1; background: var(--bg-surface);
       border: 1.5px solid #2B3139; border-radius: 12px;
-      padding: 20px 20px 16px; position: relative;
+      padding: 10px 16px 10px; position: relative;
       transition: border-color .3s, box-shadow .3s, opacity .3s;
-      opacity: .4; min-height: 200px;
+      opacity: .4; min-height: 150px;
       display: flex; flex-direction: column;
     }
     .pipeline-stage.active   { border-color:#F0B90B; box-shadow:0 0 20px rgba(240,185,11,.22); opacity:1; }
@@ -133,7 +136,7 @@
     .bot-bar {
       display: flex; align-items: center; gap: 10px;
       background: rgba(0,0,0,.25); border: 1px solid var(--border-color);
-      border-radius: 8px; padding: 8px 14px; margin-bottom: 10px;
+      border-radius: 8px; padding: 6px 14px; margin-bottom: 4px;
       font-size: 11.5px; color: #848E9C;
     }
     .bot-bar-label { color:#F0B90B; font-weight:700; flex-shrink:0; }
@@ -159,6 +162,16 @@
       text-transform:uppercase; letter-spacing:.06em;
       margin-bottom: 10px;
       display:flex; justify-content:space-between; align-items:center;
+    }
+
+    /* ─── Top Liquidation Pools ───────────────────────────────────── */
+    .top-pools-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    @media (max-width: 1100px) {
+      .top-pools-grid { grid-template-columns: 1fr; }
     }
 
     /* ─── Sweep log table ──────────────────────────────────────────── */
@@ -332,10 +345,11 @@
         <div class="pipe-dot"></div>
         <div class="pipe-num">Stage 4</div>
         <div class="pipe-title">🔍 Filter Gates</div>
-        <div class="filter-check"><span class="fc-icon" id="fc-icon-rr">⬜</span><span class="fc-label">Min R:R</span><span class="fc-val" id="fc-val-rr">— / 1.2</span></div>
-        <div class="filter-check"><span class="fc-icon" id="fc-icon-prob">⬜</span><span class="fc-label">Min Prob</span><span class="fc-val" id="fc-val-prob">— / 70%</span></div>
-        <div class="filter-check"><span class="fc-icon" id="fc-icon-cb">⬜</span><span class="fc-label">CB Premium</span><span class="fc-val" id="fc-val-cb">—</span></div>
-        <div class="filter-check"><span class="fc-icon" id="fc-icon-htf">⬜</span><span class="fc-label">HTF Trend</span><span class="fc-val" id="fc-val-htf">—</span></div>
+        <div class="filter-check"><span class="fc-icon" id="fc-icon-rr">⬜</span><span class="fc-label">Min R:R</span><span class="fc-val" id="fc-val-rr">— / 1.0</span></div>
+        <div class="filter-check"><span class="fc-icon" id="fc-icon-prob">⬜</span><span class="fc-label">Min Prob</span><span class="fc-val" id="fc-val-prob">— / 60%</span></div>
+        <div style="font-size:10px;color:#636366;margin-top:6px;line-height:1.5;">
+          CB Premium <span id="fc-val-cb">—</span> &amp; HTF Trend <span id="fc-val-htf">—</span> sudah ikut dihitung di Reversal Prob di atas — tidak ada gate terpisah lagi.
+        </div>
         <div style="padding-top:8px;">
           <span class="pipe-badge pb-grey" id="pipe-filter-badge">IDLE</span>
         </div>
@@ -376,37 +390,109 @@
 
 
     <!-- ══ HEATMAP ROW: 24H + 3D side by side ═══════════════════════════ -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:10px;">
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px;">
 
       <!-- 24H Liquidity Sweep Map -->
       <div class="wcard" style="padding:10px 8px 8px;">
         <div class="wcard-title">
           <span>24H Liquidity Sweep Map</span>
-          <button onclick="triggerManualRefresh(this)" style="background:none;border:none;color:#636366;cursor:pointer;display:flex;align-items:center;padding:2px;" title="Refresh">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="refresh-icon"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-          </button>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:9px;color:#636366;font-family:'JetBrains Mono',monospace;font-weight:400;text-transform:none;" id="heatmap-24h-update-time">--:--:--</span>
+            <button onclick="triggerManualRefresh(this)" style="background:none;border:none;color:#636366;cursor:pointer;display:flex;align-items:center;padding:2px;" title="Refresh">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="refresh-icon"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            </button>
+          </div>
         </div>
-        <div id="chart-mini-heatmap-24h" style="width:100%;height:300px;"></div>
+        <div id="chart-mini-heatmap-24h" style="width:100%;height:420px;"></div>
       </div>
 
       <!-- 3D Liquidity Sweep Map -->
       <div class="wcard" style="padding:10px 8px 8px;">
         <div class="wcard-title">
           <span>3D Liquidity Sweep Map</span>
-          <button onclick="triggerManualRefresh(this)" style="background:none;border:none;color:#636366;cursor:pointer;display:flex;align-items:center;padding:2px;" title="Refresh">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="refresh-icon"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
-          </button>
+          <div style="display:flex;align-items:center;gap:8px;">
+            <span style="font-size:9px;color:#636366;font-family:'JetBrains Mono',monospace;font-weight:400;text-transform:none;" id="heatmap-3d-update-time">--:--:--</span>
+            <button onclick="triggerManualRefresh(this)" style="background:none;border:none;color:#636366;cursor:pointer;display:flex;align-items:center;padding:2px;" title="Refresh">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round" class="refresh-icon"><path d="M21.5 2v6h-6M21.34 15.57a10 10 0 1 1-.57-8.38l5.67-5.67"/></svg>
+            </button>
+          </div>
         </div>
-        <div id="chart-mini-heatmap-3d" style="width:100%;height:300px;"></div>
+        <div id="chart-mini-heatmap-3d" style="width:100%;height:420px;"></div>
       </div>
 
     </div><!-- /heatmap row -->
+
+    <!-- ══ TOP LIQUIDATION POOLS (full width, collapsible) ════════════════ -->
+    <div class="wcard" style="margin-bottom:10px;">
+      <div class="wcard-title" style="cursor:pointer;user-select:none;" onclick="toggleTopPools()">
+        <span>🔥 Top Liquidation Pools</span>
+        <svg id="top-pools-chevron" width="16" height="16" viewBox="0 0 24 24" fill="none"
+          stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"
+          style="color:#636366;transition:transform .25s;transform:rotate(180deg);">
+          <polyline points="18 15 12 9 6 15"></polyline>
+        </svg>
+      </div>
+      <div id="top-pools-body" style="max-height:420px;overflow-y:auto;transition:max-height .3s ease,opacity .3s;">
+        <div class="top-pools-grid">
+          <!-- Left Box: 24H Pools -->
+          <div style="display:flex;flex-direction:column;gap:8px;min-height:0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+              <div style="display:flex;align-items:center;">
+                <span style="font-weight:600;font-size:11px;color:#848E9C;letter-spacing:.3px;">24H POOLS</span>
+                <span id="liq-ratio-24h" style="font-size:9.5px;font-weight:700;font-family:'JetBrains Mono',monospace;margin-left:8px;"></span>
+              </div>
+              <span style="font-size:9px;color:#636366;font-family:'JetBrains Mono',monospace;" id="liq-pools-update-24h">--:--:--</span>
+            </div>
+            <!-- Resistance 24H -->
+            <div style="background:rgba(255,255,255,.01);border:1px solid var(--border-color);border-radius:6px;padding:6px 8px;display:flex;flex-direction:column;min-height:0;">
+              <div style="font-weight:700;color:#F6465D;text-transform:uppercase;letter-spacing:.3px;font-size:9px;margin-bottom:6px;">▲ Resistance 24H</div>
+              <div id="cockpit-resistance-pools" style="display:flex;flex-direction:column;gap:6px;justify-content:flex-start;margin-top:4px;overflow-y:auto;max-height:180px;">
+                <div style="color:#636366;text-align:center;padding:10px;font-size:10px;">Loading 24H...</div>
+              </div>
+            </div>
+            <!-- Support 24H -->
+            <div style="background:rgba(255,255,255,.01);border:1px solid var(--border-color);border-radius:6px;padding:6px 8px;display:flex;flex-direction:column;min-height:0;">
+              <div style="font-weight:700;color:#0ECB81;text-transform:uppercase;letter-spacing:.3px;font-size:9px;margin-bottom:6px;">▼ Support 24H</div>
+              <div id="cockpit-support-pools" style="display:flex;flex-direction:column;gap:6px;justify-content:flex-start;margin-top:4px;overflow-y:auto;max-height:180px;">
+                <div style="color:#636366;text-align:center;padding:10px;font-size:10px;">Loading 24H...</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Right Box: 3D Pools -->
+          <div style="display:flex;flex-direction:column;gap:8px;min-height:0;">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:2px;">
+              <div style="display:flex;align-items:center;">
+                <span style="font-weight:600;font-size:11px;color:#848E9C;letter-spacing:.3px;">3D POOLS</span>
+                <span id="liq-ratio-3d" style="font-size:9.5px;font-weight:700;font-family:'JetBrains Mono',monospace;margin-left:8px;"></span>
+              </div>
+              <span style="font-size:9px;color:#636366;font-family:'JetBrains Mono',monospace;" id="liq-pools-update-3d">--:--:--</span>
+            </div>
+            <!-- Resistance 3D -->
+            <div style="background:rgba(255,255,255,.01);border:1px solid var(--border-color);border-radius:6px;padding:6px 8px;display:flex;flex-direction:column;min-height:0;">
+              <div style="font-weight:700;color:#F6465D;text-transform:uppercase;letter-spacing:.3px;font-size:9px;margin-bottom:6px;">▲ Resistance 3D</div>
+              <div id="cockpit-resistance-pools-3d" style="display:flex;flex-direction:column;gap:6px;justify-content:flex-start;margin-top:4px;overflow-y:auto;max-height:180px;">
+                <div style="color:#636366;text-align:center;padding:10px;font-size:10px;">Loading 3D...</div>
+              </div>
+            </div>
+            <!-- Support 3D -->
+            <div style="background:rgba(255,255,255,.01);border:1px solid var(--border-color);border-radius:6px;padding:6px 8px;display:flex;flex-direction:column;min-height:0;">
+              <div style="font-weight:700;color:#0ECB81;text-transform:uppercase;letter-spacing:.3px;font-size:9px;margin-bottom:6px;">▼ Support 3D</div>
+              <div id="cockpit-support-pools-3d" style="display:flex;flex-direction:column;gap:6px;justify-content:flex-start;margin-top:4px;overflow-y:auto;max-height:180px;">
+                <div style="color:#636366;text-align:center;padding:10px;font-size:10px;">Loading 3D...</div>
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div><!-- /top liquidation pools -->
 
     <!-- ══ SWEEP EVENT LOG (full width, collapsible) ══════════════════════ -->
     <div class="wcard" style="margin-bottom:10px;">
       <div class="wcard-title" style="cursor:pointer;user-select:none;" onclick="toggleSweepLog()">
         <span>🔥 Liquidation Sweep &amp; Reversal Event Log</span>
         <div style="display:flex;align-items:center;gap:10px;">
+          <span style="font-size:9px;color:#636366;font-family:'JetBrains Mono',monospace;font-weight:400;text-transform:none;" id="sweep-log-update-time">--:--:--</span>
           <button id="btn-clear-sweep-history" class="btn-action-sm danger"
             style="font-size:10px;padding:3px 10px;"
             onclick="event.stopPropagation()">Clear Logs</button>
@@ -458,12 +544,6 @@
     <div id="whale-buy-orders-text"></div>
     <div id="whale-sell-orders-text"></div>
     <div id="cockpit-summary-walls"></div>
-    <div id="cockpit-resistance-pools"></div>
-    <div id="cockpit-support-pools"></div>
-    <div id="cockpit-resistance-pools-3d"></div>
-    <div id="cockpit-support-pools-3d"></div>
-    <span id="liq-ratio-24h"></span><span id="liq-ratio-3d"></span>
-    <span id="liq-pools-update-24h"></span><span id="liq-pools-update-3d"></span>
     <div id="market-bias-conclusion-content"></div>
     <div id="widget-market-bias-conclusion"></div>
     <div id="jda-card-bias"></div><div id="jda-card-phase"></div>
@@ -496,7 +576,7 @@
   </div>
 
   <script src="notifications-shared.js"></script>
-  <script src="cockpit.js?v=2.2.9"></script>
+  <script src="cockpit.js?v=2.2.12"></script>
 
   <!-- ══ PIPELINE UPDATER ═══════════════════════════════════════════════ -->
   <script>
@@ -613,21 +693,26 @@
 
       // ── Stage 4: Filter Gates ──────────────────────────────────────
       if (sc && (phase === 'SWEEP_DETECTED' || phase === 'SWEEP_REJECTED' || phase === 'TRADE_EXECUTED')) {
+        const settings = data.settings || {};
+        const minRR    = settings.minRR != null ? parseFloat(settings.minRR) : 1.0;
+        const minProb  = settings.minReversalProbability != null ? parseFloat(settings.minReversalProbability) : 60;
+
         const rrVal   = sc.rr != null ? parseFloat(sc.rr) : null;
-        const rrPass  = rrVal !== null && rrVal >= 1.2;
-        const probPass = prob >= 70;
+        const rrPass  = rrVal !== null && rrVal >= minRR;
+        const probPass = prob >= minProb;
         const cbPrem  = m.premiumRate != null ? (m.premiumRate * 100).toFixed(3) : null;
         const t1 = m.trend1h || '—', t4 = m.trend4h || '—';
 
         txt('fc-icon-rr',   rrPass   ? '✅' : '❌'); txt('fc-icon-prob', probPass ? '✅' : '❌');
-        txt('fc-icon-cb',   '✅');                   txt('fc-icon-htf',  '✅');
 
         const rrEL = el('fc-val-rr');
-        if (rrEL) { rrEL.innerText = (rrVal !== null ? rrVal.toFixed(2) : '—') + ' / 1.2'; rrEL.style.color = rrPass ? '#0ECB81' : '#F6465D'; }
+        if (rrEL) { rrEL.innerText = (rrVal !== null ? rrVal.toFixed(2) : '—') + ' / ' + minRR.toFixed(1); rrEL.style.color = rrPass ? '#0ECB81' : '#F6465D'; }
         const pbEL = el('fc-val-prob');
-        if (pbEL) { pbEL.innerText = prob + '% / 70%'; pbEL.style.color = probPass ? '#0ECB81' : '#F6465D'; }
-        if (cbPrem) { const c = el('fc-val-cb'); if (c) { c.innerText = (parseFloat(cbPrem) > 0 ? '+' : '') + cbPrem + '%'; c.style.color = '#848E9C'; } }
-        const htfEl = el('fc-val-htf'); if (htfEl) { htfEl.innerText = t1 + ' / ' + t4; htfEl.style.color = '#848E9C'; }
+        if (pbEL) { pbEL.innerText = prob + '% / ' + minProb + '%'; pbEL.style.color = probPass ? '#0ECB81' : '#F6465D'; }
+        // CB Premium & HTF Trend are no longer separate gates — they're already
+        // folded into the Reversal Prob score above, just shown here as context.
+        if (cbPrem) { const c = el('fc-val-cb'); if (c) c.innerText = (parseFloat(cbPrem) > 0 ? '+' : '') + cbPrem + '%'; }
+        const htfEl = el('fc-val-htf'); if (htfEl) htfEl.innerText = t1 + ' / ' + t4;
 
         if (phase === 'TRADE_EXECUTED') {
           setStageCls('filter', 'pass');   setBadge('pipe-filter-badge', 'ALL PASS ✓', 'pb-green'); setArrow('4', 'green');
@@ -639,15 +724,19 @@
       }
 
       // ── Stage 5: Trade Active ──────────────────────────────────────
-      if (phase === 'TRADE_EXECUTED' || phase === 'COOLDOWN' || phase === 'MAX_ACTIVE') {
-        if (sc) {
-          const de = el('pipe-trade-dir');
-          if (de) { de.innerText = (sc.direction || '—') + ' ENTRY'; de.style.color = sc.direction === 'LONG' ? '#0ECB81' : '#F6465D'; }
-          if (sc.entry) {
-            txt('pipe-trade-levels', 'Entry $' + parseFloat(sc.entry).toFixed(0) + ' · TP $' + parseFloat(sc.tp || 0).toFixed(0) + ' · SL $' + parseFloat(sc.sl || 0).toFixed(0));
-            txt('pipe-trade-rr', 'R:R 1:' + parseFloat(sc.rr || 0).toFixed(1) + ' · Risk $' + parseFloat(sc.riskUsd || 50).toFixed(0));
-          }
-        }
+      // Source of truth is the actual open trades list, not just `phase` —
+      // once maxActive > 1 the bot can be ALERT/STANDBY while a trade is
+      // still live in another slot, so phase alone under-reports this stage.
+      const activeTrades = Array.isArray(data.activeTrades) ? data.activeTrades : [];
+      if (activeTrades.length > 0) {
+        const t = activeTrades[activeTrades.length - 1]; // most recently opened
+        const de = el('pipe-trade-dir');
+        const countSuffix = activeTrades.length > 1 ? ' (+' + (activeTrades.length - 1) + ' more)' : '';
+        if (de) { de.innerText = (t.direction || '—') + ' ENTRY' + countSuffix; de.style.color = t.direction === 'LONG' ? '#0ECB81' : '#F6465D'; }
+        txt('pipe-trade-levels', 'Entry $' + parseFloat(t.entry || 0).toFixed(0) + ' · TP $' + parseFloat(t.tp || 0).toFixed(0) + ' · SL $' + parseFloat(t.sl || 0).toFixed(0));
+        const rr = t.tpDistance && t.slDistance ? (t.tpDistance / t.slDistance).toFixed(1) : '—';
+        txt('pipe-trade-rr', 'R:R 1:' + rr + ' · PnL $' + parseFloat(t.pnl || 0).toFixed(2));
+
         if (phase === 'COOLDOWN') {
           setStageCls('trade', 'cooldown'); setBadge('pipe-trade-badge', 'COOLDOWN ⏳', 'pb-purple');
         } else if (phase === 'MAX_ACTIVE') {
@@ -678,6 +767,18 @@
       body.style.maxHeight   = collapsed ? '260px' : '0px';
       body.style.opacity     = collapsed ? '1'     : '0';
       body.style.overflow    = collapsed ? 'auto'  : 'hidden';
+      if (chevron) chevron.style.transform = collapsed ? 'rotate(180deg)' : 'rotate(0deg)';
+    };
+
+    // Collapsible top liquidation pools
+    window.toggleTopPools = function () {
+      const body    = document.getElementById('top-pools-body');
+      const chevron = document.getElementById('top-pools-chevron');
+      if (!body) return;
+      const collapsed = body.style.maxHeight === '0px';
+      body.style.maxHeight   = collapsed ? '420px' : '0px';
+      body.style.opacity     = collapsed ? '1'      : '0';
+      body.style.overflow    = collapsed ? 'auto'   : 'hidden';
       if (chevron) chevron.style.transform = collapsed ? 'rotate(180deg)' : 'rotate(0deg)';
     };
 
