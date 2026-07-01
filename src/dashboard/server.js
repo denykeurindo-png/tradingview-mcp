@@ -2525,8 +2525,8 @@ async function scrapeOrderBookCombined(forceRefresh = false) {
 app.get('/api/orderbook-data', async (req, res) => {
   const forceRefresh = req.query.refresh === 'true';
 
-  // Cache berlaku selama 3 menit (180.000 ms), sama seperti heatmap
-  if (orderBookDataCache && !forceRefresh && lastOrderBookFetchTime && (Date.now() - lastOrderBookFetchTime < 180000)) {
+  // Cache berlaku selama 60 detik, agar konsisten dengan cadence whale walls (~30s)
+  if (orderBookDataCache && !forceRefresh && lastOrderBookFetchTime && (Date.now() - lastOrderBookFetchTime < 60000)) {
     return res.json({ success: true, source: 'cache', data: orderBookDataCache });
   }
 
