@@ -276,6 +276,10 @@ body {
   gap: var(--spacing-sm);
   align-items: stretch;
   margin-bottom: var(--spacing-md);
+  /* .app-container's flex gap (--spacing-md, 24px) makes the gap above this
+     section wider than every other card gap on the page (--spacing-sm,
+     16px). Pull it up by the 8px difference so it matches. */
+  margin-top: calc(var(--spacing-sm) - var(--spacing-md));
 }
 
 .sentiment-flow-grid > :first-child {
