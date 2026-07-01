@@ -487,7 +487,7 @@
         </div>
 
         <!-- Two-column masonry stack: each column stacks its own cards independently -->
-        <div class="cockpit2-masonry-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: start;">
+        <div class="cockpit2-masonry-grid" style="display: grid; grid-template-columns: 1fr 1fr; gap: 12px; align-items: stretch;">
           <!-- LEFT column stack -->
           <div style="display: flex; flex-direction: column; gap: 12px;">
           <div class="cockpit2-card w-whales-orders">
@@ -547,7 +547,7 @@
               </div>
             </div>
           </div>
-          <div class="cockpit2-card w-liquidity-analysis" style="display: flex; flex-direction: column; padding: 10px 12px 12px 12px; margin-bottom: 0;">
+          <div class="cockpit2-card w-liquidity-analysis" style="display: flex; flex-direction: column; padding: 10px 12px 12px 12px; margin-bottom: 0; flex: 1;">
             <div class="widget-title" style="margin-bottom: 8px; display:flex; justify-content:space-between; align-items:center;">
               <span>Liquidity Profile & Exchange Distribution</span>
               <span style="font-size: 9px; color: var(--text-muted);" id="liquidity-profile-update-time">--:--:--</span>
@@ -645,7 +645,7 @@
               </div>
             </div>
           </div>
-          <div class="cockpit2-card w-custom-empty" style="display: flex; flex-direction: column; padding: 10px 12px 12px 12px; margin-bottom: 0;" id="coinglass-indicators-card">
+          <div class="cockpit2-card w-custom-empty" style="display: flex; flex-direction: column; padding: 10px 12px 12px 12px; margin-bottom: 0; flex: 1;" id="coinglass-indicators-card">
             <div class="widget-title" style="margin-bottom: 8px; display:flex; justify-content:space-between; align-items:center;">
               <span>📈 CoinGlass Market Indicators</span>
               <span style="font-size: 9px; color: var(--text-muted);" id="coinglass-indicators-update-time">--:--:--</span>

@@ -493,7 +493,7 @@
     </section>
 
     <!-- ── Two Column Sentiment & Flow Grid ─────────────────────────── -->
-    <section style="margin-bottom: var(--spacing-md); max-width: 480px;">
+    <section style="margin-bottom: var(--spacing-md); display:grid; grid-template-columns: minmax(320px, 480px) 1fr; gap: var(--spacing-md); align-items:start;">
       <!-- Fear & Greed Card -->
       <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:15px; border-bottom:1px solid var(--border-color); padding-bottom:12px;">
@@ -524,11 +524,8 @@
           Awaiting Fear & Greed index data...
         </div>
       </div>
-    </section>
 
-
-    <!-- ── JDA MTF Signal Validation Panel ─────────────────────────── -->
-    <section>
+      <!-- JDA MTF Signal Validation Panel -->
       <div class="card">
         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:var(--spacing-sm); border-bottom:1px solid var(--border-color); padding-bottom:12px;">
           <div>
