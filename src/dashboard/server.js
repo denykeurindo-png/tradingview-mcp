@@ -5365,6 +5365,7 @@ const SWEEP_EVENTS_DB_FILE = path.join(__dirname, 'sweep_events.db');
 let sweepEventsDb = null;
 let insertSweepEventStmt = null;
 let insertPoolSnapshotStmt = null;
+let getLastPoolSnapshotStmt = null;
 let insertCandleStmt = null;
 let insertCoinglassCandleStmt = null;
 let insertSweepAttemptStmt = null;
@@ -5442,6 +5443,12 @@ try {
     );
     CREATE INDEX IF NOT EXISTS idx_pool_snap_ts ON pool_snapshots(timestamp);
     CREATE INDEX IF NOT EXISTS idx_pool_snap_tf_side ON pool_snapshots(timeframe, side);
+    CREATE INDEX IF NOT EXISTS idx_pool_snap_lookup ON pool_snapshots(timeframe, side, rank, id);
+  `);
+  getLastPoolSnapshotStmt = sweepEventsDb.prepare(`
+    SELECT price, intensity FROM pool_snapshots
+    WHERE timeframe = ? AND side = ? AND rank = ?
+    ORDER BY id DESC LIMIT 1
   `);
   insertPoolSnapshotStmt = sweepEventsDb.prepare(`
     INSERT INTO pool_snapshots (timestamp, timeframe, side, rank, price, volume, distance_pct, intensity, max_leverage)
@@ -5603,10 +5610,21 @@ function insertPoolSnapshotToDb(pools24h, pools3d, currentPrice) {
   const classify = (ratio) => ratio >= 0.7 ? 'HIGH' : ratio >= 0.3 ? 'MED' : 'LOW';
   const writeSide = (list, timeframe, side, maxLeverage) => {
     list.forEach((p, idx) => {
+      const rank = idx + 1;
       const distancePct = ((p.price - currentPrice) / currentPrice) * 100;
       const ratio = p.leverage / (maxLeverage || 1);
+      const intensity = classify(ratio);
       try {
-        insertPoolSnapshotStmt.run(now, timeframe, side, idx + 1, p.price, p.leverage, distancePct, classify(ratio), maxLeverage ?? null);
+        // Skip the write if this (timeframe, side, rank) slot is unchanged from its
+        // last recorded snapshot -- price/intensity are what matter for pool tracking,
+        // and distance_pct always shifts with currentPrice even when the pool itself
+        // hasn't moved, so it's excluded from the comparison. The last row's timestamp
+        // still marks how long the pool has been stable once gaps appear between rows.
+        const last = getLastPoolSnapshotStmt?.get(timeframe, side, rank);
+        if (last && Math.abs(last.price - p.price) < 0.01 && last.intensity === intensity) {
+          return;
+        }
+        insertPoolSnapshotStmt.run(now, timeframe, side, rank, p.price, p.leverage, distancePct, intensity, maxLeverage ?? null);
       } catch (e) {
         console.error('[SweepEventsDB] Pool snapshot insert failed:', e.message);
       }
