@@ -2964,14 +2964,16 @@ app.get('/api/coinglass-summary', (req, res) => {
           valueUsd: o.valueUsd,
           valueUsdFormatted: formatVal(o.valueUsd),
           exchange: o.exchange,
-          marketType: o.marketType
+          marketType: o.marketType,
+          age: o.age
         })),
         top3Sell: sortedSells.map(o => ({
           price: o.price,
           valueUsd: o.valueUsd,
           valueUsdFormatted: formatVal(o.valueUsd),
           exchange: o.exchange,
-          marketType: o.marketType
+          marketType: o.marketType,
+          age: o.age
         })),
         top3BuySpot: sortedSpotBuys.map(o => ({
           price: o.price,

@@ -595,12 +595,27 @@ document.addEventListener('DOMContentLoaded', () => {
           const whaleBids = m.whaleOrders.top3Buy || [];
           const whaleAsks = m.whaleOrders.top3Sell || [];
           if (whaleBids.length > 0 || whaleAsks.length > 0) {
+            // Intensity relative to the largest order shown (same HIGH/MED/LOW scale
+            // as the full whale-orders table).
+            const maxWhaleVal = Math.max(...[...whaleBids, ...whaleAsks].map(o => o.valueUsd || 0), 1);
+            const whaleIntensity = (valueUsd) => {
+              const ratio = (valueUsd || 0) / maxWhaleVal;
+              if (ratio >= 0.7) return { cls: 'high', label: 'H' };
+              if (ratio >= 0.3) return { cls: 'medium', label: 'M' };
+              return { cls: 'low', label: 'L' };
+            };
             const renderWhaleItem = (order, isBuy) => {
               const color = isBuy ? '#0ECB81' : '#F6465D';
+              const badge = whaleIntensity(order.valueUsd);
               return `
-                <div style="display: flex; justify-content: space-between; font-size: 11px; background: rgba(255,255,255,0.01); border: 1px solid rgba(255,255,255,0.03); border-radius: 4px; padding: 4px 8px; font-family: 'JetBrains Mono', monospace;">
+                <div style="display: flex; justify-content: space-between; align-items: center; font-size: 11px; background: rgba(255,255,255,0.01); border: 1px solid rgba(255,255,255,0.03); border-radius: 4px; padding: 4px 8px; font-family: 'JetBrains Mono', monospace;">
                   <span style="color: ${color}; font-weight: 700;">$${parseFloat(order.price).toLocaleString()}</span>
-                  <span style="color: #EAECEF; font-weight: 600;">${order.valueUsdFormatted} <span style="font-size: 9px; color: #848E9C; font-weight: normal;">(${order.exchange})</span></span>
+                  <span style="display: flex; align-items: center; gap: 5px;">
+                    <span style="color: #EAECEF; font-weight: 600;">${order.valueUsdFormatted}</span>
+                    <span class="intensity-badge ${badge.cls}" style="font-size: 8px; padding: 0 3px; line-height: 1.5;" title="Intensity">${badge.label}</span>
+                    <span style="font-size: 9px; color: #848E9C; font-weight: normal;" title="Order age">${order.age || '--'}</span>
+                    <span style="font-size: 9px; color: #848E9C; font-weight: normal;">(${order.exchange})</span>
+                  </span>
                 </div>
               `;
             };
