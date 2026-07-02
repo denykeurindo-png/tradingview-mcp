@@ -647,7 +647,6 @@ async function scrapeCoinGlass(path, forceRefresh = false) {
       kpis: parsed.kpis,
       timestamp: new Date().toISOString()
     };
-    pushToVps('/api/etf-data/update', { data: dataObj }).catch(console.error);
     return dataObj;
 
   } finally {
@@ -1044,7 +1043,6 @@ async function scrapeHeatMap3D() {
     if (parsed.error) throw new Error('3D scrape: ' + parsed.error);
 
     const dataObj = { data: parsed, timestamp: new Date().toISOString(), period: chartUpdated ? '3d' : '24h-fallback' };
-    pushToVps('/api/heatmap-data/update', { period: dataObj.period === '3d' ? '3d' : '24h', data: dataObj.data || dataObj }).catch(console.error);
     return dataObj;
   } finally {
     if (navigated && savedUrl) {
@@ -1178,7 +1176,6 @@ async function scrapeDepthDelta() {
     if (parsed.error) throw new Error('Depth Delta: ' + parsed.error);
 
     const dataObj = { data: parsed, timestamp: new Date().toISOString() };
-    pushToVps('/api/depth-delta/update', { data: dataObj }).catch(console.error);
     return dataObj;
   } finally {
     if (navigated && savedUrl) {
@@ -1312,7 +1309,6 @@ async function scrapeCoinbasePremium() {
     if (parsed.error) throw new Error('Coinbase Premium: ' + parsed.error);
 
     const dataObj = { data: parsed, timestamp: new Date().toISOString() };
-    pushToVps('/api/coinbase-premium/update', { data: dataObj }).catch(console.error);
     return dataObj;
   } finally {
     if (navigated && savedUrl) {
@@ -1446,7 +1442,6 @@ async function scrapeWhaleRetailDelta() {
     if (parsed.error) throw new Error('Whale vs Retail Delta: ' + parsed.error);
 
     const dataObj = { data: parsed, timestamp: new Date().toISOString() };
-    pushToVps('/api/whale-retail-delta/update', { data: dataObj }).catch(console.error);
     return dataObj;
   } finally {
     if (navigated && savedUrl) {
@@ -1683,7 +1678,6 @@ async function scrapeCoinGlassTv() {
       performance
     };
 
-    pushToVps('/api/coinglass-tv/update', { data: dataObj }).catch(console.error);
     return dataObj;
   } finally {
     if (navigated && savedUrl) {
@@ -1805,7 +1799,6 @@ async function scrapeTopTraderLs() {
     if (parsed.error) throw new Error('Top Trader L/S: ' + parsed.error);
 
     const dataObj = { data: parsed, timestamp: new Date().toISOString() };
-    pushToVps('/api/top-trader-ls/update', { data: dataObj }).catch(console.error);
     return dataObj;
   } finally {
     if (navigated && savedUrl) {
@@ -2014,7 +2007,6 @@ async function scrapeWhaleOrders() {
     if (parsed.error) throw new Error('Whale Orders: ' + parsed.error);
 
     const dataObj = { data: parsed, timestamp: new Date().toISOString() };
-    pushToVps('/api/whale-orders/update', { data: dataObj }).catch(console.error);
     return dataObj;
   } finally {
     if (navigated && savedUrl) {
@@ -2382,7 +2374,6 @@ async function scrapeHeatMap(forceRefresh = false) {
       data: parsed,
       timestamp: new Date().toISOString()
     };
-    pushToVps('/api/heatmap-data/update', { period: '24h', data: dataObj.data || dataObj }).catch(console.error);
     return dataObj;
 
   } finally {
@@ -2562,7 +2553,6 @@ async function scrapeOrderBookCombined(forceRefresh = false) {
             bids: parsed.bids,
             timestamp: new Date().toISOString()
           };
-          pushToVps('/api/orderbook-data/update', { data: dataObj }).catch(console.error);
           return dataObj;
         }
       }
@@ -2592,7 +2582,6 @@ async function scrapeOrderBookCombined(forceRefresh = false) {
       bids: parsed.bids,
       timestamp: new Date().toISOString()
     };
-    pushToVps('/api/orderbook-data/update', { data: dataObj }).catch(console.error);
     return dataObj;
   } finally {
     if (navigated && savedUrl) {
@@ -3241,158 +3230,6 @@ app.get('/api/heatmap-data', async (req, res) => {
   }
 });
 
-// POST endpoint for updating HeatMap data from bridge (local -> VPS)
-app.post('/api/heatmap-data/update', (req, res) => {
-  const { data, period } = req.body;
-  if (!data) return res.status(400).json({ success: false, error: 'No data provided' });
-
-  const cleanedData = cleanSweptLevels(data);
-
-  if (period === '3d') {
-    heatmap3DCache = { data: cleanedData, timestamp: new Date().toISOString(), period: '3d' };
-    lastHeatmap3DFetchTime = Date.now();
-    console.log('[Bridge API] Received 3D Heatmap update from local client.');
-    try {
-      const hd3 = cleanedData.data || cleanedData;
-      if (hd3) {
-        if (!hd3.series) hd3.series = [];
-        if (!hd3.series.some(s => s.type === 'candlestick' || s.type === 'candlestick_raw')) {
-          const mainData = heatmapDataCache?.data?.data || heatmapDataCache?.data || heatmapDataCache;
-          const cs2d = mainData?.series?.find(s => s.type === 'candlestick' || s.type === 'candlestick_raw');
-          if (cs2d) hd3.series.push(cs2d);
-        }
-      }
-      sweepPrediction3DCache = predictSweepTargets(hd3, botMetrics);
-      console.log('[Bridge API] Updated 3D Sweep Prediction from received 3D data.');
-    } catch (err) {
-      console.error('[Bridge API] Failed to compute 3D Sweep Prediction:', err.message);
-    }
-    saveCacheToDisk('heatmap3d_cache.json', heatmap3DCache);
-  } else {
-    heatmapDataCache = { data: cleanedData, timestamp: new Date().toISOString() };
-    lastHeatmapFetchTime = Date.now();
-    console.log('[Bridge API] Received 24h Heatmap update from local client.');
-    saveCacheToDisk('heatmap24h_cache.json', heatmapDataCache);
-  }
-  res.json({ success: true });
-});
-
-app.post('/api/orderbook-data/update', (req, res) => {
-  const { data } = req.body;
-  if (!data) return res.status(400).json({ success: false, error: 'No data provided' });
-  orderBookDataCache = data;
-  lastOrderBookFetchTime = Date.now();
-  saveCacheToDisk('orderbook_cache.json', orderBookDataCache);
-  console.log('[Push API] Received Combined Order Book update from client.');
-  res.json({ success: true });
-});
-
-app.post('/api/depth-delta/update', (req, res) => {
-  const { data } = req.body;
-  if (!data) return res.status(400).json({ success: false, error: 'No data provided' });
-  depthDeltaCache = data;
-  lastDepthDeltaFetchTime = Date.now();
-  saveCacheToDisk('depth_delta_cache.json', depthDeltaCache);
-  console.log('[Push API] Received Depth Delta update from client.');
-  res.json({ success: true });
-});
-
-app.post('/api/coinbase-premium/update', (req, res) => {
-  const { data } = req.body;
-  if (!data) return res.status(400).json({ success: false, error: 'No data provided' });
-  cbPremiumCache = data;
-  lastCbPremiumFetchTime = Date.now();
-  saveCacheToDisk('cb_premium_cache.json', cbPremiumCache);
-  console.log('[Push API] Received Coinbase Premium update from client.');
-  res.json({ success: true });
-});
-
-app.post('/api/whale-orders/update', (req, res) => {
-  const { data } = req.body;
-  if (!data) return res.status(400).json({ success: false, error: 'No data provided' });
-  whaleOrdersCache = data;
-  lastWhaleOrdersFetchTime = Date.now();
-  saveCacheToDisk('whale_orders_cache.json', whaleOrdersCache);
-  console.log('[Push API] Received Whale Orders update from client.');
-  res.json({ success: true });
-});
-
-app.post('/api/whale-retail-delta/update', (req, res) => {
-  const { data } = req.body;
-  if (!data) return res.status(400).json({ success: false, error: 'No data provided' });
-  whaleRetailDeltaCache = data;
-  lastWhaleRetailDeltaFetchTime = Date.now();
-  saveCacheToDisk('whale_retail_delta_cache.json', whaleRetailDeltaCache);
-  console.log('[Push API] Received Whale vs Retail Delta update from client.');
-  res.json({ success: true });
-});
-
-app.post('/api/top-trader-ls/update', (req, res) => {
-  const { data } = req.body;
-  if (!data) return res.status(400).json({ success: false, error: 'No data provided' });
-  topTraderLsCache = data;
-  lastTopTraderLsFetchTime = Date.now();
-  saveCacheToDisk('top_trader_ls_cache.json', topTraderLsCache);
-  console.log('[Push API] Received Top Trader Long/Short update from client.');
-  res.json({ success: true });
-});
-
-app.post('/api/etf-data/update', (req, res) => {
-  const { data } = req.body;
-  if (!data) return res.status(400).json({ success: false, error: 'No data provided' });
-  etfDataCache = data;
-  lastFetchTime = Date.now();
-  saveCacheToDisk('etf_cache.json', etfDataCache);
-  console.log('[Push API] Received ETF Flow update from client.');
-  res.json({ success: true });
-});
-
-app.post('/api/bot-phase/update', (req, res) => {
-  const { botPhaseState: newPhaseState, botMetrics: newMetrics, sweepHistory: newHistory } = req.body;
-  if (newPhaseState) {
-    botPhaseState = newPhaseState;
-  }
-  if (newMetrics) {
-    botMetrics = { ...botMetrics, ...newMetrics };
-  }
-  if (newHistory && Array.isArray(newHistory)) {
-    sweepHistory = newHistory;
-    saveSweepHistory(sweepHistory);
-  }
-  console.log(`[Sync API] Successfully synchronized bot phase: ${botPhaseState?.phase}`);
-  res.json({ success: true });
-});
-
-app.post('/api/trades/sync', (req, res) => {
-  const { trades } = req.body;
-  if (!trades || !Array.isArray(trades)) {
-    return res.status(400).json({ success: false, error: 'Invalid trades payload' });
-  }
-  try {
-    fs.writeFileSync(TRADES_FILE, JSON.stringify(trades, null, 2));
-    console.log(`[Sync API] Successfully synchronized ${trades.length} trades from local client.`);
-    res.json({ success: true });
-  } catch (err) {
-    console.error('[Sync API] Failed to write trades file:', err.message);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
-app.post('/api/jda-trades/sync', (req, res) => {
-  const { trades } = req.body;
-  if (!trades || !Array.isArray(trades)) {
-    return res.status(400).json({ success: false, error: 'Invalid JDA trades payload' });
-  }
-  try {
-    fs.writeFileSync(JDA_TRADES_FILE, JSON.stringify(trades, null, 2));
-    console.log(`[Sync API] Successfully synchronized ${trades.length} JDA trades from local client.`);
-    res.json({ success: true });
-  } catch (err) {
-    console.error('[Sync API] Failed to write jda trades file:', err.message);
-    res.status(500).json({ success: false, error: err.message });
-  }
-});
-
 // REST API for fetching ETF data (with cache)
 app.get('/api/etf-data', async (req, res) => {
   const forceRefresh = req.query.refresh === 'true';
@@ -3476,7 +3313,6 @@ function loadTrades() {
 function saveTrades(trades) {
   try {
     fs.writeFileSync(TRADES_FILE, JSON.stringify(trades, null, 2));
-    pushToVps('/api/trades/sync', { trades }).catch(console.error);
   } catch (e) {
     console.error('Error saving trades file:', e);
   }
@@ -3499,7 +3335,6 @@ function loadJdaTrades() {
 function saveJdaTrades(trades) {
   try {
     fs.writeFileSync(JDA_TRADES_FILE, JSON.stringify(trades, null, 2));
-    pushToVps('/api/jda-trades/sync', { trades }).catch(console.error);
   } catch (e) {
     console.error('Error saving jda trades file:', e);
   }
@@ -3644,14 +3479,6 @@ function saveSettings(settings) {
   }
 }
 
-// VPS sync has been removed -- the dashboard is now viewed remotely over Tailscale
-// (phone joins the tailnet and hits this local instance directly), so there is no
-// receiver to push to. Kept as a no-op stub so the existing call sites don't need
-// touching and can be re-wired later if a remote mirror is ever reintroduced.
-async function pushToVps(_apiPath, _payload) {
-  return;
-}
-
 // ─── Sweep History REST API Endpoints ─────────────────────────
 app.get('/api/sweep-history', (req, res) => {
   res.json(sweepHistory);
@@ -3660,10 +3487,6 @@ app.get('/api/sweep-history', (req, res) => {
 app.post('/api/sweep-history/clear', (req, res) => {
   sweepHistory = [];
   saveSweepHistory(sweepHistory);
-  const settings = loadSettings();
-  if (!settings.disableScraper && process.env.DISABLE_SCRAPER !== 'true') {
-    pushToVps('/api/sweep-history/clear', {}).catch(console.error);
-  }
   res.json({ success: true });
 });
 
@@ -7600,16 +7423,6 @@ async function runBotCycle() {
         const newPhase = botPhaseState?.phase;
         setBotPhaseState(botPhaseState, oldPhase);
 
-        // Push bot phase state and metrics to VPS. sweepHistory is local-only now —
-        // it's unbounded (kept for analysis) and would otherwise grow the payload sent
-        // every 30s cycle forever; the VPS dashboard doesn't need the event log.
-        pushToVps('/api/bot-phase/update', {
-          botPhaseState,
-          botMetrics: {
-            reversalProbability: botMetrics.reversalProbability,
-            probabilityBreakdown: botMetrics.probabilityBreakdown
-          }
-        }).catch(err => console.error('[VPS Push] Failed to push bot phase:', err.message));
 
         if (lastTelegramPhase === null) {
           lastTelegramPhase = oldPhase || 'INITIALIZING';
@@ -7868,15 +7681,6 @@ app.listen(PORT, () => {
   // Start background bot 24/7 worker
   startBackgroundBot().catch(e => console.error('Failed to start background bot:', e));
 
-  // Trigger initial sync of trades to VPS on startup
-  try {
-    const initialTrades = loadTrades();
-    pushToVps('/api/trades/sync', { trades: initialTrades }).catch(console.error);
-    const initialJdaTrades = loadJdaTrades();
-    pushToVps('/api/jda-trades/sync', { trades: initialJdaTrades }).catch(console.error);
-  } catch (err) {
-    console.error('Failed to trigger initial sync:', err.message);
-  }
 
   // Warm-up ETF cache 90s after start (after first heatmap scrape finishes)
   setTimeout(async () => {
