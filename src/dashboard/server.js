@@ -3613,9 +3613,6 @@ function loadSettings() {
     telegramChatId: '',
     authUsername: 'admin',
     authPassword: 'admin123',
-    vpsUrl: '',
-    vpsUsername: '',
-    vpsPassword: '',
     disableScraper: false,
     disableTelegram: false,
     // Display-only CoinGlass scrapers -- not read by calculateReversalProbability,
@@ -3647,40 +3644,12 @@ function saveSettings(settings) {
   }
 }
 
-async function pushToVps(apiPath, payload) {
-  const settings = loadSettings();
-  if (!settings.vpsUrl) return;
-
-  const url = `${settings.vpsUrl}${apiPath}`;
-  const username = settings.vpsUsername || settings.authUsername || 'admin';
-  const password = settings.vpsPassword || settings.authPassword || 'admin123';
-  const authHeader = 'Basic ' + Buffer.from(username + ':' + password).toString('base64');
-
-  try {
-    console.log(`[VPS Push] Pushing data to ${url}...`);
-    const response = await globalThis.fetch(url, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': authHeader
-      },
-      body: JSON.stringify(payload),
-      signal: AbortSignal.timeout(30000)
-    });
-
-    if (!response.ok) {
-      console.error(`[VPS Push] Failed to push to ${url}. Status: ${response.status}`);
-      return;
-    }
-    const json = await response.json();
-    if (json.success) {
-      console.log(`[VPS Push] Successfully pushed to ${url}`);
-    } else {
-      console.error(`[VPS Push] VPS API returned error:`, json.error);
-    }
-  } catch (err) {
-    console.error(`[VPS Push] Error pushing to ${url}:`, err.message);
-  }
+// VPS sync has been removed -- the dashboard is now viewed remotely over Tailscale
+// (phone joins the tailnet and hits this local instance directly), so there is no
+// receiver to push to. Kept as a no-op stub so the existing call sites don't need
+// touching and can be re-wired later if a remote mirror is ever reintroduced.
+async function pushToVps(_apiPath, _payload) {
+  return;
 }
 
 // ─── Sweep History REST API Endpoints ─────────────────────────

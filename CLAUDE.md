@@ -11,10 +11,10 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 npm run dashboard                  # start Express server on port 4000 (foreground)
 pm2 start pm2.config.json          # start as pm2 process (name: tv-monitor)
 pm2 restart tv-monitor             # restart (use this, not start again)
-node scripts/deploy_settings.js    # SFTP-upload settings.json to VPS + pm2 restart
 
-# Deploy to VPS (git push first, then:)
-npm run deploy                     # SSH: git pull + pm2 restart trading-dashboard on VPS
+# Remote access: dashboard is reached from the phone over Tailscale (device joins
+# the tailnet and hits this local instance at http://<tailscale-ip>:4000). There is
+# no VPS anymore -- everything runs on the local scraping machine.
 
 # Tests (Node built-in runner, no Jest)
 npm run test:unit                  # offline only — pine_analyze + cli tests (29 tests)
@@ -30,9 +30,6 @@ node src/server.js
 # Pine Script workflow
 node scripts/pine_pull.js          # TradingView → scripts/current.pine
 node scripts/pine_push.js          # scripts/current.pine → TradingView editor + compile
-
-# Signal bridge (local → VPS)
-npm run bridge                     # reads TradingView Pine signals via CDP, POSTs to VPS:4000
 
 # CLI (after npm link)
 tv status | tv quote | tv symbol BTCUSD
@@ -115,13 +112,12 @@ src/dashboard/public/       ← static frontend (vanilla JS, no framework)
 ### CDP Mutex
 All Chrome interactions (heatmap scraping) go through `runWithCdpLock()` — a promise-chain mutex with 2s post-release delay. Never call CDP outside this lock.
 
-### Data Flow: Local → VPS
-Local instance scrapes CoinGlass + runs bot logic, then pushes results to VPS via `pushToVps(path, payload)`:
-- Heatmap data → `/api/heatmap-data/update`
-- Bot phase + sweep history → `/api/bot-phase/update` (includes full `sweepHistory[]` array)
-- Trades → `/api/trades/sync`
-
-VPS is a **receiver only** — it does not scrape. VPS settings are view-only; update them via `node scripts/deploy_settings.js`.
+### VPS sync (removed)
+The setup used to push scrape/bot results to a public VPS receiver so the dashboard
+could be viewed remotely. That's gone — remote viewing is now done over Tailscale
+against this local instance. `pushToVps()` is a no-op stub; the `/api/*/update` and
+`/api/*/sync` receiver endpoints remain defined but are never called (inert). If a
+remote mirror is ever reintroduced, re-wire the stub rather than each call site.
 
 ### LSR Bot Logic
 `autoTradeStrategyBackend(heatmapData)` runs on every heatmap refresh (~3 min):
@@ -135,7 +131,7 @@ VPS is a **receiver only** — it does not scrape. VPS settings are view-only; u
 7. Apply hard filters: R:R ≥ `minRR`, prob ≥ `minReversalProbability`, CB Premium, HTF trend, anti-spoofing
 8. Execute trade or log `SWEEP_REJECTED` with reason
 
-After the function returns, `setBotPhaseState(botPhaseState, oldPhase)` is called explicitly to log to `sweep_history.json` and push to VPS.
+After the function returns, `setBotPhaseState(botPhaseState, oldPhase)` is called explicitly to log to `sweep_history.json`.
 
 ### Probability Scoring (100-point)
 `calculateReversalProbability(sweepDetail, oiChange15m, spotCvd15m, trend1h, trend4h, premiumRate, longShortRatio)`:
@@ -179,9 +175,8 @@ After the function returns, `setBotPhaseState(botPhaseState, oldPhase)` is calle
 | `POST /api/sweep-history/clear` | clear event log |
 | `GET /api/heatmap-data` | 24H liquidation heatmap (cached 3min) |
 | `GET /api/heatmap-data-3d` | 3D liquidation heatmap |
-| `GET /api/settings` / `POST /api/settings` | read/write runtime config (POST disabled on VPS) |
+| `GET /api/settings` / `POST /api/settings` | read/write runtime config |
 | `POST /api/tradingview/webhook` | **public** — Pine Script alerts (buy/sell/cut) |
-| `POST /api/bot-phase/update` | VPS sync receiver: botPhaseState + botMetrics + sweepHistory |
 
 ---
 
@@ -225,15 +220,14 @@ Logged to sweep history when `closestPool` changes by >0.2% between bot cycles. 
 
 ## Git & Deploy Workflow
 
+Everything runs on the local machine now (no VPS). "Deploy" is just committing and
+restarting the local pm2 process.
+
 ```bash
-# Standard deploy
 git add <files>
 git commit -m "message"
 git push origin main
-npm run deploy              # SSH: git pull + pm2 restart on VPS
-
-# Settings only (gitignored)
-node scripts/deploy_settings.js    # SFTP upload src/dashboard/settings.json to VPS
+pm2 restart tv-monitor      # apply changes to the running local dashboard
 
 # Always mirror frontend changes to backup repo
 cp src/dashboard/public/FILE C:/Gemini/TVMONITOR_GIT/src/dashboard/public/FILE
@@ -242,4 +236,4 @@ cp src/dashboard/public/FILE C:/Gemini/TVMONITOR_GIT/src/dashboard/public/FILE
 - Running workspace: `C:\Gemini\TvMonitor`
 - Git backup repo: `C:\Gemini\TVMONITOR_GIT`
 - `settings.json` and `sweep_history.json` are gitignored — never commit them
-- VPS: `103.55.37.239`, pm2 process name: `trading-dashboard`
+- Local pm2 process name: `tv-monitor`
