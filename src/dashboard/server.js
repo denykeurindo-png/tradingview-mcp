@@ -7323,6 +7323,36 @@ function predictSweepTargets(heatmapData, metrics) {
   }
 }
 
+// Persistent Telegram alert when a large resting whale wall (>= $1M) disappears
+// AND price had reached it -- i.e. it was hit/executed, not merely canceled/spoofed.
+// Runs server-side each bot cycle so the notification fires even with no browser open
+// (the older detection was a browser-only toast on cockpit2.html).
+const WHALE_WALL_EXEC_MIN_USD = 1_000_000;
+let previousWhaleWalls = null;
+function detectExecutedWhaleWalls(orders, currentPrice) {
+  if (!Array.isArray(orders) || !currentPrice) { previousWhaleWalls = Array.isArray(orders) ? orders : previousWhaleWalls; return; }
+  if (Array.isArray(previousWhaleWalls)) {
+    for (const prev of previousWhaleWalls) {
+      if ((prev.valueUsd || 0) < WHALE_WALL_EXEC_MIN_USD) continue;
+      const stillExists = orders.some(c => c.side === prev.side && Math.abs(c.price - prev.price) < 2);
+      if (stillExists) continue;
+      const isBuy = prev.side === 'buy';
+      // Executed = price reached the wall (buy wall hit from above, sell wall from below).
+      // A wall that vanished WITHOUT price reaching it was canceled/spoofed -> skip.
+      const wasTouched = isBuy ? (currentPrice <= prev.price + 10) : (currentPrice >= prev.price - 10);
+      if (!wasTouched) continue;
+      const valM = ((prev.valueUsd || 0) / 1e6).toFixed(2);
+      sendTelegramAlert(
+        `${isBuy ? '🟢' : '🔴'} <b>Whale ${isBuy ? 'BID' : 'ASK'} Wall Executed</b>\n` +
+        `────────────────────\n` +
+        `Dinding ${isBuy ? 'beli' : 'jual'} <b>$${valM}M</b> di <b>$${Math.round(prev.price).toLocaleString()}</b> (${prev.exchange || 'Unknown'}) baru saja terisi/kena harga.\n` +
+        `Harga saat ini: $${Math.round(currentPrice).toLocaleString()}`
+      );
+    }
+  }
+  previousWhaleWalls = orders;
+}
+
 async function runBotCycle() {
   if (isHeatmapScrapingBusy) {
     console.log('[Background Bot] Scrape already in progress, skipping background cycle.');
@@ -7576,6 +7606,10 @@ async function runBotCycle() {
         whaleOrdersCache = rWhales;
         lastWhaleOrdersFetchTime = Date.now();
         saveCacheToDisk('whale_orders_cache.json', whaleOrdersCache);
+        // Fire Telegram alert for any large whale wall that just got executed.
+        const whaleOrdersArr = Array.isArray(whaleOrdersCache) ? whaleOrdersCache : (whaleOrdersCache?.data || []);
+        const pxForWalls = botMetrics.openInterestBtc ? (botMetrics.openInterest / botMetrics.openInterestBtc) : null;
+        detectExecutedWhaleWalls(whaleOrdersArr, pxForWalls);
       } catch (e) {
         console.error('[Background Bot] Whale Orders scrape error:', e.message);
       }
