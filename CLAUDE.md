@@ -112,12 +112,13 @@ src/dashboard/public/       ← static frontend (vanilla JS, no framework)
 ### CDP Mutex
 All Chrome interactions (heatmap scraping) go through `runWithCdpLock()` — a promise-chain mutex with 2s post-release delay. Never call CDP outside this lock.
 
-### VPS sync (removed)
+### VPS sync (fully removed)
 The setup used to push scrape/bot results to a public VPS receiver so the dashboard
-could be viewed remotely. That's gone — remote viewing is now done over Tailscale
-against this local instance. `pushToVps()` is a no-op stub; the `/api/*/update` and
-`/api/*/sync` receiver endpoints remain defined but are never called (inert). If a
-remote mirror is ever reintroduced, re-wire the stub rather than each call site.
+could be viewed remotely. That's gone entirely — remote viewing is now done over
+Tailscale against this local instance. The `pushToVps()` function, all its call
+sites, the `/api/*/update` + `/api/*/sync` receiver endpoints, the SSH/SFTP deploy
+scripts, the `ssh2` dependency, and `tv_signal_bridge.js` have all been deleted.
+If a remote mirror is ever reintroduced, it must be rebuilt from scratch.
 
 ### LSR Bot Logic
 `autoTradeStrategyBackend(heatmapData)` runs on every heatmap refresh (~3 min):
