@@ -5598,10 +5598,18 @@ function insertSweepAttemptToDb(attempt) {
   }
 }
 
+let lastPoolSnapshotWriteTs = 0;
 function insertPoolSnapshotToDb(pools24h, pools3d, currentPrice) {
   if (!insertPoolSnapshotStmt) return;
   const now = Date.now();
+  // Keepalive: even when every slot is unchanged, still write a full snapshot if the
+  // last write is older than this. Keeps the DB-health check (3-min staleness) from
+  // false-alarming during quiet markets and bounds the max gap between rows, while
+  // still skipping the bulk of identical writes during active cycles.
+  const KEEPALIVE_MS = 150000; // 2.5 min, comfortably under the 3-min health threshold
+  const forceWrite = (now - lastPoolSnapshotWriteTs) >= KEEPALIVE_MS;
   const classify = (ratio) => ratio >= 0.7 ? 'HIGH' : ratio >= 0.3 ? 'MED' : 'LOW';
+  let wroteAny = false;
   const writeSide = (list, timeframe, side, maxLeverage) => {
     list.forEach((p, idx) => {
       const rank = idx + 1;
@@ -5614,11 +5622,14 @@ function insertPoolSnapshotToDb(pools24h, pools3d, currentPrice) {
         // and distance_pct always shifts with currentPrice even when the pool itself
         // hasn't moved, so it's excluded from the comparison. The last row's timestamp
         // still marks how long the pool has been stable once gaps appear between rows.
-        const last = getLastPoolSnapshotStmt?.get(timeframe, side, rank);
-        if (last && Math.abs(last.price - p.price) < 0.01 && last.intensity === intensity) {
-          return;
+        if (!forceWrite) {
+          const last = getLastPoolSnapshotStmt?.get(timeframe, side, rank);
+          if (last && Math.abs(last.price - p.price) < 0.01 && last.intensity === intensity) {
+            return;
+          }
         }
         insertPoolSnapshotStmt.run(now, timeframe, side, rank, p.price, p.leverage, distancePct, intensity, maxLeverage ?? null);
+        wroteAny = true;
       } catch (e) {
         console.error('[SweepEventsDB] Pool snapshot insert failed:', e.message);
       }
@@ -5628,6 +5639,7 @@ function insertPoolSnapshotToDb(pools24h, pools3d, currentPrice) {
   writeSide(pools24h.below, '24H', 'SUPPORT', pools24h.maxLeverage);
   writeSide(pools3d.above, '3D', 'RESISTANCE', pools3d.maxLeverage);
   writeSide(pools3d.below, '3D', 'SUPPORT', pools3d.maxLeverage);
+  if (wroteAny) lastPoolSnapshotWriteTs = now;
 }
 
 function insertSweepEventToDb(entry) {
