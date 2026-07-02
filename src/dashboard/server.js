@@ -36,35 +36,60 @@ const BINANCE_FUTURES_BASES = [
   'https://fapi-gcp.binance.com'
 ];
 
+// Binance rate-limits/bans by IP with escalating 429 → 418 responses. The mirror
+// domains (fapi/fapi1/.../fapi-gcp) all share ONE per-IP limit, so retrying a
+// rate-limited call across them just multiplies the request count -- exactly what
+// turns a soft 429 into a hard 418 ban and keeps resetting the ban timer. When we
+// see 418/429 we therefore (a) stop trying other mirrors immediately and (b) set a
+// global backoff that short-circuits every Binance call until the window passes,
+// letting the ban lapse instead of hammering it.
+let binanceBackoffUntil = 0;
+
 async function fetchBinance(url, options = {}) {
   if (typeof url === 'string' && url.includes('binance.com')) {
+    if (Date.now() < binanceBackoffUntil) {
+      throw new Error(`Binance backoff active (${Math.ceil((binanceBackoffUntil - Date.now()) / 1000)}s left)`);
+    }
     const isFutures = url.includes('fapi.binance.com');
     const bases = isFutures ? BINANCE_FUTURES_BASES : BINANCE_SPOT_BASES;
     const urlObj = new URL(url);
     const pathAndQuery = urlObj.pathname + urlObj.search;
-    
+
     let lastError = null;
     for (const base of bases) {
       try {
         const targetUrl = `${base}${pathAndQuery}`;
         let timeoutId;
         const fetchOpts = { ...options };
-        
+
         if (!fetchOpts.signal) {
           const controller = new AbortController();
           timeoutId = setTimeout(() => controller.abort(), 4000);
           fetchOpts.signal = controller.signal;
         }
-        
+
         const res = await globalThis.fetch(targetUrl, fetchOpts);
         if (timeoutId) clearTimeout(timeoutId);
-        
+
         if (res.ok && res.status === 200) {
           return res;
+        }
+        // Rate-limited / IP-banned: honor Retry-After if present, else 120s for a
+        // hard 418 ban / 30s for a soft 429. Do NOT fall through to the other
+        // mirrors -- that only deepens the ban.
+        if (res.status === 418 || res.status === 429) {
+          const retryAfter = parseInt(res.headers.get('retry-after') || '', 10);
+          const backoffMs = Number.isFinite(retryAfter) && retryAfter > 0
+            ? retryAfter * 1000
+            : (res.status === 418 ? 120000 : 30000);
+          binanceBackoffUntil = Date.now() + backoffMs;
+          console.warn(`[Binance] Rate limited (HTTP ${res.status}). Backing off ${Math.round(backoffMs / 1000)}s — pausing all Binance requests.`);
         }
         throw new Error(`HTTP status ${res.status}`);
       } catch (err) {
         lastError = err;
+        // A rate-limit backoff was just set: stop probing the remaining mirrors.
+        if (Date.now() < binanceBackoffUntil) break;
       }
     }
     throw lastError || new Error(`All Binance base endpoints failed for URL: ${url}`);
