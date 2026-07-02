@@ -1147,6 +1147,38 @@ async function updateMiniHeatmap() {
       return { cls: 'low', label: 'Low' };
     };
 
+    // The pool the SERVER is currently tracking (drives the "Pool Detection" hero).
+    // We overlay it onto the table so the hero and table never disagree: the tracked
+    // row is highlighted, and if it fell out of the client's Top-5 (volume decay /
+    // pool-lock keeping a near-miss) it's injected as a TRACKED row so it's always visible.
+    const TRACK_TOL = 0.0015; // 0.15% price tolerance for matching a table row
+    const trackedPoolFor = (isAbove) => {
+      const s = latestBotStatus;
+      if (!s || !s.nearestPool || !s.nearestPoolSide) return null;
+      const onSide = (isAbove && s.nearestPoolSide === 'RESISTANCE') || (!isAbove && s.nearestPoolSide === 'SUPPORT');
+      if (!onSide) return null;
+      const price = parseFloat(s.nearestPool);
+      if (!isFinite(price)) return null;
+      const vol = parseFloat(s.nearestPoolVolume) || 0;
+      const dist = ((price - currentBtcPrice) / currentBtcPrice) * 100;
+      return { price, side: s.nearestPoolSide, vol, dist };
+    };
+    const isTrackedRow = (lvl, tracked) => tracked && Math.abs(lvl.price - tracked.price) / tracked.price < TRACK_TOL;
+    const TRACKED_ROW_STYLE = ' style="background:rgba(240,185,11,0.12);box-shadow:inset 3px 0 0 #F0B90B;"';
+    const trackedRankCell = '<td style="color:#F0B90B;font-weight:700;white-space:nowrap;">🎯</td>';
+    const injectedTrackedRow = (tracked, isAbove) => {
+      const distSign = tracked.dist > 0 ? '+' : '';
+      const distColor = isAbove ? '#FF453A' : '#32D74B';
+      const volColor = isAbove ? '#bfdc21' : '#3ab56e';
+      return `<tr${TRACKED_ROW_STYLE}>`
+        + trackedRankCell
+        + `<td class="mono" style="font-weight:600;color:#FFFFFF;">$${tracked.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>`
+        + `<td class="mono intensity-cell" style="color:${volColor};">$${formatIntensity(tracked.vol)}</td>`
+        + `<td class="mono" style="color:${distColor};">${distSign}${tracked.dist.toFixed(2)}%</td>`
+        + '<td><span class="intensity-badge" style="background:rgba(240,185,11,0.2);color:#F0B90B;">TRACKED</span></td>'
+        + '</tr>';
+    };
+
     const renderPoolTable24h = (pools, isAbove, maxLeverage = 1) => {
       const side = isAbove ? 'above' : 'below';
       const heading = isAbove ? '▲ Top Resistance Liquidation Pools' : '▼ Top Support Liquidation Pools';
@@ -1154,6 +1186,8 @@ async function updateMiniHeatmap() {
         return `<div class="liq-table-container ${side}"><h4>${heading}</h4>`
           + '<div style="text-align:center;color:var(--text-muted);font-size:11px;padding:10px;">No significant liquidation pools detected.</div></div>';
       }
+      const tracked = trackedPoolFor(isAbove);
+      let trackedMatched = false;
       const totalActive = pools.reduce((s, p) => s + (p.isLiquidated ? 0 : p.leverage), 0);
       let html = `<div class="liq-table-container ${side}"><h4>${heading} — Current: ${formatUSD(currentBtcPrice)} | Active: $${formatIntensity(totalActive)}</h4>`
         + '<table class="liq-data-table"><thead><tr>'
@@ -1164,19 +1198,23 @@ async function updateMiniHeatmap() {
         const badge = badgeFor(lvl, maxLeverage);
         const distSign = lvl.distance > 0 ? '+' : '';
         const isLiq = lvl.isLiquidated;
-        const rowStyle = isLiq ? ' style="opacity:0.45;"' : '';
+        const isTracked = isTrackedRow(lvl, tracked);
+        if (isTracked) trackedMatched = true;
+        const rowStyle = isTracked ? TRACKED_ROW_STYLE : (isLiq ? ' style="opacity:0.45;"' : '');
         const priceColor = isLiq ? 'var(--text-muted)' : '#FFFFFF';
         const volColor = isLiq ? 'var(--text-muted)' : (isAbove ? '#bfdc21' : '#3ab56e');
         const distColor = isLiq ? 'var(--text-muted)' : (isAbove ? '#FF453A' : '#32D74B');
 
         html += `<tr${rowStyle}>`
-          + `<td style="color:var(--text-muted);">#${idx + 1}</td>`
+          + (isTracked ? trackedRankCell : `<td style="color:var(--text-muted);">#${idx + 1}</td>`)
           + `<td class="mono" style="font-weight:600;color:${priceColor};">$${lvl.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>`
           + `<td class="mono intensity-cell" style="color:${volColor};">$${formatIntensity(lvl.leverage)}</td>`
           + `<td class="mono" style="color:${distColor};">${distSign}${lvl.distance.toFixed(2)}%</td>`
           + `<td><span class="intensity-badge ${badge.cls}">${badge.label}</span></td>`
           + '</tr>';
       });
+      // Tracked pool fell out of the client Top-5 -> inject it so hero & table agree.
+      if (tracked && !trackedMatched) html += injectedTrackedRow(tracked, isAbove);
       html += '</tbody></table></div>';
       return html;
     };
@@ -1194,17 +1232,19 @@ async function updateMiniHeatmap() {
         + '<th>Rank</th><th>Price (USD)</th><th>Pool Vol</th><th>Dist</th><th>Intensity</th>'
         + '</tr></thead><tbody>';
 
+      const tracked = trackedPoolFor(isAbove);
       pools.forEach((lvl, idx) => {
         const badge = badgeFor(lvl, maxLeverage);
         const distSign = lvl.distance > 0 ? '+' : '';
         const isLiq = lvl.isLiquidated;
-        const rowStyle = isLiq ? ' style="opacity:0.45;"' : '';
+        const isTracked = isTrackedRow(lvl, tracked);
+        const rowStyle = isTracked ? TRACKED_ROW_STYLE : (isLiq ? ' style="opacity:0.45;"' : '');
         const priceColor = isLiq ? 'var(--text-muted)' : '#FFFFFF';
         const volColor = isLiq ? 'var(--text-muted)' : (isAbove ? '#F0B90B' : '#0ECB81');
         const distColor = isLiq ? 'var(--text-muted)' : (isAbove ? '#F6465D' : '#0ECB81');
 
         html += `<tr${rowStyle}>`
-          + `<td style="color:var(--text-muted);">#${idx + 1}</td>`
+          + (isTracked ? trackedRankCell : `<td style="color:var(--text-muted);">#${idx + 1}</td>`)
           + `<td class="mono" style="color:${priceColor};">$${lvl.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>`
           + `<td class="mono" style="color:${volColor};">$${formatIntensity(lvl.leverage)}</td>`
           + `<td class="mono" style="color:${distColor};">${distSign}${lvl.distance.toFixed(2)}%</td>`
