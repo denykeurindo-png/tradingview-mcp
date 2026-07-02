@@ -1189,11 +1189,12 @@ async function updateMiniHeatmap() {
       const tracked = trackedPoolFor(isAbove);
       let trackedMatched = false;
       const totalActive = pools.reduce((s, p) => s + (p.isLiquidated ? 0 : p.leverage), 0);
-      let html = `<div class="liq-table-container ${side}"><h4>${heading} — Current: ${formatUSD(currentBtcPrice)} | Active: $${formatIntensity(totalActive)}</h4>`
+      const head = `<div class="liq-table-container ${side}"><h4>${heading} — Current: ${formatUSD(currentBtcPrice)} | Active: $${formatIntensity(totalActive)}</h4>`
         + '<table class="liq-data-table"><thead><tr>'
         + '<th>Rank</th><th>Price (USD)</th><th>Pool Vol (USD)</th><th>Distance</th><th>Intensity</th>'
         + '</tr></thead><tbody>';
 
+      const rowsHtml = [];
       pools.forEach((lvl, idx) => {
         const badge = badgeFor(lvl, maxLeverage);
         const distSign = lvl.distance > 0 ? '+' : '';
@@ -1205,18 +1206,25 @@ async function updateMiniHeatmap() {
         const volColor = isLiq ? 'var(--text-muted)' : (isAbove ? '#bfdc21' : '#3ab56e');
         const distColor = isLiq ? 'var(--text-muted)' : (isAbove ? '#FF453A' : '#32D74B');
 
-        html += `<tr${rowStyle}>`
+        rowsHtml.push(`<tr${rowStyle}>`
           + (isTracked ? trackedRankCell : `<td style="color:var(--text-muted);">#${idx + 1}</td>`)
           + `<td class="mono" style="font-weight:600;color:${priceColor};">$${lvl.price.toLocaleString(undefined, { minimumFractionDigits: 2, maximumFractionDigits: 2 })}</td>`
           + `<td class="mono intensity-cell" style="color:${volColor};">$${formatIntensity(lvl.leverage)}</td>`
           + `<td class="mono" style="color:${distColor};">${distSign}${lvl.distance.toFixed(2)}%</td>`
           + `<td><span class="intensity-badge ${badge.cls}">${badge.label}</span></td>`
-          + '</tr>';
+          + '</tr>');
       });
-      // Tracked pool fell out of the client Top-5 -> inject it so hero & table agree.
-      if (tracked && !trackedMatched) html += injectedTrackedRow(tracked, isAbove);
-      html += '</tbody></table></div>';
-      return html;
+      // Tracked pool fell out of the client Top-5 -> inject it at its correct
+      // price-sorted position (resistance = price asc, support = price desc) so it
+      // reads naturally, instead of being dumped at the bottom.
+      if (tracked && !trackedMatched) {
+        let insertIdx = pools.length;
+        for (let i = 0; i < pools.length; i++) {
+          if (isAbove ? pools[i].price > tracked.price : pools[i].price < tracked.price) { insertIdx = i; break; }
+        }
+        rowsHtml.splice(insertIdx, 0, injectedTrackedRow(tracked, isAbove));
+      }
+      return head + rowsHtml.join('') + '</tbody></table></div>';
     };
 
     const renderPoolTable3d = (pools, isAbove, maxLeverage = 1) => {
