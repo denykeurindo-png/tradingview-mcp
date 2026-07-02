@@ -169,7 +169,15 @@ async function fetchOrderBook(refresh = false) {
     }
 
     const { bids, asks, timestamp } = result.data;
-    
+
+    // No live supply (Combined Order Book scraper off / stale): don't re-render
+    // stale numbers as if fresh -- surface a clear OFFLINE state instead.
+    const OB_STALE_MS = 8 * 60 * 1000;
+    const obTs = timestamp ? new Date(timestamp).getTime() : 0;
+    if (!obTs || Date.now() - obTs > OB_STALE_MS) {
+      throw new Error('OFFLINE — tidak ada pasokan data (scraper Combined Order Book mati / basi)');
+    }
+
     if (bids.length === 0 || asks.length === 0) {
       throw new Error('Order book returned empty bids/asks.');
     }

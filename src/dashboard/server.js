@@ -3187,6 +3187,17 @@ app.get('/api/coinglass-summary', (req, res) => {
     status: {
       lastPrice: botMetrics.openInterest && botMetrics.openInterestBtc ? (botMetrics.openInterest / botMetrics.openInterestBtc) : 60000
     },
+    // Age (ms) of each contributing scrape source since its last successful fetch,
+    // so the UI can show a card as OFFLINE (no live supply) instead of rendering
+    // stale numbers as if fresh. null = never fetched this session.
+    sourceAgeMs: {
+      coinbasePremium: lastCbPremiumFetchTime ? Date.now() - lastCbPremiumFetchTime : null,
+      depthDelta:      lastDepthDeltaFetchTime ? Date.now() - lastDepthDeltaFetchTime : null,
+      whaleOrders:     lastWhaleOrdersFetchTime ? Date.now() - lastWhaleOrdersFetchTime : null,
+      whaleRetail:     lastWhaleRetailDeltaFetchTime ? Date.now() - lastWhaleRetailDeltaFetchTime : null,
+      topTrader:       lastTopTraderLsFetchTime ? Date.now() - lastTopTraderLsFetchTime : null,
+      combinedDepth:   lastOrderBookFetchTime ? Date.now() - lastOrderBookFetchTime : null
+    },
     timestamp: new Date().toISOString()
   });
 });

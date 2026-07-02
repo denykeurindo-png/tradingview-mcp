@@ -116,6 +116,18 @@ async function loadData(forceRefresh = false) {
     const result = resObj.data;
     const btcPrice = resObj.btcPrice || 65000;
 
+    // No live supply (ETF Monitor scraper off / stale): don't render old numbers
+    // as if fresh. ETF data is cached ~1h (daily T+1 reporting), so use a 90-min
+    // threshold to avoid false positives during normal hourly refresh.
+    const ETF_STALE_MS = 90 * 60 * 1000;
+    const etfTs = result && result.timestamp ? new Date(result.timestamp).getTime() : 0;
+    if (!result || !etfTs || Date.now() - etfTs > ETF_STALE_MS) {
+      cacheIndicator.innerText = '⚠️ OFFLINE — tidak ada pasokan data (scraper ETF Monitor mati / basi)';
+      cacheIndicator.style.color = 'var(--text-muted)';
+      updateStatus('alert', 'Offline — no data');
+      return;
+    }
+
     // 1. Update Cache indicators — this is OUR scrape/fetch time, distinct from
     // the per-KPI "Last update" labels below which come straight from CoinGlass's
     // own page (ETF flow data has its own T+1 reporting lag, often days behind).

@@ -587,12 +587,50 @@ document.getElementById('btn-emergency-close-c2').addEventListener('click', asyn
   }
 });
 
+// Blank the Combined Depth + Liquidity Profile cards and mark them OFFLINE when
+// the Combined Order Book scraper has no live supply (toggled off / stale).
+function markCombinedDepthOffline() {
+  const set = (id, v) => { const el = document.getElementById(id); if (el) el.innerText = v; };
+  set('val-imbalance-ratio', '—');
+  set('foot-imbalance-text', 'OFFLINE — tidak ada pasokan data');
+  set('val-total-bids', '—');
+  set('foot-total-bids-usd', 'OFFLINE');
+  set('val-total-asks', '—');
+  set('foot-total-asks-usd', 'OFFLINE');
+  set('metric-summary-desc', 'OFFLINE — tidak ada pasokan data');
+  set('metric-summary-sentiment', 'OFFLINE');
+  set('metric-summary-val', '—');
+  set('combined-depth-update-time', 'OFFLINE');
+  const cdCard = document.querySelector('.w-combined-depth-c2');
+  if (cdCard) cdCard.style.opacity = '0.5';
+  const lpCard = document.querySelector('.w-liquidity-analysis');
+  if (lpCard) lpCard.style.opacity = '0.5';
+  const deltaProfile = document.getElementById('liquidity-delta-profile');
+  if (deltaProfile) deltaProfile.innerHTML = '<div style="font-size:10px; color:var(--text-muted); text-align:center; padding:5px;">OFFLINE — tidak ada pasokan data</div>';
+  const exDist = document.getElementById('exchange-liquidity-distribution');
+  if (exDist) exDist.innerHTML = '<div style="font-size:10px; color:var(--text-muted); text-align:center; padding:5px;">OFFLINE — tidak ada pasokan data</div>';
+  const lpUpd = document.getElementById('liquidity-profile-update-time');
+  if (lpUpd) lpUpd.innerText = 'OFFLINE';
+}
+
 // Fetch and update Combined Depth KPIs
 async function updateCombinedDepthData() {
   try {
     const res = await fetch('/api/orderbook-data');
     const result = await res.json();
     if (!result.success) return;
+
+    // No live supply (Combined Order Book scraper off / stale): don't render old
+    // numbers as if fresh -- blank the depth cards + mark OFFLINE.
+    const obTs = result.data && result.data.timestamp ? new Date(result.data.timestamp).getTime() : 0;
+    if (!result.data || !obTs || Date.now() - obTs > INDICATOR_STALE_MS) {
+      markCombinedDepthOffline();
+      return;
+    }
+    const cdCard = document.querySelector('.w-combined-depth-c2');
+    if (cdCard) cdCard.style.opacity = '1';
+    const lpCard = document.querySelector('.w-liquidity-analysis');
+    if (lpCard) lpCard.style.opacity = '1';
 
     const { bids, asks } = result.data;
     if (bids.length === 0 || asks.length === 0) return;
@@ -997,6 +1035,47 @@ function updateCoinGlassIndicators(res) {
       verdictExplanation.innerHTML = res.explanation.replace(/\*\*(.*?)\*\*/g, '<strong>$1</strong>');
     }
   }
+
+  // ── Staleness overlay ──────────────────────────────────────────────────
+  // If a scrape source hasn't refreshed within STALE_MS (scraper toggled off,
+  // scrape failing, or Binance/CoinGlass down), blank its row and mark it
+  // OFFLINE so old numbers aren't mistaken for live data.
+  markStaleIndicatorRows(res.sourceAgeMs || {});
+}
+
+const INDICATOR_STALE_MS = 8 * 60 * 1000; // 8 min: beyond the 5-min display-only cadence + slack
+const CG_INDICATOR_ROWS = [
+  { key: 'coinbasePremium', id: 'cg-coinbase-premium' },
+  { key: 'depthDelta',      id: 'cg-depth-delta' },
+  { key: 'topTrader',       id: 'cg-top-trader' },
+  { key: 'whaleRetail',     id: 'cg-whale-retail' },
+  { key: 'whaleOrders',     id: 'cg-whale-orders' },
+  { key: 'combinedDepth',   id: 'cg-combined-depth' }
+];
+
+function markStaleIndicatorRows(ages) {
+  CG_INDICATOR_ROWS.forEach(({ key, id }) => {
+    const valEl = document.getElementById(id + '-val');
+    if (!valEl) return;
+    const descEl = document.getElementById(id + '-desc');
+    const sentEl = document.getElementById(id + '-sentiment');
+    const barEl = document.getElementById(id + '-bar');
+    // val span -> label-row div -> row card div
+    const rowCard = valEl.parentElement ? valEl.parentElement.parentElement : null;
+
+    const age = ages[key];
+    const stale = age === null || age === undefined || age > INDICATOR_STALE_MS;
+
+    if (stale) {
+      valEl.innerText = '—';
+      if (descEl) descEl.innerText = 'OFFLINE — tidak ada pasokan data';
+      if (sentEl) { sentEl.innerText = 'OFFLINE'; sentEl.style.color = '#848E9C'; }
+      if (barEl) { barEl.style.width = '0%'; }
+      if (rowCard) rowCard.style.opacity = '0.4';
+    } else {
+      if (rowCard) rowCard.style.opacity = '1';
+    }
+  });
 }
 
 // Calculate and update Liquidity Delta Profile & Exchange Distribution
