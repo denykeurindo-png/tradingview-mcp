@@ -19,6 +19,20 @@
       --bg-card-hover: #252930;
       --border-color: #2B3139;
     }
+
+    /* ─── Mobile (phone) ───────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      /* Stack the 24H | 3D two-column grids (liquidation tables + sweep
+         prediction panels) so they don't get squeezed on a phone */
+      .hm-2col { grid-template-columns: 1fr !important; }
+
+      /* Shorter main heatmap chart so it fits above the fold */
+      #liq-heatmap-chart, #liq-heatmap-chart-3d { height: 380px !important; }
+    }
+
+    @media (max-width: 460px) {
+      #liq-heatmap-chart, #liq-heatmap-chart-3d { height: 320px !important; }
+    }
   </style>
 </head>
 <body>
@@ -242,7 +256,7 @@
           </div>
 
           <!-- Liquidation Tables — 24H and 3D side by side -->
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:var(--spacing-sm); margin-bottom:var(--spacing-sm);">
+          <div class="hm-2col" style="display:grid; grid-template-columns:1fr 1fr; gap:var(--spacing-sm); margin-bottom:var(--spacing-sm);">
             <!-- 24H Column -->
             <div>
               <div style="font-size:10px; font-weight:700; color:var(--accent-primary); text-transform:uppercase; letter-spacing:.6px; margin-bottom:6px; padding:4px 8px; background:rgba(240,185,11,0.08); border-radius:4px; display:inline-block;">24H</div>
@@ -259,7 +273,7 @@
 
 
           <!-- Sweep Prediction — 24H and 3D side by side -->
-          <div style="display:grid; grid-template-columns:1fr 1fr; gap:var(--spacing-sm); margin-bottom:var(--spacing-sm);">
+          <div class="hm-2col" style="display:grid; grid-template-columns:1fr 1fr; gap:var(--spacing-sm); margin-bottom:var(--spacing-sm);">
             <div id="sweep-prediction-panel" class="card" style="margin-bottom:var(--spacing-sm); padding:16px; background:var(--bg-surface); border:1px solid var(--border-color); border-radius:var(--border-radius);">
             <div style="color:#98989D; font-size:12px; text-align:center; padding:12px;">Loading sweep prediction...</div>
           </div>

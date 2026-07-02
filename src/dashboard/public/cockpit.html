@@ -192,6 +192,46 @@
       .pipeline-arrow { display:none; }
       .pipeline-stage { flex:0 0 calc(50% - 6px); min-width:140px; }
     }
+
+    /* ─── Mobile (phone) ───────────────────────────────────────────────── */
+    @media (max-width: 768px) {
+      .app-container { padding: 8px 6px !important; gap: 6px; }
+
+      /* Hero: stack the price/phase/metrics vertically so nothing gets cut off */
+      .hero-row { flex-wrap: wrap; gap: 10px 14px; padding: 10px 12px; }
+      .hero-price { font-size: 26px; }
+      .hero-divider { display: none; }
+      .hero-metrics { gap: 16px; flex: 1 1 100%; justify-content: space-between; order: 3; }
+      .hero-metric-val { font-size: 14px; }
+      .hero-right { flex: 1 1 100%; justify-content: space-between; order: 4; }
+
+      /* Perf tiles: 2 per row */
+      .perf-strip { grid-template-columns: repeat(2, 1fr); gap: 6px; }
+      .perf-tile-val { font-size: 14px; }
+
+      /* Pipeline: one stage per row, shorter */
+      .pipeline-stage { flex: 0 0 100%; min-height: auto; padding: 10px 14px; }
+      .pipe-title { margin-bottom: 8px; }
+      .pipe-big { font-size: 19px; }
+
+      /* Heatmap maps: stack + shorter charts */
+      .heatmap-row { grid-template-columns: 1fr !important; }
+      #chart-mini-heatmap-24h, #chart-mini-heatmap-3d { height: 300px !important; }
+
+      /* Wide event-log table scrolls sideways instead of overflowing the page */
+      #sweep-log-body { overflow-x: auto; -webkit-overflow-scrolling: touch; }
+      .sweep-table { min-width: 640px; }
+
+      /* Bot bar wraps its toggle to a new line if needed */
+      .bot-bar { flex-wrap: wrap; }
+    }
+
+    @media (max-width: 460px) {
+      .hero-price { font-size: 22px; }
+      .perf-strip { grid-template-columns: repeat(2, 1fr); }
+      .hero-metrics { gap: 10px; }
+      #chart-mini-heatmap-24h, #chart-mini-heatmap-3d { height: 260px !important; }
+    }
   </style>
 </head>
 <body>
@@ -388,7 +428,7 @@
 
 
     <!-- ══ HEATMAP ROW: 24H + 3D side by side ═══════════════════════════ -->
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px;">
+    <div class="heatmap-row" style="display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:6px;">
 
       <!-- 24H Liquidity Sweep Map -->
       <div class="wcard" style="padding:10px 8px 8px;">
